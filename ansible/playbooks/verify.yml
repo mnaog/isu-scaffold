@@ -1,0 +1,52 @@
+---
+- name: Verify ISUCON nodes without changing them
+  hosts: application:benchmark
+  become: false
+  gather_facts: true
+  any_errors_fatal: true
+  vars_files:
+    - "{{ playbook_dir }}/../../config/ansible-vars.json"
+
+  tasks:
+    - name: Read root filesystem capacity
+      ansible.builtin.command:
+        argv: [df, -Pm, /]
+      register: root_disk
+      changed_when: false
+
+    - name: Require enough available disk
+      ansible.builtin.assert:
+        that:
+          - (root_disk.stdout_lines[-1].split()[3] | int) >= (bootstrap_minimum_disk_available_mb | int)
+        fail_msg: "{{ inventory_hostname }} has less than {{ bootstrap_minimum_disk_available_mb }} MiB available on /"
+
+    - name: Read service state
+      ansible.builtin.service_facts:
+
+    - name: Require configured services to be running
+      ansible.builtin.assert:
+        that:
+          - >-
+            (item ~ '.service') in ansible_facts.services and
+            ansible_facts.services[item ~ '.service'].state == 'running'
+        fail_msg: "required service {{ item }} is not running on {{ inventory_hostname }}"
+      loop: "{{ bootstrap_required_services }}"
+      when: inventory_hostname in groups['application']
+
+    - name: Probe required observability commands
+      ansible.builtin.command:
+        argv: [sh, -lc, "command -v -- {{ item }}"]
+      loop: "{{ observability_required_commands }}"
+      changed_when: false
+      when: inventory_hostname in groups['application']
+
+    - name: Show node summary
+      ansible.builtin.debug:
+        msg:
+          host: "{{ inventory_hostname }}"
+          distribution: "{{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}"
+          kernel: "{{ ansible_facts.kernel }}"
+          architecture: "{{ ansible_facts.architecture }}"
+          processors: "{{ ansible_facts.processor_vcpus }}"
+          memory_mb: "{{ ansible_facts.memtotal_mb }}"
+          disk_available_mb: "{{ root_disk.stdout_lines[-1].split()[3] | int }}"

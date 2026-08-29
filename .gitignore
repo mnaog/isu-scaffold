@@ -1,0 +1,28 @@
+# isuscopeのlocal state
+.isuscope/setup-state.json
+
+# 接続先、秘密情報、AWS出力などの端末固有state
+/.local/
+
+# nodeを埋め込んだisuscope実設定はdiscoverで再生成する。
+/.isuscope/config.toml
+
+# Ansibleの一時出力。inventoryとvenvは.local/へ置く。
+*.retry
+__pycache__/
+*.pyc
+
+# Rustのbuild artifactはremoteの永続Cargo cacheで管理し、配布sourceへ含めない。
+/webapp/rust/target/
+
+# isuscopeの検索用DBはrunから再構築でき、更新のたびに巨大なGit差分になる。
+/isuscope-data/isuscope.sqlite3
+/isuscope-data/isuscope.sqlite3-*
+
+# 未完了runと作業領域は記録しない。
+/isuscope-data/runs/.incomplete/
+/isuscope-data/runs/*/tmp/
+
+# 生ログは容量が大きいため既定では記録しない。
+# 必要なrunだけ `make isuscope-pin RUN=<run-id>` で強制追加する。
+/isuscope-data/runs/*/logs/

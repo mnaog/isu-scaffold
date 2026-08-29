@@ -1,0 +1,38 @@
+---
+# 全playbookで共有する初動変数です。レギュレーションと実環境を確認するまで、自動package導入は行いません。
+bootstrap_install_packages: false
+bootstrap_packages: []
+
+observability_install_packages: false
+observability_packages:
+  - sysstat
+
+# 存在を調べるcommandです。requiredへ移したものだけverifyを失敗させます。
+observability_probe_commands:
+  - sar
+  - perf
+  - alp
+  - slp
+  - stackcollapse-perf.pl
+  - flamegraph.pl
+  - offcputime-bpfcc
+observability_required_commands: []
+
+# 事前に.local/toolsへ用意したbinary/scriptを全application nodeへ配置できます。
+# observability_local_tools:
+#   - source: "{{ playbook_dir }}/../../.local/tools/alp"
+#     destination: /usr/local/bin/alp
+observability_local_tools: []
+
+# 当日必要なservice名を追加します。空ならservice状態では失敗しません。
+bootstrap_required_services: []
+bootstrap_minimum_disk_available_mb: 1024
+
+isuscope_fingerprint_source: "{{ playbook_dir }}/../../.isuscope/fingerprint.sh"
+isuscope_fingerprint_directory: /usr/local/lib/isuscope
+isuscope_fingerprint_path: /usr/local/lib/isuscope/fingerprint.sh
+isuscope_tree_digest_source: "{{ playbook_dir }}/../../scripts/tree-digest.py"
+isuscope_tree_digest_path: /usr/local/lib/isuscope/tree-digest.py
+
+# app binary、環境設定、主要な配布物など、全nodeで実体を比較したい絶対pathを列挙します。
+isuscope_fingerprint_paths: []

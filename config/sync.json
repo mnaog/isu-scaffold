@@ -1,0 +1,9 @@
+{
+  "source_node": "",
+  "minimum_free_mb_after_deploy": 1024,
+  "pre_deploy_command": "",
+  "items": [],
+  "build_commands": [],
+  "post_deploy_commands": [],
+  "status_commands": []
+}

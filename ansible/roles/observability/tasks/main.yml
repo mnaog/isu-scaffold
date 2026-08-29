@@ -1,0 +1,68 @@
+---
+- name: Install explicitly enabled observability packages
+  ansible.builtin.package:
+    name: "{{ observability_packages }}"
+    state: present
+  when:
+    - observability_install_packages | bool
+    - observability_packages | length > 0
+
+- name: Install explicitly supplied observability tools
+  ansible.builtin.copy:
+    src: "{{ item.source }}"
+    dest: "{{ item.destination }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode | default('0755') }}"
+  loop: "{{ observability_local_tools }}"
+  loop_control:
+    label: "{{ item.destination }}"
+
+- name: Create isuscope helper directory
+  ansible.builtin.file:
+    path: "{{ isuscope_fingerprint_directory }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install the repository fingerprint helper
+  ansible.builtin.copy:
+    src: "{{ isuscope_fingerprint_source }}"
+    dest: "{{ isuscope_fingerprint_path }}"
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install declared fingerprint paths
+  ansible.builtin.copy:
+    content: "{{ (isuscope_fingerprint_paths | join('\n')) ~ ('\n' if isuscope_fingerprint_paths | length > 0 else '') }}"
+    dest: "{{ isuscope_fingerprint_directory }}/fingerprint-paths"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Install remote tree digest helper
+  ansible.builtin.copy:
+    src: "{{ isuscope_tree_digest_source }}"
+    dest: "{{ isuscope_tree_digest_path }}"
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Probe optional observability commands
+  ansible.builtin.command:
+    argv: [sh, -lc, "command -v -- {{ item }}"]
+  loop: "{{ observability_probe_commands }}"
+  register: observability_command_probes
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Show observability command availability
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.item }}={{ 'available' if item.rc == 0 else 'unavailable' }}
+  loop: "{{ observability_command_probes.results }}"
+  loop_control:
+    label: "{{ item.item }}"

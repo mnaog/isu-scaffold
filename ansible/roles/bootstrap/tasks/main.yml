@@ -1,0 +1,26 @@
+---
+- name: Require a supported POSIX target
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.system == 'Linux'
+      - ansible_facts.user_id is defined
+    fail_msg: "bootstrap currently supports Linux targets only"
+
+- name: Install explicitly enabled bootstrap packages
+  ansible.builtin.package:
+    name: "{{ bootstrap_packages }}"
+    state: present
+  when:
+    - bootstrap_install_packages | bool
+    - bootstrap_packages | length > 0
+
+- name: Keep remote clock information visible
+  ansible.builtin.command:
+    argv: [date, -u, +%Y-%m-%dT%H:%M:%SZ]
+  register: bootstrap_remote_time
+  changed_when: false
+  check_mode: false
+
+- name: Show remote UTC time
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} UTC={{ bootstrap_remote_time.stdout }}"

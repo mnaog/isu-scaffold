@@ -1,0 +1,40 @@
+{
+  "source_node": "app1",
+  "minimum_free_mb_after_deploy": 1024,
+  "pre_deploy_command": "",
+  "items": [
+    {
+      "name": "webapp",
+      "type": "directory",
+      "node_group": "application",
+      "local": "webapp",
+      "remote": "/home/isucon/webapp",
+      "owner": "isucon",
+      "owner_group": "isucon"
+    },
+    {
+      "name": "nginx-conf",
+      "type": "file",
+      "node_group": "application",
+      "local": "config/nginx/nginx.conf",
+      "remote": "/etc/nginx/nginx.conf",
+      "owner": "root",
+      "owner_group": "root"
+    }
+  ],
+  "build_commands": [],
+  "post_deploy_commands": [
+    {
+      "node_group": "application",
+      "command": "sudo nginx -t"
+    },
+    {
+      "node_group": "application",
+      "command": "sudo systemctl reload nginx"
+    }
+  ],
+  "status_commands": [
+    "systemctl --failed --no-pager",
+    "systemctl is-active nginx"
+  ]
+}

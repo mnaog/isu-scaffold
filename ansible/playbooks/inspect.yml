@@ -1,0 +1,158 @@
+---
+- name: Inspect initial node composition without changing it
+  hosts: application:benchmark
+  become: false
+  gather_facts: true
+  any_errors_fatal: true
+
+  tasks:
+    - name: Read service facts
+      ansible.builtin.service_facts:
+
+    - name: Read listening sockets
+      ansible.builtin.shell: |
+        set -o pipefail
+        if command -v ss >/dev/null 2>&1; then
+          ss -lntup
+        elif command -v netstat >/dev/null 2>&1; then
+          netstat -lntup
+        else
+          exit 75
+        fi
+      args:
+        executable: /bin/bash
+      register: inspection_sockets
+      changed_when: false
+      failed_when: inspection_sockets.rc not in [0, 75]
+
+    - name: Read process names without arguments
+      ansible.builtin.command:
+        argv: [ps, -eo, "pid,user,comm"]
+      register: inspection_processes
+      changed_when: false
+
+    - name: Find likely application roots
+      ansible.builtin.shell: |
+        find /home /opt /srv -maxdepth 4 -type f \
+          \( -name go.mod -o -name Cargo.toml -o -name package.json -o -name Gemfile \
+             -o -name requirements.txt -o -name pom.xml -o -name build.gradle \) \
+          -print 2>/dev/null | sort | head -n 200
+      args:
+        executable: /bin/bash
+      register: inspection_app_candidates
+      changed_when: false
+
+    - name: Read ownership of application candidates
+      ansible.builtin.shell: |
+        find /home /opt /srv -maxdepth 4 -type f \
+          \( -name go.mod -o -name Cargo.toml -o -name package.json -o -name Gemfile \
+             -o -name requirements.txt -o -name pom.xml -o -name build.gradle \) \
+          -print0 2>/dev/null | while IFS= read -r -d '' path; do
+            stat --printf='%n\t%U\t%G\n' "$path"
+          done | sort | head -n 200
+      args:
+        executable: /bin/bash
+      register: inspection_app_candidate_ownership
+      changed_when: false
+
+    - name: Find known configuration paths
+      ansible.builtin.shell: |
+        for path in /etc/nginx/nginx.conf /etc/mysql /etc/my.cnf /etc/redis /etc/postgresql; do
+          if test -e "$path"; then printf '%s\n' "$path"; fi
+        done
+      args:
+        executable: /bin/bash
+      register: inspection_configuration_paths
+      changed_when: false
+
+    - name: Find systemd service fragment paths
+      ansible.builtin.shell: |
+        systemctl list-units --type=service --state=running --no-legend --no-pager 2>/dev/null |
+        awk '{print $1}' | while IFS= read -r unit; do
+          fragment=$(systemctl show "$unit" -p FragmentPath --value 2>/dev/null || true)
+          test -n "$fragment" && printf '%s\t%s\n' "$unit" "$fragment"
+        done
+      args:
+        executable: /bin/bash
+      register: inspection_service_fragments
+      changed_when: false
+
+    - name: Find Nginx access log paths
+      ansible.builtin.shell: |
+        command -v nginx >/dev/null 2>&1 || exit 0
+        sudo -n nginx -T 2>&1 |
+          awk '$1 == "access_log" { path=$2; sub(/;$/, "", path); if (path ~ /^\//) print path }' |
+          sort -u
+      args:
+        executable: /bin/bash
+      register: inspection_nginx_access_logs
+      changed_when: false
+
+    - name: Find MySQL slow log paths
+      ansible.builtin.shell: |
+        for root in /etc/mysql /etc/my.cnf; do
+          test -e "$root" || continue
+          sudo -n grep -RhsE '^[[:space:]]*slow[_-]query[_-]log[_-]file[[:space:]]*=' "$root" 2>/dev/null || true
+        done | sed -E 's/^[^=]*=[[:space:]]*//' | sed -E 's/[[:space:]]*[#;].*$//' |
+          awk '/^\// {print}' | sort -u
+      args:
+        executable: /bin/bash
+      register: inspection_mysql_slow_logs
+      changed_when: false
+
+    - name: Probe common commands
+      ansible.builtin.shell: |
+        command -v "{{ item }}" >/dev/null 2>&1 || exit 0
+        case "{{ item }}" in
+          nginx) nginx -v ;;
+          go) go version ;;
+          *) "{{ item }}" --version ;;
+        esac 2>&1 | head -n 1
+      args:
+        executable: /bin/bash
+      loop:
+        - nginx
+        - mysql
+        - psql
+        - redis-server
+        - go
+        - rustc
+        - node
+        - ruby
+        - python3
+        - java
+        - perf
+        - sar
+        - alp
+        - slp
+        - stackcollapse-perf.pl
+        - flamegraph.pl
+        - offcputime-bpfcc
+      register: inspection_versions
+      changed_when: false
+
+    - name: Save inspection report on controller
+      ansible.builtin.copy:
+        content: >-
+          {{ {
+            'node': inventory_hostname,
+            'distribution': ansible_facts.distribution,
+            'distribution_version': ansible_facts.distribution_version,
+            'kernel': ansible_facts.kernel,
+            'architecture': ansible_facts.architecture,
+            'processor_vcpus': ansible_facts.processor_vcpus,
+            'memory_mb': ansible_facts.memtotal_mb,
+            'running_services': (ansible_facts.services | dict2items | selectattr('value.state', 'equalto', 'running') | map(attribute='key') | sort | list),
+            'listening_sockets': inspection_sockets.stdout_lines,
+            'processes': inspection_processes.stdout_lines,
+            'application_candidates': inspection_app_candidates.stdout_lines,
+            'application_candidate_ownership': inspection_app_candidate_ownership.stdout_lines,
+            'configuration_paths': inspection_configuration_paths.stdout_lines,
+            'service_fragments': inspection_service_fragments.stdout_lines,
+            'nginx_access_logs': inspection_nginx_access_logs.stdout_lines,
+            'mysql_slow_logs': inspection_mysql_slow_logs.stdout_lines,
+            'versions': dict(inspection_versions.results | map(attribute='item') | zip(inspection_versions.results | map(attribute='stdout')))
+          } | to_nice_json }}
+        dest: "{{ inspection_output_dir }}/{{ inventory_hostname }}.json"
+        mode: '0600'
+      delegate_to: localhost

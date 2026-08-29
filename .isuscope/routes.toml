@@ -1,0 +1,3 @@
+# 大会固有routeはここへ追加します。空のまま初回runを取得した場合は、
+# `make routes-suggest RUN=latest`が数字、UUID、長いkeyを含むroute候補を
+# `.local/route-suggestions.toml`へ出力します。候補を確認してから採用してください。

@@ -1,0 +1,9 @@
+---
+observability_install_packages: false
+observability_packages: []
+observability_probe_commands: []
+observability_required_commands: []
+observability_local_tools: []
+isuscope_fingerprint_paths: []
+isuscope_tree_digest_source: "{{ playbook_dir }}/../../scripts/tree-digest.py"
+isuscope_tree_digest_path: /usr/local/lib/isuscope/tree-digest.py
