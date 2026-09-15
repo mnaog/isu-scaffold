@@ -58,7 +58,7 @@ draftを確認後、CONFIRM_DRAFT=true make kickoff-apply LANGUAGE=<name>
   → 全配布先のdigest一致を確認して完全import。先行回収したコードもここで再検証
 make deploy
   → 全台preflight・staging後に切り替え、失敗時はtransaction全体を復旧
-config/benchmark.envを設定してmake benchmark-check、make benchmark-probe
+config/benchmark.envを設定して.isuscope/benchmark.sh --check、.isuscope/benchmark.sh --probe
 make phase1-check
   → 全node、同期、ベンチadapterと接続先、isuscope doctorをベンチなしで検査
 isuscope survey-run --hypothesis "..."
@@ -67,7 +67,7 @@ isuscope survey-run --hypothesis "..."
   → deployし、通常のisuscope runでbaselineと比較
 ```
 
-`kickoff-code`は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は、従来どおり`kickoff-apply`のimportで完了する。`kickoff-ready`はworktreeが既にあれば再利用し、main側のベンチ前gateを続行する。
+`kickoff-code`は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は、従来どおり`kickoff-apply`のimportで完了する。`kickoff-code-ready`はworktreeが既にあれば再利用する。main側のベンチ前gateは`make phase1-check`で行う。`make`は初動・deploy・検査の入口だけに絞っており、個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
 
 - `discover`と`bootstrap`は冪等に保ち、再実行で既存環境を壊さない。
 - package導入、sudo権限、ログ設定は当日のレギュレーションを確認してからAnsible変数で明示的に有効化する。

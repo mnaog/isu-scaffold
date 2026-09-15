@@ -20,12 +20,12 @@ make kickoff-code-ready
 # 別worktreeでコード読解を開始し、mainへ戻る
 make kickoff-draft
 CONFIRM_DRAFT=true make kickoff-apply LANGUAGE=rust
-make kickoff-ready
+make phase1-check
 ```
 
 `kickoff-code`はnode発見後、回収元の1台（既定では最初のapplication node）だけSSHを確立し、`/home/isucon/webapp/<language>`と`/home/isucon/webapp/sql`のDDL・初期化script（`.sql`、`.sh`、`.py`、`.rb`、`.pl`）だけを先行回収します。1ファイル1MiB・合計16MiBを超えるものやそれ以外の初期データは後回しにし、`.local/code-schema-manifest.log`へ`INCLUDED`／`DEFERRED`として記録します。上限は`CODE_SCHEMA_MAX_FILE_BYTES`、`CODE_SCHEMA_MAX_TOTAL_BYTES`で変更できます。残りのnodeのSSH確立はmainの`kickoff-draft`が担当します。生成物の`target`、`node_modules`、`.git`は除外します。pathが異なる場合は`CODE_SOURCE_NODE`、`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`、`CODE_SCHEMA_PATH`をコマンドの環境変数で明示します。この回収はコード読解開始用の暫定snapshotであり、全node一致の保証は後続の完全importが担当します。
 
-`kickoff-code-ready`は先行回収範囲がcommit済みであることを確認してworktreeを作り、読む対象・修正範囲・検証方法・mainへの報告形式をまとめた引き継ぎ文を`<worktree>/.local/phase1-handoff.md`へ生成します。別セッションにはこのファイルを読ませて開始します。`kickoff-draft`はbootstrap、inspection、draft生成を行って停止します。`kickoff-apply`は確認済みdraftの反映、再discover、sync検査、完全import、採用言語の固定まで進めます。`kickoff-ready`はworktreeを再利用し、重複する個別checkを挟まず`phase1-check`を一度だけ実行します。自動commit、初回`survey-run`、mergeは行いません。
+`kickoff-code-ready`は先行回収範囲がcommit済みであることを確認してworktreeを作り、読む対象・修正範囲・検証方法・mainへの報告形式をまとめた引き継ぎ文を`<worktree>/.local/phase1-handoff.md`へ生成します。別セッションにはこのファイルを読ませて開始します。`kickoff-draft`はbootstrap、inspection、draft生成を行って停止します。`kickoff-apply`は確認済みdraftの反映、再discover、sync検査、完全import、採用言語の固定まで進めます。ベンチ前gateは`make phase1-check`を一度だけ実行します。個別の段階をやり直す場合は、以下の各節にある`scripts/`のscriptを直接実行します。自動commit、初回`survey-run`、mergeは行いません。
 
 SSH確立はinventoryのnode名で重複排除し、`SSH_MAX_PARALLEL_NODES`（既定5）台ずつ並列に行います。完全importはnodeごとに全itemのdigestを1回のSSHでまとめて計算し（`IMPORT_MAX_PARALLEL_NODES`、既定5）、localの内容がsourceのdigestと一致するitemは再転送しません。全itemのstagingと検証が終わるまで既存のlocalを置き換えず、途中で失敗した場合は元へ戻します。Ansible requirementsは内容hashが同じなら再installせず、bootstrap内のapplication nodeのfact収集も一度だけです。
 
@@ -61,7 +61,7 @@ providerの出力は共通形式へ正規化され、次を一度に生成しま
 ## 3. SSHと全nodeを揃える
 
 ```bash
-make bootstrap
+./scripts/bootstrap.sh
 ```
 
 local venvへ固定versionのAnsibleを導入し、SSH接続を確立してから、Linux前提を全nodeへ、任意package、計測tool、isuscope fingerprint helperをapplication nodeへ冪等に適用します。package導入はレギュレーション確認後に`ansible/playbooks/group_vars/all.yml`で有効化します。事前に取得した`alp`などは`.local/tools/`へ置き、`observability_local_tools`で配布できます。
@@ -71,7 +71,7 @@ local venvへ固定versionのAnsibleを導入し、SSH接続を確立してか�
 ## 4. 初期構成を調査する
 
 ```bash
-make inspect
+./scripts/inspect-environment.sh
 ```
 
 remoteを変更せず、OS、CPU、memory、running service、listen port、process名、主要runtime、application root・設定・systemd unit・log path・計測toolの候補を`.local/inspection/<node>.json`へ保存します。process引数や環境変数は収集しません。
@@ -79,15 +79,15 @@ remoteを変更せず、OS、CPU、memory、running service、listen port、proc
 調査結果から設定候補を作ります。
 
 ```bash
-make configure-draft
+./scripts/configure-draft.sh
 ```
 
 `.local/draft/`にはnode role、`sync.json`、Ansible変数、isuscopeのlog pathと判断材料の`summary.json`が生成されます。これは機械的な候補です。特にapplicationのowner/group、remote path、service名、role分担を確認・修正してから反映します。
 
 ```bash
-CONFIRM_DRAFT=true make configure-apply
+CONFIRM_DRAFT=true ./scripts/configure-apply.sh
 make discover
-make sync-check
+./scripts/sync-check.sh
 ```
 
 Git commitが存在する場合、`sync-check`はmanifest検証に加えて、Git管理中の配布byte数とnode複製後の合計byte数を表示します。local・remoteの配置先が重なるitemやbuild commandの名前の重複、改行を含むcommandは拒否します。ignored artifactはこの値にも実際のdeploy archiveにも含まれません。
@@ -119,15 +119,15 @@ build成果物は`ISUCON_DEPLOY_STAGING_PATH`配下へ配置し、実行ファ�
 Rustでは永続的な`CARGO_TARGET_DIR`を使い、完成したbinaryだけをstaging item内の従来pathへコピーします。設定例は`config/sync.rust.example.json`です。`replace-with-binary-name`と`replace-with-service-name`、directory構成、実行userを当日のアプリに合わせて変更してください。初回importが`webapp/rust/target`を回収した場合は、内容を確認してlocalから除去してから初期commitします。例の`pre_deploy_command`はlocal targetが残ったdeployを拒否します。cacheが空なら現在のlive targetから一度だけseedし、以後はCargoのfingerprintで依存crateを再利用します。
 
 ```bash
-make sync-check
-make import
+./scripts/sync-check.sh
+./scripts/import.sh
 git add webapp config
 git commit
 make deploy
 make status
 ```
 
-`import`は対象groupの全nodeでpathの内容・mode・symlinkをdigest比較し、不一致なら回収前に停止します。意図した差異だと確認した場合だけ`IMPORT_ALLOW_DIVERGENT=true make import`とし、itemごとの`source_node`から回収します。比較表は`.local/import-comparison.tsv`へ残ります。
+`import`は対象groupの全nodeでpathの内容・mode・symlinkをdigest比較し、不一致なら回収前に停止します。意図した差異だと確認した場合だけ`IMPORT_ALLOW_DIVERGENT=true ./scripts/import.sh`とし、itemごとの`source_node`から回収します。比較表は`.local/import-comparison.tsv`へ残ります。
 
 `deploy`は未コミットの同期対象を拒否します。全nodeでsudo、owner/group、空き容量、配置先をpreflightし、全fileをstagingし、build commandを完了してから切り替えます。一台でもbuild、配置、post-deploy検証に失敗すると、そのtransactionで触れた全対象を元へ戻し、live切替後なら`rollback_commands`で稼働プロセスも旧構成へ戻します。rollback自体が失敗した場合、stateは`rollback-failed`になります。
 
@@ -150,8 +150,8 @@ transaction IDは既定で`<commit>-<UTC時刻>-<PID>`となり、同じコミ�
 tokenやcookieだけは`config/benchmark-secrets.example.env`を`.local/benchmark-secrets.env`へコピーして保存します。
 
 ```bash
-make benchmark-check
-make benchmark-probe
+.isuscope/benchmark.sh --check
+.isuscope/benchmark.sh --probe
 ```
 
 どちらの検査もベンチを起動しません。`check`は設定、regex、保存したサンプルを検査し、`probe`は実行ファイルまたはAPI endpointだけを確認します。標準adapterはcommandを一度だけ実行し、出力からscoreとPASS/FAILを取得してisuscope protocolへ変換し、二重起動も拒否します。HTTPのtokenやcookieは`.local/benchmark-secrets.env`またはGit管理外のheader fileへ置きます。

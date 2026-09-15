@@ -43,33 +43,23 @@ isuscope-data/   isuscopeが保存するrunと分析結果
 ```bash
 mkdir -p .local
 cp config/environment.example.env .local/environment.env
-make discover
-make bootstrap
-```
 
-`discover`はproviderからGit管理外のAnsible inventoryとisuscope実設定を再生成します。`bootstrap`はlocal venvへAnsibleを導入し、選択したSSH方式で接続して全nodeを同じ初期状態へ揃えます。
-
-続いて初期構成を調査し、宣言ファイルでimport・deploy・ベンチ接続を完成させます。
-
-```bash
-make inspect
-make configure-draft
+make kickoff-code LANGUAGE=<name>
+# 先行回収したコードとschemaを確認して初期commit
+make kickoff-code-ready
+# 別worktreeでコード読解を開始し、mainは次へ進む
+make kickoff-draft
 # .local/draft/を確認・修正する
-CONFIRM_DRAFT=true make configure-apply
-make discover
-make sync-check
-make import
+CONFIRM_DRAFT=true make kickoff-apply LANGUAGE=<name>
 # 初期状態をcommitし、対象roleと検証・再起動commandを確認する
 make deploy
-make benchmark-check
-make benchmark-probe
 make phase1-check
 isuscope survey-run --hypothesis "初期状態の負荷構造を記録する"
 ```
 
-`configure-draft`は調査結果からnode role、同期対象、Ansible変数、isuscopeのlog path候補を`.local/draft/`へ作ります。所有者、配置先、service名は大会環境によって異なるため、人間が確認したdraftだけを明示的に反映します。
+`kickoff-draft`は、Ansible導入、node発見、SSH確立、全nodeの初期収束、初期構成の調査を行い、node role、同期対象、Ansible変数、isuscopeのlog path候補を`.local/draft/`へ作ります。所有者、配置先、service名は大会環境によって異なるため、人間が確認したdraftだけを`kickoff-apply`で反映します。`kickoff-apply`はdraft反映、再discover、sync検査、完全import、採用言語の固定まで進めます。初回ベンチ、deploy、mergeは自動実行しません。
 
-コード読解を最短で始める場合は、`make kickoff-code LANGUAGE=<name>`でSSH確立とコード・schemaの先行回収を行い、確認・commit後に`make kickoff-code-ready`でworktreeを作ります。mainでは並行して`make kickoff-draft`、draft確認後の`CONFIRM_DRAFT=true make kickoff-apply LANGUAGE=<name>`、`make kickoff-ready`を実行します。初回ベンチ、deploy、mergeは自動実行しません。
+EC2の再起動などでIPが変わったら`make discover`で設定を再生成します。ベンチadapterを調整している間は`.isuscope/benchmark.sh --check`と`--probe`で、ベンチを起動せずに確認できます。途中の段階だけをやり直す場合は`scripts/`の該当scriptを直接実行します。
 
 詳細は[初動自動化](docs/initial-automation.md)を参照してください。
 

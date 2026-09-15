@@ -9,7 +9,7 @@ playbook_name=${1:-}
 
 test -n "${playbook_name}" || { echo "usage: $0 PLAYBOOK [arguments ...]" >&2; exit 2; }
 shift
-test -x "${venv_dir}/bin/ansible-playbook" || { echo "run make ansible-install first" >&2; exit 1; }
+test -x "${venv_dir}/bin/ansible-playbook" || { echo "run ./scripts/ansible-install.sh first" >&2; exit 1; }
 test -f "${inventory_path}" || { echo "run make discover first" >&2; exit 1; }
 test -f "${repo_dir}/ansible/playbooks/${playbook_name}"
 

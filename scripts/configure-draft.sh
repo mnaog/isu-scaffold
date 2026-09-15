@@ -12,5 +12,5 @@ output_dir=${CONFIGURE_DRAFT_DIR:-${repo_dir}/.local/draft}
 
 command -v python3 >/dev/null
 test -f "${inventory}" || { echo "run make discover first" >&2; exit 1; }
-test -d "${inspection_dir}" || { echo "run make inspect first" >&2; exit 1; }
+test -d "${inspection_dir}" || { echo "run ./scripts/inspect-environment.sh first" >&2; exit 1; }
 exec python3 "${script_dir}/configure-draft.py" "${inventory}" "${inspection_dir}" "${output_dir}"

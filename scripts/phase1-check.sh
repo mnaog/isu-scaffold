@@ -24,8 +24,8 @@ export ANSIBLE_CONFIG=${repo_dir}/ansible/ansible.cfg
 "${venv_dir}/bin/ansible-playbook" --inventory "${inventory_path}" ansible/playbooks/inspect.yml --syntax-check
 "${script_dir}/run-ansible-playbook.sh" verify.yml
 "${script_dir}/sync-check.sh"
-"${script_dir}/benchmark-check.sh"
-"${script_dir}/benchmark-probe.sh"
+"${repo_dir}/.isuscope/benchmark.sh" --check
+"${repo_dir}/.isuscope/benchmark.sh" --probe
 
 isuscope list --limit 1 >/dev/null
 if [[ "${PHASE1_SKIP_ISUSCOPE_DOCTOR:-false}" != true ]]; then

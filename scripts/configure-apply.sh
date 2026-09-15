@@ -9,7 +9,7 @@ fi
 draft_dir=${CONFIGURE_DRAFT_DIR:-${repo_dir}/.local/draft}
 
 [[ "${CONFIRM_DRAFT:-false}" == true ]] || {
-  echo "review .local/draft, then run CONFIRM_DRAFT=true make configure-apply" >&2
+  echo "review .local/draft, then run CONFIRM_DRAFT=true ./scripts/configure-apply.sh" >&2
   exit 2
 }
 for file in node-overrides.json sync.json ansible-vars.json isuscope.json; do
@@ -28,4 +28,4 @@ install -m 0600 "${draft_dir}/isuscope.json" "${repo_dir}/.local/isuscope-overri
 
 echo "draft applied; tracked config changes require review"
 echo "backup: ${backup_dir}"
-echo "next: make discover && make sync-check"
+echo "next: make discover"

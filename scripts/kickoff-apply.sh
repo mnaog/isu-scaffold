@@ -20,4 +20,4 @@ fi
 "${script_dir}/set-application-language.sh" "${language}" "${application_path}"
 
 echo "kickoff apply complete"
-echo "review the import and config/application.env, create the initial commit, then run: make kickoff-ready"
+echo "review the import and config/application.env, create the initial commit, run make kickoff-code-ready if the code worktree does not exist yet, then run: make phase1-check"

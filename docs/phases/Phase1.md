@@ -73,18 +73,18 @@ AWS環境の構成定義もローカルを正とする。
 
 ```bash
 make discover
-make bootstrap
+./scripts/bootstrap.sh
 ```
 
 `discover`が生成した`.local/nodes.snapshot.json`、`.local/ansible-inventory.json`、`.isuscope/config.toml`を確認する。nodeの分類が誤っている場合はprovider入力を直して再生成し、生成物を手作業で直し続けない。
 
 `bootstrap`はoperator鍵、任意のpackage、isuscope fingerprint helperを全nodeへ冪等に配置する。package導入と必須command・serviceは`ansible/playbooks/group_vars/all.yml`で明示する。レギュレーション確認前は自動package導入を有効にしない。
 
-`make inspect`で初期構成を調べ、`make configure-draft`でnode role、回収・配布対象、Ansible変数、log pathの候補を作る。`.local/draft/`のremote path、owner、service、roleを確認した後だけ`CONFIRM_DRAFT=true make configure-apply`で反映し、`make discover`を再実行する。
+`./scripts/inspect-environment.sh`で初期構成を調べ、`./scripts/configure-draft.sh`でnode role、回収・配布対象、Ansible変数、log pathの候補を作る。`.local/draft/`のremote path、owner、service、roleを確認した後だけ`CONFIRM_DRAFT=true ./scripts/configure-apply.sh`で反映し、`make discover`を再実行する。
 
-`make import`は対象node間のdigestを比較してから初期状態を回収する。不一致ならsourceを確認するまで進めない。初期状態をcommitし、全台preflight・staging・失敗時のtransaction rollbackを行う`make deploy`と、role別の`make status`が通ることを確認する。`rollback_commands`には旧ファイル復元後のconfig検査、restart/reload、health checkを定義し、明示rollbackで稼働プロセスまで旧構成へ戻ることを確認する。
+`./scripts/import.sh`は対象node間のdigestを比較してから初期状態を回収する。不一致ならsourceを確認するまで進めない。初期状態をcommitし、全台preflight・staging・失敗時のtransaction rollbackを行う`make deploy`と、role別の`make status`が通ることを確認する。`rollback_commands`には旧ファイル復元後のconfig検査、restart/reload、health checkを定義し、明示rollbackで稼働プロセスまで旧構成へ戻ることを確認する。
 
-`config/benchmark.env`へlocal、SSH、HTTP APIのいずれかのベンチ起動方法、起動しないprobe、実出力sample、score・PASS/FAILの規則を設定し、`make benchmark-check`と`make benchmark-probe`を通す。ベンチ接続はisuscopeの`command` modeを標準とし、手動入力の`external` modeを通常運用にしない。
+`config/benchmark.env`へlocal、SSH、HTTP APIのいずれかのベンチ起動方法、起動しないprobe、実出力sample、score・PASS/FAILの規則を設定し、`.isuscope/benchmark.sh --check`と`.isuscope/benchmark.sh --probe`を通す。ベンチ接続はisuscopeの`command` modeを標準とし、手動入力の`external` modeを通常運用にしない。
 
 その後、次をベンチ前のgateにする。
 
