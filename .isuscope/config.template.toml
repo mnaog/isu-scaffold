@@ -34,8 +34,11 @@ stream_output = false
 # timeout_seconds = 30
 
 # `make discover`がこの雛形へGit管理外のSSH・node設定を追加し、
-# `.isuscope/config.toml`を生成します。roleを指定しない以下の標準collectorは、
-# 設定した全nodeでrun/survey-runの両方に対して動きます。
+# `.isuscope/config.toml`を生成します。roleを指定しない標準collectorは設定した全nodeで、
+# roleを指定したcollectorはそのroleのどれかを持つnodeだけで、run/survey-runの両方に対して動きます。
+# perf・off-CPUは`app`、nginx系は`nginx`/`edge`、MySQL系は`db`/`mysql`のnodeが対象です。
+# node roleを分けたら、`make discover`で再生成すると対象nodeも追従します。
+# SSHは`[ssh] known_hosts_file`で`.local/known-hosts`を使うため、ラッパーを通さない実行でも同じhost keyで接続します。
 
 # setup.shで配置した問題固有fingerprintを全nodeから取得します。
 [[collectors]]
@@ -122,6 +125,7 @@ unavailable_exit_codes = [75]
 name = "perf-start"
 phase = "before"
 transport = "ssh"
+roles = ["app"]
 command = ["sh", "-c", "set -eu; base=/tmp/isuscope-{run_id}.perf; command -v perf >/dev/null 2>&1 || exit 75; command -v sudo >/dev/null 2>&1 || exit 75; sudo -n true >/dev/null 2>&1 || exit 75; sudo -n rm -f \"$base.data\" \"$base.log\" \"$base.pid\"; date +%s.%N > \"$base.start\"; sudo -n sh -c 'nohup env LC_ALL=C perf record -a -g -F 99 -o \"$1.data\" -- sleep 86400 >\"$1.log\" 2>&1 & echo $! >\"$1.pid\"' sh \"$base\"; i=0; while :; do pid=$(sudo -n cat \"$base.pid\" 2>/dev/null) || exit 75; case $pid in ''|*[!0-9]*) exit 75 ;; esac; if sudo -n kill -0 \"$pid\" 2>/dev/null; then break; fi; i=$((i+1)); if test \"$i\" -ge 20; then sudo -n cat \"$base.log\" >&2 || true; exit 75; fi; sleep 0.1; done"]
 timeout_seconds = 10
 unavailable_exit_codes = [75]
@@ -130,6 +134,7 @@ unavailable_exit_codes = [75]
 name = "perf-stop"
 phase = "after"
 transport = "ssh"
+roles = ["app"]
 command = ["sh", "-c", "set -eu; base=/tmp/isuscope-{run_id}.perf; command -v sudo >/dev/null 2>&1 || exit 75; sudo -n true >/dev/null 2>&1 || exit 75; pid=$(sudo -n cat \"$base.pid\" 2>/dev/null) || exit 75; case $pid in ''|*[!0-9]*) exit 75 ;; esac; sudo -n kill -INT \"$pid\" 2>/dev/null || exit 75; i=0; while sudo -n kill -0 \"$pid\" 2>/dev/null; do i=$((i+1)); if test \"$i\" -ge 100; then sudo -n cat \"$base.log\" >&2 || true; exit 1; fi; sleep 0.1; done; sudo -n test -s \"$base.data\" || exit 75; sudo -n rm -f \"$base.pid\""]
 timeout_seconds = 20
 unavailable_exit_codes = [75]
@@ -138,6 +143,7 @@ unavailable_exit_codes = [75]
 name = "perf-report"
 phase = "after"
 transport = "ssh"
+roles = ["app"]
 command = ["sh", "-c", "base=/tmp/isuscope-{run_id}.perf; command -v perf >/dev/null 2>&1 || exit 75; command -v sudo >/dev/null 2>&1 || exit 75; sudo -n true >/dev/null 2>&1 || exit 75; sudo -n test -s \"$base.data\" || exit 75; sudo -n env LC_ALL=C perf report --stdio --no-children --percent-limit 1 --sort comm,dso,symbol --fields overhead,comm,dso,symbol --field-separator ';' -i \"$base.data\" | awk -F';' '/^[ ]*[0-9]+[.][0-9]+%/ { pct=$1; sub(/%/,\"\",pct); gsub(/^[ ]+|[ ]+$/,\"\",pct); process=$2; binary=$3; symbol=$4; gsub(/^[ ]+|[ ]+$/,\"\",process); gsub(/^[ ]+|[ ]+$/,\"\",binary); gsub(/^[ ]+|[ ]+$/,\"\",symbol); gsub(/[\\\\\\\"]/,\"_\",process); gsub(/[\\\\\\\"]/,\"_\",binary); gsub(/[\\\\\\\"]/,\"_\",symbol); printf \"{\\\"type\\\":\\\"metric\\\",\\\"name\\\":\\\"cpu.sample_percent\\\",\\\"value\\\":%s,\\\"unit\\\":\\\"percent\\\",\\\"labels\\\":{\\\"process\\\":\\\"%s\\\",\\\"binary\\\":\\\"%s\\\",\\\"symbol\\\":\\\"%s\\\"}}\\n\",pct,process,binary,symbol }'"]
 timeout_seconds = 30
 unavailable_exit_codes = [75]
@@ -146,6 +152,7 @@ unavailable_exit_codes = [75]
 name = "perf-flamegraph"
 phase = "after"
 transport = "ssh"
+roles = ["app"]
 command = ["sh", "-c", '''
 set -eu
 base=/tmp/isuscope-{run_id}.perf
@@ -170,7 +177,8 @@ unavailable_exit_codes = [75]
 name = "perf-series"
 phase = "after"
 transport = "ssh"
-command = ["sh", "-c", "base=/tmp/isuscope-{run_id}.perf; cleanup() { sudo -n rm -f \"$base.data\" \"$base.log\" \"$base.pid\" >/dev/null 2>&1 || true; rm -f \"$base.start\"; }; trap cleanup EXIT; command -v perf >/dev/null 2>&1 || exit 75; command -v sudo >/dev/null 2>&1 || exit 75; sudo -n true >/dev/null 2>&1 || exit 75; sudo -n test -s \"$base.data\" || exit 75; test -s \"$base.start\" || exit 75; printf '# isuscope-perf-start %s\\n' \"$(cat \"$base.start\")\"; sudo -n env LC_ALL=C perf script --reltime --ns -F comm,time,event,ip,sym,dso -i \"$base.data\""]
+roles = ["app"]
+command = ["sh", "-c", "base=/tmp/isuscope-{run_id}.perf; cleanup() { sudo -n rm -f \"$base.data\" \"$base.log\" \"$base.pid\" >/dev/null 2>&1 || true; rm -f \"$base.start\"; }; trap cleanup EXIT; command -v perf >/dev/null 2>&1 || exit 75; command -v sudo >/dev/null 2>&1 || exit 75; sudo -n true >/dev/null 2>&1 || exit 75; sudo -n test -s \"$base.data\" || exit 75; test -s \"$base.start\" || exit 75; printf '# isuscope-perf-start %s\\n' \"$(cat \"$base.start\")\"; sudo -n env LC_ALL=C perf script -G --reltime --ns -F comm,time,event,ip,sym,dso -i \"$base.data\""]
 parser = "perf-script"
 timeout_seconds = 30
 unavailable_exit_codes = [75]
@@ -179,6 +187,7 @@ unavailable_exit_codes = [75]
 name = "offcpu-start"
 phase = "before"
 transport = "ssh"
+roles = ["app"]
 command = ["sh", "-c", '''
 set -eu
 base=/tmp/isuscope-{run_id}.offcpu
@@ -197,6 +206,7 @@ unavailable_exit_codes = [75]
 name = "offcpu"
 phase = "after"
 transport = "ssh"
+roles = ["app"]
 command = ["sh", "-c", '''
 set -eu
 base=/tmp/isuscope-{run_id}.offcpu
@@ -226,6 +236,7 @@ unavailable_exit_codes = [75]
 name = "nginx-log-mark"
 phase = "before"
 transport = "ssh"
+roles = ["nginx", "edge"]
 command = ["sh", "-c", '''
 set -eu
 log=@@NGINX_ACCESS_LOG@@
@@ -245,6 +256,7 @@ unavailable_exit_codes = [75]
 name = "nginx-log-delta"
 phase = "after"
 transport = "ssh"
+roles = ["nginx", "edge"]
 command = ["sh", "-c", '''
 set -eu
 log=@@NGINX_ACCESS_LOG@@
@@ -319,6 +331,7 @@ unavailable_exit_codes = [75]
 name = "alp"
 phase = "after"
 transport = "ssh"
+roles = ["nginx", "edge"]
 command = ["sh", "-c", '''
 set -eu
 input=/tmp/isuscope-{run_id}.nginx.log
@@ -373,6 +386,7 @@ timeout_seconds = 30
 name = "mysql-log-mark"
 phase = "before"
 transport = "ssh"
+roles = ["db", "mysql"]
 command = ["sh", "-c", '''
 set -eu
 log=@@MYSQL_SLOW_LOG@@
@@ -393,6 +407,7 @@ unavailable_exit_codes = [75]
 name = "mysql-log-delta"
 phase = "after"
 transport = "ssh"
+roles = ["db", "mysql"]
 command = ["sh", "-c", '''
 set -eu
 log=@@MYSQL_SLOW_LOG@@
@@ -469,6 +484,7 @@ unavailable_exit_codes = [75]
 name = "slp"
 phase = "after"
 transport = "ssh"
+roles = ["db", "mysql"]
 command = ["sh", "-c", '''
 set -eu
 input=/tmp/isuscope-{run_id}.mysql.log

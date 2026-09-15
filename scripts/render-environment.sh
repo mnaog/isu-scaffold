@@ -131,9 +131,10 @@ jq -r '
     -e "s|@@MYSQL_SLOW_LOG@@|${mysql_slow_log}|g" \
     -e "s|@@SERVICE_UNITS@@|${service_units_toml}|g" \
     "${isuscope_template}"
-  printf '\n[ssh]\nuser = %s\nidentity_file = %s\nconnect_timeout_seconds = 5\n\n' \
+  printf '\n[ssh]\nuser = %s\nidentity_file = %s\nknown_hosts_file = %s\nconnect_timeout_seconds = 5\n\n' \
     "$(jq -Rn --arg value "${ssh_user}" '$value')" \
-    "$(jq -Rn --arg value "${identity_file}" '$value')"
+    "$(jq -Rn --arg value "${identity_file}" '$value')" \
+    "$(jq -Rn --arg value "${known_hosts_file}" '$value')"
   cat "${nodes_tmp}"
 } >"${config_tmp}"
 

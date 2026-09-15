@@ -77,6 +77,16 @@ jq -e '.all.children.application.hosts.app1.ansible_host == "192.0.2.10"' \
 jq -e '.all.children.application.hosts | length == 2' \
   "${fixture_repo}/.local/ansible-inventory.json" >/dev/null
 grep -q '^mode = "command"$' "${fixture_repo}/.isuscope/config.toml"
+grep -q '^known_hosts_file = ".local/known-hosts"$' "${fixture_repo}/.isuscope/config.toml"
+python3 - "${fixture_repo}/.isuscope/config.toml" <<'PY'
+import sys, tomllib
+config = tomllib.load(open(sys.argv[1], "rb"))
+roles = {collector["name"]: collector.get("roles", []) for collector in config["collectors"]}
+assert roles["perf-series"] == ["app"], roles["perf-series"]
+assert roles["nginx-log-mark"] == ["nginx", "edge"], roles["nginx-log-mark"]
+assert roles["mysql-log-mark"] == ["db", "mysql"], roles["mysql-log-mark"]
+assert roles["host-sampler"] == [], roles["host-sampler"]
+PY
 grep -q '^name = "app1"$' "${fixture_repo}/.isuscope/config.toml"
 grep -q '^service_units = \["nginx.service", "isu.service"\]$' "${fixture_repo}/.isuscope/config.toml"
 if grep -q '^name = "bench"$' "${fixture_repo}/.isuscope/config.toml"; then
