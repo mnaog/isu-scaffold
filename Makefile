@@ -27,7 +27,7 @@ help:
 		'make test                             local fixtureで生成とadapterを検査する' \
 		'make isuscope-doctor                  isuscope設定と接続を検査する' \
 		'make survey HYPOTHESIS="..."          初回survey-runを明示的に実行する' \
-		'make isuscope-run HYPOTHESIS="..."    SSH wrapper経由で通常runを実行する' \
+		'make isuscope-run HYPOTHESIS="..."    operation lock下で通常runを実行する' \
 		'make routes-suggest RUN=latest        runからroute正規化候補を生成する' \
 		'make isuscope-pin RUN=<run-id>        重要なrunの生ログをGitへstageする'
 
@@ -106,15 +106,15 @@ test:
 	@./tests/initial-automation.sh
 
 isuscope-doctor:
-	@./scripts/run-isuscope.sh doctor
+	@isuscope doctor
 
 survey:
 	@test -n "$(HYPOTHESIS)" || { echo 'HYPOTHESIS="..."を指定してください' >&2; exit 2; }
-	@./scripts/with-operation-lock.sh ./scripts/run-isuscope.sh survey-run --hypothesis "$(HYPOTHESIS)"
+	@./scripts/with-operation-lock.sh isuscope survey-run --hypothesis "$(HYPOTHESIS)"
 
 isuscope-run:
 	@test -n "$(HYPOTHESIS)" || { echo 'HYPOTHESIS="..."を指定してください' >&2; exit 2; }
-	@./scripts/with-operation-lock.sh ./scripts/run-isuscope.sh run --hypothesis "$(HYPOTHESIS)"
+	@./scripts/with-operation-lock.sh isuscope run --hypothesis "$(HYPOTHESIS)"
 
 routes-suggest:
 	@./scripts/suggest-routes.sh "$(or $(RUN),latest)"

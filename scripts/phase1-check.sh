@@ -27,9 +27,9 @@ export ANSIBLE_CONFIG=${repo_dir}/ansible/ansible.cfg
 "${script_dir}/benchmark-check.sh"
 "${script_dir}/benchmark-probe.sh"
 
-"${script_dir}/run-isuscope.sh" list >/dev/null
+isuscope list --limit 1 >/dev/null
 if [[ "${PHASE1_SKIP_ISUSCOPE_DOCTOR:-false}" != true ]]; then
-  "${script_dir}/run-isuscope.sh" doctor
+  isuscope doctor
 fi
 
 "${script_dir}/collector-smoke.sh"
