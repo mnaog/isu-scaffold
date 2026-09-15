@@ -67,22 +67,13 @@ isuscope survey-run --hypothesis "..."
 
 採用言語はRustに固定する（`config/application.env`）。先行回収は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は`kickoff-apply`のimportで完了する。`kickoff`は再実行でき、回収済みならimportを飛ばし、worktreeも再利用する。draftの判断は`review.md`を読んだ操作者（人間またはこのセッション）が行い、`make`の中で別のAIを呼んで承認させない。`make`は初動・deploy・検査の入口だけに絞っており、個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
 
-- `discover`と`bootstrap`は冪等に保ち、再実行で既存環境を壊さない。
 - package導入、sudo権限、ログ設定は当日のレギュレーションを確認してからAnsible変数で明示的に有効化する。
-- provider固有のnode発見、remoteからlocalへの初回import、benchmark adapterはshellで扱う。remoteの初期状態収束はAnsibleへ寄せる。
-- `bootstrap`や`phase1-check`からベンチを起動しない。`survey-run`は必ず独立した明示操作にする。
-- SSH確立後にコードとschemaの先行importをcommitし、Phase 1の全nodeセットアップを待たずに別worktreeでコード読解と自明な修正を始める。
+- `kickoff`、`bootstrap`、`phase1-check`からベンチを起動しない。`isuscope survey-run`は必ず独立した明示操作にする。
 - 並行worktreeは`webapp/`のコード・schemaとローカルテストだけを扱い、remote変更、deploy、ベンチ、`.local/operation.lock`を使う操作はmain側だけが行う。
 - 自明な修正は初回baselineを取るまでremoteへ反映しない。baselineの分析後にmainの最新設定を取り込み、変更根拠を照合してから統合する。
-- 調査から作った`.local/draft/`は候補にすぎない。remote path、owner、service、node roleを確認してから明示的に反映する。
 - `config/sync.json`のitemとcommandには対象node groupを明示し、役割を持たないnodeへ設定や再起動を配らない。
-- remote buildは`build_commands`でstaging itemに対して実行し、成果物をstaging内へ固定してからlive pathを切り替える。永続cacheには再生成可能なartifactだけを置く。
-- `rollback_commands`には旧ファイル復元後のconfig検査、restart/reload、health checkをrole別に定義する。ファイルだけを戻して稼働プロセスを新版のまま残さない。
-- deploy transaction IDはGitコミットと実行時刻から生成される。同じコミットを再deployしてよい。remote backupは既定で直近3世代だけ保持する。
-- `.local/ansible-inventory.json`や接続情報をGitへ追加しない。固定化すべき構成だけを`ansible/`、`config/`、`scripts/`へ残す。
-- isuscopeは`command` modeを標準とし、Phase 1でベンチ起動・完了待ち・score取得まで繋ぐ。`external` modeは通常運用にしない。
-
-詳しい契約は`docs/initial-automation.md`を参照する。
+- `.local/`の接続情報や生成物をGitへ追加しない。固定化すべき構成だけを`ansible/`、`config/`、`scripts/`へ残す。
+- deploy、rollback、import、ベンチ接続、isuscope設定の詳しい契約は`docs/initial-automation.md`を正とする。
 
 ## isuscopeの使い方
 
@@ -110,24 +101,10 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 
 判定には`supported`、`rejected`、`inconclusive`、`skipped`を使う。更新対象を誤らないよう、`analyze`には実行結果か`isuscope list`で得たrun IDを明示する。PASSしたrunは分析を記録するまで次のベンチを開始できない。FAILまたは中断したrunには分析は不要。
 
-`survey-run`はPhase 1の初回調査だけに使い、その後は構成やroutingを大きく変えた場合も`run`を使う。終了前は環境からprofilerや重いログを外した採点用構成で、通常の`run`を実行する。
+`survey-run`はPhase 1の初回調査だけに使い、その後は構成やroutingを大きく変えた場合も`run`を使う。時間が最大の制約なので、同じ変更の比較のためにベンチを重ねない。終了前はprofilerや重いログを外した構成へ切り替え、確認のベンチは通常の`run`で一度だけ行う。
 
 最初は`isuscope brief latest`で全体を確認し、`isuscope query latest --base BASE_RUN ...`で仮説対象だけを比較する。初期化を除くhost/service集約は`query --scope series --window load`、時間帯を掘り下げる場合は`isuscope series latest --window load --metric <name>`を使う。`whole`、`initialize`、`load`を意図に応じて選び、初期化負荷と通常負荷を混ぜない。`report`、`diff`、`metrics`はcompactな出力だけでは足りない場合の詳細診断に限定する。人が複数runを横断して確認するときは`isuscope ui`を使う。collectorの失敗はbriefのcoverage issueを入口にし、必要ならreportのcoverageとrun配下のlogで確認する。
 
 初回runのHTTP routeに動的IDが残っている場合は、`isuscope routes suggest <run-id> --output .local/route-suggestions.toml`で`.local/route-suggestions.toml`を作る。候補を確認したものだけ`.isuscope/routes.toml`へ移し、再計測する。
 
 `[context.agent]`を有効にした後のベンチは、会話履歴を正しく紐付けるため現在のCodexまたはClaude Codeのセッションから実行する。
-
-## 基本フロー
-
-```text
-サーバーの初期状態をimport
-  → webapp/とconfig/へ保存
-  → 初期commit
-  → ローカルで変更
-  → コマンドでdeploy・再起動・状態確認
-  → isuscopeでベンチ
-  → 結果と変更をcommit
-```
-
-実環境の接続先や公式ファイルの配置が確定したあと、Phase 1で`config/sync.json`と`config/benchmark.env`を完成させる。標準の宣言型処理で表せない部分だけadapterを拡張する。

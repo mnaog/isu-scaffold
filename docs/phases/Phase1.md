@@ -167,4 +167,4 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - 高頻度経路の主要なN+1、重複処理、逐次writeが解消されている
 - 自明な修正を統合したrunをbaselineと比較し、採否を記録している
 
-条件を満たしたらCodexはPhase 2への移行を提案し、人間が移行を決定する。旧Phase 2の自明な改善はこのPhaseへ統合済みで、現在のPhase 2はアーキテクチャ改善を扱う。
+条件を満たしたら作業中のagent（CodexまたはClaude Code）はPhase 2への移行を提案し、人間が移行を決定する。旧Phase 2の自明な改善はこのPhaseへ統合済みで、現在のPhase 2はアーキテクチャ改善を扱う。
