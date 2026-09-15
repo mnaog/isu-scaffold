@@ -77,7 +77,21 @@ providerの出力は共通形式へ正規化され、次を一度に生成しま
 ./scripts/bootstrap.sh
 ```
 
-local venvへ固定versionのAnsibleを導入し、SSH接続を確立してから、Linux前提を全nodeへ、任意package、計測tool、isuscope fingerprint helperをapplication nodeへ冪等に適用します。package導入はレギュレーション確認後に`ansible/playbooks/group_vars/all.yml`で有効化します。事前に取得した`alp`などは`.local/tools/`へ置き、`observability_local_tools`で配布できます。
+local venvへ固定versionのAnsibleを導入し、SSH接続を確立してから、Linux前提を全nodeへ、計測と運用の土台をapplication nodeへ冪等に適用します（`make kickoff`内でも実行されます）。性能は変えないので、初回baselineより前に入れて固定します。
+
+| 項目 | 内容 | 無効化する変数 |
+| --- | --- | --- |
+| 計測tool | `sysstat`、実行中kernel用のperf、pin済みの`alp`・`slp`、FlameGraph scripts。off-CPU用の`bpfcc-tools`は既定では入れない | `observability_install_packages`、`observability_download_tools`（`observability_install_offcpu`で有効化） |
+| perf権限 | `kernel.perf_event_paranoid=-1`、`kernel.kptr_restrict=0` | — |
+| Nginx access log | `conf.d/00-isuscope-log.conf`でLTSVを`/var/log/nginx/isuscope-access.log`へ追加出力（既存のaccess_logは変えない）。sessionは`observability_nginx_session_source`で問題に合わせる | `observability_nginx_ltsv` |
+| MySQL slow log | `zzz-isuscope-slow.cnf`で`long_query_time=0`を`/var/log/mysql/isuscope-slow.log`へ出力し、MySQLを再起動 | `observability_mysql_slow_log` |
+| log rotation | 上記2つを512MiBで世代交代し、logrotateを1時間ごとに実行 | — |
+| 時刻同期 | chronyを有効化 | `observability_time_sync` |
+| journal | 永続化し、512MiBで上限 | `observability_persistent_journal` |
+| 自動更新 | `apt-daily`、`apt-daily-upgrade`、`unattended-upgrades`を停止 | `observability_stop_auto_updates` |
+| Rust build cache | `/home/isucon/.cache/isucon-cargo-target`を作成し、cargoとrustcの有無を表示 | — |
+
+nginx.confがhttpの中で`/etc/nginx/conf.d/*.conf`をincludeしていない場合、LTSV logは追加されず、draft検査がFAILにします。レギュレーションで禁止された項目だけ変数をfalseにします。Phase 3で計測を外すときは`observability_nginx_ltsv`と`observability_mysql_slow_log`をfalseにして`./scripts/run-ansible-playbook.sh bootstrap.yml --tags observability_nginx_log,observability_mysql_slow_log`を実行すると、設定を撤去してreload・再起動します。性能のためのNginx設定は[config/nginx/tare](../config/nginx/tare/README.md)にあり、初回baselineの後にdeployで入れます。事前に取得したtoolは`.local/tools/`へ置き、`observability_local_tools`で配布できます。
 
 `isuscope_fingerprint_paths`には、app binaryや主要設定など、全nodeで実体を比較したい絶対pathを列挙します。kernel、OS、Nginx、MySQL、running serviceは宣言なしでも記録します。
 

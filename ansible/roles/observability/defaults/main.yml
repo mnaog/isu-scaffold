@@ -1,9 +1,29 @@
 ---
-observability_install_packages: false
-observability_packages: []
+observability_install_packages: true
+observability_packages: [sysstat, git]
+observability_install_offcpu: false
+observability_offcpu_packages: [bpfcc-tools]
+observability_download_tools: true
+observability_release_tools:
+  - {name: alp, version: v1.0.21}
+  - {name: slp, version: v0.2.1}
+observability_go_arch: {x86_64: amd64, aarch64: arm64}
+observability_flamegraph_version: master
 observability_probe_commands: []
 observability_required_commands: []
 observability_local_tools: []
+observability_time_sync: true
+observability_persistent_journal: true
+observability_journal_max_use: 512M
+observability_stop_auto_updates: true
+observability_nginx_ltsv: true
+observability_nginx_ltsv_path: /var/log/nginx/isuscope-access.log
+observability_nginx_session_source: '$cookie_session'
+observability_mysql_slow_log: true
+observability_mysql_slow_log_path: /var/log/mysql/isuscope-slow.log
+observability_log_max_size: 512M
+observability_rust_user: isucon
+observability_rust_cache_dir: /home/isucon/.cache/isucon-cargo-target
 isuscope_fingerprint_paths: []
 isuscope_tree_digest_source: "{{ playbook_dir }}/../../scripts/tree-digest.py"
 isuscope_tree_digest_path: /usr/local/lib/isuscope/tree-digest.py

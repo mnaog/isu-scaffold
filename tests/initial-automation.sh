@@ -199,9 +199,9 @@ printf '{}\n' >"${review_dir}/draft/ansible-vars.json"
 printf '{"ISUSCOPE_NGINX_ACCESS_LOG":"/var/log/nginx/access.log","ISUSCOPE_MYSQL_SLOW_LOG":"/var/log/mysql/mysql-slow.log"}\n' \
   >"${review_dir}/draft/isuscope.json"
 write_facts() {
-  local node=$1 webapp_kind=$2 webapp_kb=$3 service_state=$4
-  printf 'path\t/home/isucon/webapp/rust\t%s\t%s\nuser\tisucon\tyes\ngroup\tisucon\tyes\nservice\tisu.service\t%s\nlog\t/var/log/nginx/access.log\tyes\nlog\t/var/log/mysql/mysql-slow.log\tno\n' \
-    "${webapp_kind}" "${webapp_kb}" "${service_state}" >"${review_dir}/facts/${node}"
+  local node=$1 webapp_kind=$2 webapp_kb=$3 service_state=$4 dropin=${5:-yes}
+  printf 'path\t/home/isucon/webapp/rust\t%s\t%s\nuser\tisucon\tyes\ngroup\tisucon\tyes\nservice\tisu.service\t%s\nlog\t/var/log/nginx/access.log\tyes\nlog\t/var/log/mysql/mysql-slow.log\tno\ndropin\t/etc/nginx/conf.d/00-isuscope-log.conf\t%s\n' \
+    "${webapp_kind}" "${webapp_kb}" "${service_state}" "${dropin}" >"${review_dir}/facts/${node}"
 }
 write_sync() {
   jq -n --arg remote "$1" '{source_node:"app1", items:[{name:"webapp", type:"directory", node_group:"application", local:"webapp/rust", remote:$remote, owner:"isucon", owner_group:"isucon"}], post_deploy_commands:["sudo systemctl is-active --quiet isu.service"], status_commands:[]}' \
@@ -221,7 +221,7 @@ grep -q 'WARN app2: webapp is .* MiB' "${review_dir}/draft/review.md"
 grep -q 'WARN app1: log not readable: /var/log/mysql/mysql-slow.log' "${review_dir}/draft/review.md"
 
 write_sync /home/isucon
-write_facts app2 missing 0 inactive
+write_facts app2 missing 0 inactive no
 set +e
 run_review >/dev/null
 review_exit=$?
@@ -230,6 +230,7 @@ test "${review_exit}" -eq 1
 grep -q 'FAIL webapp would replace a broad system path: /home/isucon' "${review_dir}/draft/review.md"
 grep -q 'FAIL app2: webapp remote path does not exist' "${review_dir}/draft/review.md"
 grep -q 'FAIL app2: service isu.service is inactive' "${review_dir}/draft/review.md"
+grep -q 'FAIL app2: measurement drop-in is missing: /etc/nginx/conf.d/00-isuscope-log.conf' "${review_dir}/draft/review.md"
 
 # importは全nodeのdigest一致を確認してからsource nodeを回収します。
 fake_remote=${fixture_repo}/.local/fake-remote
@@ -467,7 +468,7 @@ cat >"${fixture_repo}/.local/inspection/app1.json" <<'EOF'
   "application_candidate_ownership":["/home/isucon/webapp/go.mod\tisucon\tisucon"],
   "configuration_paths":["/etc/nginx/nginx.conf","/etc/mysql"],
   "service_fragments":["nginx.service\t/etc/systemd/system/nginx.service","isu-rust.service\t/etc/systemd/system/isu-rust.service"],
-  "nginx_access_logs":["/var/log/nginx/custom.log"],
+  "nginx_access_logs":["/var/log/nginx/custom.log","/var/log/nginx/isuscope-access.log"],
   "mysql_slow_logs":["/var/log/mysql/slow.log"],
   "versions":{"nginx":"nginx/1","mysql":"mysql 8","perf":"perf 6","sar":"sar 12","alp":"alp 1","slp":"slp 1"}
 }
@@ -511,7 +512,7 @@ jq -e '.ISUSCOPE_SERVICE_UNITS == "mysql.service nginx.service"' \
 (cd "${fixture_repo}" && ./scripts/discover.sh && ./scripts/sync-check.sh)
 jq -e '.all.children.role_mysql.hosts | keys == ["app1"]' \
   "${fixture_repo}/.local/ansible-inventory.json" >/dev/null
-grep -q 'log=/var/log/nginx/custom.log' "${fixture_repo}/.isuscope/config.toml"
+grep -q 'log=/var/log/nginx/isuscope-access.log' "${fixture_repo}/.isuscope/config.toml"
 grep -q '^service_units = \["mysql.service", "nginx.service"\]$' \
   "${fixture_repo}/.isuscope/config.toml"
 

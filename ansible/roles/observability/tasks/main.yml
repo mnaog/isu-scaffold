@@ -1,86 +1,30 @@
 ---
-- name: Install explicitly enabled observability packages on Debian family
-  ansible.builtin.apt:
-    name: "{{ observability_packages }}"
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
-  when:
-    - ansible_facts.os_family == 'Debian'
-    - observability_install_packages | bool
-    - observability_packages | length > 0
+# Measurement and operating baseline fixed in the first hour. Nothing here tunes performance;
+# performance changes (config/nginx/tare, sysctl networking, MySQL buffers) come after baseline.
+- name: Install measurement packages and tools
+  ansible.builtin.import_tasks: tools.yml
+  tags: [observability_tools]
 
-- name: Install explicitly enabled observability packages on other systems
-  ansible.builtin.package:
-    name: "{{ observability_packages }}"
-    state: present
-  when:
-    - ansible_facts.os_family != 'Debian'
-    - observability_install_packages | bool
-    - observability_packages | length > 0
+- name: Keep clocks, journals and background jobs stable
+  ansible.builtin.import_tasks: system.yml
+  tags: [observability_system]
 
-- name: Install explicitly supplied observability tools
-  ansible.builtin.copy:
-    src: "{{ item.source }}"
-    dest: "{{ item.destination }}"
-    owner: root
-    group: root
-    mode: "{{ item.mode | default('0755') }}"
-  loop: "{{ observability_local_tools }}"
-  loop_control:
-    label: "{{ item.destination }}"
+- name: Add the isuscope LTSV access log to Nginx
+  ansible.builtin.import_tasks: nginx_log.yml
+  tags: [observability_nginx_log]
 
-- name: Create isuscope helper directory
-  ansible.builtin.file:
-    path: "{{ isuscope_fingerprint_directory }}"
-    state: directory
-    owner: root
-    group: root
-    mode: '0755'
+- name: Enable the isuscope MySQL slow log
+  ansible.builtin.import_tasks: mysql_slow_log.yml
+  tags: [observability_mysql_slow_log]
 
-- name: Install the repository fingerprint helper
-  ansible.builtin.copy:
-    src: "{{ isuscope_fingerprint_source }}"
-    dest: "{{ isuscope_fingerprint_path }}"
-    owner: root
-    group: root
-    mode: '0755'
+- name: Rotate measurement logs by size
+  ansible.builtin.import_tasks: logrotate.yml
+  tags: [observability_logrotate]
 
-- name: Install declared fingerprint paths
-  ansible.builtin.copy:
-    content: "{{ (isuscope_fingerprint_paths | join('\n')) ~ ('\n' if isuscope_fingerprint_paths | length > 0 else '') }}"
-    dest: "{{ isuscope_fingerprint_directory }}/fingerprint-paths"
-    owner: root
-    group: root
-    mode: '0644'
+- name: Prepare the persistent Rust build cache
+  ansible.builtin.import_tasks: rust_cache.yml
+  tags: [observability_rust_cache]
 
-- name: Install remote tree digest helper
-  ansible.builtin.copy:
-    src: "{{ isuscope_tree_digest_source }}"
-    dest: "{{ isuscope_tree_digest_path }}"
-    owner: root
-    group: root
-    mode: '0755'
-
-- name: Probe optional observability commands
-  ansible.builtin.command:
-    argv: [sh, -lc, "command -v -- {{ item }}"]
-  loop: "{{ observability_probe_commands }}"
-  register: observability_command_probes
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: Show observability command availability
-  ansible.builtin.debug:
-    msg: >-
-      {{ item.item }}={{ 'available' if item.rc == 0 else 'unavailable' }}
-  loop: "{{ observability_command_probes.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-
-- name: Verify perf matches the running kernel
-  ansible.builtin.command:
-    argv: [perf, --version]
-  changed_when: false
-  when: "'perf' in observability_required_commands"
+- name: Install the isuscope node helpers
+  ansible.builtin.import_tasks: helpers.yml
+  tags: [observability_helpers]

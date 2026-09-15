@@ -1,0 +1,100 @@
+---
+- name: Install measurement packages on Debian family
+  ansible.builtin.apt:
+    name: "{{ observability_packages + (observability_offcpu_packages if observability_install_offcpu | bool else []) }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when:
+    - ansible_facts.os_family == 'Debian'
+    - observability_install_packages | bool
+
+- name: Install measurement packages on other systems
+  ansible.builtin.package:
+    name: "{{ observability_packages }}"
+    state: present
+  when:
+    - ansible_facts.os_family != 'Debian'
+    - observability_install_packages | bool
+
+- name: Download pinned alp and slp releases
+  ansible.builtin.unarchive:
+    src: "https://github.com/tkuchiki/{{ item.name }}/releases/download/{{ item.version }}/{{ item.name }}_linux_{{ observability_go_arch[ansible_facts.architecture] }}.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    include: ["{{ item.name }}"]
+    owner: root
+    group: root
+    mode: '0755'
+    creates: "/usr/local/bin/{{ item.name }}"
+  loop: "{{ observability_release_tools }}"
+  loop_control:
+    label: "{{ item.name }} {{ item.version }}"
+  when: observability_download_tools | bool
+
+- name: Fetch FlameGraph scripts
+  ansible.builtin.git:
+    repo: https://github.com/brendangregg/FlameGraph.git
+    dest: /opt/FlameGraph
+    version: "{{ observability_flamegraph_version }}"
+    depth: 1
+  when: observability_download_tools | bool
+
+- name: Link FlameGraph scripts into PATH
+  ansible.builtin.file:
+    src: "/opt/FlameGraph/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    state: link
+  loop: [stackcollapse-perf.pl, flamegraph.pl]
+  when: observability_download_tools | bool
+
+- name: Install explicitly supplied observability tools
+  ansible.builtin.copy:
+    src: "{{ item.source }}"
+    dest: "{{ item.destination }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode | default('0755') }}"
+  loop: "{{ observability_local_tools }}"
+  loop_control:
+    label: "{{ item.destination }}"
+
+- name: Allow system-wide perf sampling with kernel symbols
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/60-isuscope-perf.conf
+    content: |
+      # Managed by ansible/roles/observability: perf needs these to sample the whole node.
+      kernel.perf_event_paranoid = -1
+      kernel.kptr_restrict = 0
+    owner: root
+    group: root
+    mode: '0644'
+  register: observability_perf_sysctl
+
+- name: Apply perf sysctl settings
+  ansible.builtin.command:
+    argv: [sysctl, -p, /etc/sysctl.d/60-isuscope-perf.conf]
+  when: observability_perf_sysctl.changed
+
+- name: Probe optional observability commands
+  ansible.builtin.command:
+    argv: [sh, -lc, "command -v -- {{ item }}"]
+  loop: "{{ observability_probe_commands }}"
+  register: observability_command_probes
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Show observability command availability
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.item }}={{ 'available' if item.rc == 0 else 'unavailable' }}
+  loop: "{{ observability_command_probes.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Verify perf matches the running kernel
+  ansible.builtin.command:
+    argv: [perf, --version]
+  changed_when: false
+  when: "'perf' in observability_required_commands"

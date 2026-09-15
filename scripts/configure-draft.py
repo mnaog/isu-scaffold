@@ -363,8 +363,9 @@ def main() -> int:
         "observability_required_commands": common_tools,
     }
     isuscope_environment = {
-        "ISUSCOPE_NGINX_ACCESS_LOG": most_common(nginx_logs) or "/var/log/nginx/access.log",
-        "ISUSCOPE_MYSQL_SLOW_LOG": most_common(mysql_logs) or "/var/log/mysql/mysql-slow.log",
+        # Ansible bootstrap adds dedicated measurement logs; prefer them over problem-provided logs.
+        "ISUSCOPE_NGINX_ACCESS_LOG": "/var/log/nginx/isuscope-access.log" if "/var/log/nginx/isuscope-access.log" in nginx_logs else (most_common(nginx_logs) or "/var/log/nginx/isuscope-access.log"),
+        "ISUSCOPE_MYSQL_SLOW_LOG": "/var/log/mysql/isuscope-slow.log" if "/var/log/mysql/isuscope-slow.log" in mysql_logs else (most_common(mysql_logs) or "/var/log/mysql/isuscope-slow.log"),
         "ISUSCOPE_SERVICE_UNITS": " ".join(observable_service_units),
     }
     warnings = list(draft_warnings)

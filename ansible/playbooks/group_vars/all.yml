@@ -3,12 +3,19 @@
 bootstrap_install_packages: false
 bootstrap_packages: []
 
-observability_install_packages: false
+# 計測と運用の土台は初動で固定化します（性能は変えない）。レギュレーションで禁止された項目だけfalseにします。
+# 性能の変更（config/nginx/tare、networking sysctl、MySQL buffer）は初回baselineの後にdeployで入れます。
+observability_install_packages: true
 observability_packages:
   - sysstat
+  - git
   # `linux-tools-aws`などのmeta packageは、起動中kernelと異なる世代のperfを入れることがある。
   # 実行中kernelに対応するbinaryを明示し、requiredにしたperfは`perf --version`まで検査する。
   - "linux-tools-{{ ansible_facts['kernel'] }}"
+# off-CPU解析はpackageが大きく導入に時間がかかるため、必要になってから有効化します。
+observability_install_offcpu: false
+# alp/slpのpin済みreleaseとFlameGraph scriptsをnodeへ取得します。
+observability_download_tools: true
 
 # 存在を調べるcommandです。requiredへ移したものだけverifyを失敗させます。
 observability_probe_commands:
@@ -19,13 +26,29 @@ observability_probe_commands:
   - stackcollapse-perf.pl
   - flamegraph.pl
   - offcputime-bpfcc
-observability_required_commands: []
+observability_required_commands: [sar, perf, alp, slp]
 
 # 事前に.local/toolsへ用意したbinary/scriptを全application nodeへ配置できます。
-# observability_local_tools:
-#   - source: "{{ playbook_dir }}/../../.local/tools/alp"
-#     destination: /usr/local/bin/alp
 observability_local_tools: []
+
+# 時刻同期、journalの永続化と上限、ベンチ中の自動更新停止。
+observability_time_sync: true
+observability_persistent_journal: true
+observability_journal_max_use: 512M
+observability_stop_auto_updates: true
+
+# isuscope/alp用のLTSV access logとMySQL slow logを専用fileへ出します。Phase 3でfalseにして外します。
+observability_nginx_ltsv: true
+observability_nginx_ltsv_path: /var/log/nginx/isuscope-access.log
+# 行動遷移に使うsessionのnginx変数。問題に合わせて$http_x_sessionなどへ変えます。
+observability_nginx_session_source: '$cookie_session'
+observability_mysql_slow_log: true
+observability_mysql_slow_log_path: /var/log/mysql/isuscope-slow.log
+observability_log_max_size: 512M
+
+# config/sync.rust.example.jsonのbuildが使う永続Cargo cache。
+observability_rust_user: isucon
+observability_rust_cache_dir: /home/isucon/.cache/isucon-cargo-target
 
 # 当日必要なservice名を追加します。空ならservice状態では失敗しません。
 bootstrap_required_services: []

@@ -1,0 +1,15 @@
+# Managed by ansible/roles/observability (observability_nginx_ltsv). Do not edit on the node.
+# isuscope/alp用のLTSV。項目名はisuscopeの既定値（method/uri/status/reqtime/apptime/size/connreqs/session）に合わせる。
+# 既存のaccess_logは変えず、専用ファイルへ追加で出力する。serverブロックにaccess_logがあると、そのserverではこの設定が効かない。
+map {{ observability_nginx_session_source }} $isuscope_session {
+    default {{ observability_nginx_session_source }};
+    ""      "-";
+}
+
+log_format isuscope_ltsv 'time:$time_iso8601\thost:$remote_addr\tmethod:$request_method'
+                         '\turi:$request_uri\tstatus:$status\tsize:$body_bytes_sent'
+                         '\treqtime:$request_time\tapptime:$upstream_response_time'
+                         '\tconn:$connection\tconnreqs:$connection_requests'
+                         '\tua:$http_user_agent\tsession:$isuscope_session';
+
+access_log {{ observability_nginx_ltsv_path }} isuscope_ltsv buffer=64k flush=1s;

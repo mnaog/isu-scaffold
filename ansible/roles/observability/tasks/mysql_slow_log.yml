@@ -1,0 +1,82 @@
+---
+# The file sorts after problem-provided configs in the same directory so deployed MySQL settings
+# do not silently turn the measurement off. Phase 3 disables it with observability_mysql_slow_log=false.
+- name: Find the MySQL server configuration directory
+  ansible.builtin.shell: |
+    set -eu
+    command -v mysqld >/dev/null 2>&1 || command -v mariadbd >/dev/null 2>&1 || { echo absent; exit 0; }
+    for directory in /etc/mysql/mysql.conf.d /etc/mysql/mariadb.conf.d /etc/mysql/conf.d /etc/my.cnf.d; do
+      if test -d "$directory"; then echo "$directory"; exit 0; fi
+    done
+    echo absent
+  args:
+    executable: /bin/bash
+  register: observability_mysql_conf_dir
+  changed_when: false
+  check_mode: false
+
+- name: Enable the isuscope slow log
+  when:
+    - observability_mysql_slow_log | bool
+    - observability_mysql_conf_dir.stdout != 'absent'
+  block:
+    - name: Create the slow log file readable by the collector through sudo
+      ansible.builtin.file:
+        path: "{{ observability_mysql_slow_log_path }}"
+        state: touch
+        owner: mysql
+        group: adm
+        mode: '0640'
+        modification_time: preserve
+        access_time: preserve
+
+    - name: Install the slow log configuration
+      ansible.builtin.copy:
+        dest: "{{ observability_mysql_conf_dir.stdout }}/zzz-isuscope-slow.cnf"
+        content: |
+          # Managed by ansible/roles/observability (observability_mysql_slow_log).
+          [mysqld]
+          slow_query_log = ON
+          slow_query_log_file = {{ observability_mysql_slow_log_path }}
+          long_query_time = 0
+        owner: root
+        group: root
+        mode: '0644'
+      register: observability_mysql_slow_conf
+
+    - name: Find the MySQL service name
+      ansible.builtin.shell: |
+        for unit in mysql mariadb mysqld; do
+          if systemctl list-unit-files "$unit.service" --no-legend 2>/dev/null | grep -q "^$unit.service"; then echo "$unit"; exit 0; fi
+        done
+        echo mysql
+      register: observability_mysql_service
+      changed_when: false
+      check_mode: false
+
+    - name: Restart MySQL to load the slow log configuration
+      ansible.builtin.systemd:
+        name: "{{ observability_mysql_service.stdout }}"
+        state: restarted
+      when: observability_mysql_slow_conf.changed
+
+# Phase 3 switches measurement off by setting observability_mysql_slow_log=false and rerunning bootstrap.
+- name: Remove the isuscope slow log configuration when measurement is switched off
+  ansible.builtin.file:
+    path: "{{ observability_mysql_conf_dir.stdout }}/zzz-isuscope-slow.cnf"
+    state: absent
+  register: observability_mysql_slow_removed
+  when:
+    - not (observability_mysql_slow_log | bool)
+    - observability_mysql_conf_dir.stdout != 'absent'
+
+- name: Restart MySQL without the slow log
+  ansible.builtin.shell: |
+    for unit in mysql mariadb mysqld; do
+      if systemctl list-unit-files "$unit.service" --no-legend 2>/dev/null | grep -q "^$unit.service"; then
+        exec systemctl restart "$unit"
+      fi
+    done
+  when:
+    - not (observability_mysql_slow_log | bool)
+    - observability_mysql_slow_removed.changed

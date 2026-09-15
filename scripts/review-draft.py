@@ -15,6 +15,7 @@ from pathlib import Path
 
 DANGEROUS_REMOTE = {"/", "/etc", "/home", "/home/isucon", "/opt", "/root", "/srv", "/tmp", "/usr", "/var"}
 LARGE_ITEM_KB = 512 * 1024
+NGINX_DROPIN = "/etc/nginx/conf.d/00-isuscope-log.conf"
 
 
 def load(path: Path):
@@ -62,6 +63,9 @@ def remote_script(checks: dict) -> str:
     for service in sorted(checks["services"]):
         quoted = shlex.quote(service)
         lines.append(f"r=$(systemctl is-active {quoted} 2>/dev/null || true); printf 'service\\t%s\\t%s\\n' {quoted} \"${{r:-unknown}}\"")
+    for path in sorted(checks["dropins"]):
+        quoted = shlex.quote(path)
+        lines.append(f"if sudo -n test -f {quoted}; then r=yes; else r=no; fi; printf 'dropin\\t%s\\t%s\\n' {quoted} \"$r\"")
     for path in sorted(checks["logs"]):
         quoted = shlex.quote(path)
         lines.append(f"if sudo -n test -r {quoted}; then r=yes; else r=no; fi; printf 'log\\t%s\\t%s\\n' {quoted} \"$r\"")
@@ -130,7 +134,7 @@ def main() -> int:
             record("WARN", f"no node has the `{role}` role; its collectors and commands will target nothing")
 
     items = sync.get("items", [])
-    checks = {node: {"paths": set(), "users": set(), "groups": set(), "services": set(), "logs": set()} for node in application}
+    checks = {node: {"paths": set(), "users": set(), "groups": set(), "services": set(), "logs": set(), "dropins": set()} for node in application}
     names = [item.get("name") for item in items]
     if len(names) != len(set(names)):
         record("FAIL", "sync item names are not unique")
@@ -166,6 +170,7 @@ def main() -> int:
     for node in application:
         if nginx_log and ("nginx" in roles.get(node, []) or "edge" in roles.get(node, [])):
             checks[node]["logs"].add(nginx_log)
+            checks[node]["dropins"].add(NGINX_DROPIN)
         if slow_log and ("db" in roles.get(node, []) or "mysql" in roles.get(node, [])):
             checks[node]["logs"].add(slow_log)
 
@@ -193,6 +198,9 @@ def main() -> int:
         for service in sorted(checks[node]["services"]):
             state = (facts.get(("service", service)) or ["unknown"])[0]
             record("OK" if state == "active" else "FAIL", f"{node}: service {service} is {state}")
+        for dropin in sorted(checks[node]["dropins"]):
+            if (facts.get(("dropin", dropin)) or ["no"])[0] != "yes":
+                record("FAIL", f"{node}: measurement drop-in is missing: {dropin} (nginx.conf must include conf.d inside http; rerun ./scripts/bootstrap.sh)")
         for log in sorted(checks[node]["logs"]):
             readable = (facts.get(("log", log)) or ["no"])[0] == "yes"
             record("OK" if readable else "WARN", f"{node}: log {'readable' if readable else 'not readable'}: {log}")

@@ -1,0 +1,62 @@
+---
+# isuscope collectors read .1-.5 and .gz generations, so rotation keeps five compressed files.
+- name: Rotate isuscope measurement logs by size
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/isuscope
+    content: |
+      # Managed by ansible/roles/observability.
+      {{ observability_nginx_ltsv_path }} {
+          maxsize {{ observability_log_max_size }}
+          daily
+          rotate 5
+          compress
+          delaycompress
+          missingok
+          notifempty
+          create 0644 www-data adm
+          sharedscripts
+          postrotate
+              if [ -s /run/nginx.pid ]; then kill -USR1 "$(cat /run/nginx.pid)"; fi
+          endscript
+      }
+      {{ observability_mysql_slow_log_path }} {
+          maxsize {{ observability_log_max_size }}
+          daily
+          rotate 5
+          compress
+          delaycompress
+          missingok
+          notifempty
+          copytruncate
+      }
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Create the logrotate timer drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/logrotate.timer.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Check measurement log sizes hourly
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/logrotate.timer.d/60-isuscope-hourly.conf
+    content: |
+      # Managed by ansible/roles/observability: maxsize is only checked when logrotate runs.
+      [Timer]
+      OnCalendar=
+      OnCalendar=hourly
+    owner: root
+    group: root
+    mode: '0644'
+  register: observability_logrotate_timer
+
+- name: Reload logrotate timer schedule
+  ansible.builtin.systemd:
+    name: logrotate.timer
+    daemon_reload: true
+    state: restarted
+  when: observability_logrotate_timer.changed

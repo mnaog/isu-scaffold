@@ -1,0 +1,81 @@
+---
+# A node without Nginx, or with an nginx.conf that does not include conf.d inside http, is left
+# unchanged; review-draft reports the missing drop-in instead of stopping the whole bootstrap.
+- name: Check whether Nginx can take the isuscope log drop-in
+  ansible.builtin.shell: |
+    set -eu
+    command -v nginx >/dev/null 2>&1 || { echo absent; exit 0; }
+    if nginx -T 2>/dev/null |
+      awk '/^# configuration file \/etc\/nginx\/nginx.conf:/{f=1;next} /^# configuration file /{f=0} f' |
+      grep -Eq '^[[:space:]]*include[[:space:]]+/etc/nginx/conf\.d/\*\.conf;'; then
+      echo ready
+    else
+      echo no-conf-d-include
+    fi
+  args:
+    executable: /bin/bash
+  register: observability_nginx_state
+  changed_when: false
+  check_mode: false
+  when: observability_nginx_ltsv | bool
+
+- name: Report Nginx nodes that cannot take the drop-in
+  ansible.builtin.debug:
+    msg: "nginx.conf on {{ inventory_hostname }} does not include /etc/nginx/conf.d/*.conf inside http; the isuscope LTSV log was not added"
+  when:
+    - observability_nginx_ltsv | bool
+    - observability_nginx_state.stdout == 'no-conf-d-include'
+
+- name: Install the isuscope LTSV log
+  when:
+    - observability_nginx_ltsv | bool
+    - observability_nginx_state.stdout == 'ready'
+  block:
+    - name: Install the LTSV log drop-in
+      ansible.builtin.template:
+        src: 00-isuscope-log.conf.j2
+        dest: /etc/nginx/conf.d/00-isuscope-log.conf
+        owner: root
+        group: root
+        mode: '0644'
+      register: observability_nginx_log_dropin
+
+    - name: Validate Nginx configuration
+      ansible.builtin.command:
+        argv: [nginx, -t]
+      changed_when: false
+      when: observability_nginx_log_dropin.changed
+
+    - name: Reload Nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded
+      when: observability_nginx_log_dropin.changed
+  rescue:
+    - name: Remove an invalid LTSV log drop-in
+      ansible.builtin.file:
+        path: /etc/nginx/conf.d/00-isuscope-log.conf
+        state: absent
+
+    - name: Keep the previous Nginx configuration running
+      ansible.builtin.command:
+        argv: [nginx, -t]
+      changed_when: false
+
+    - name: Stop after restoring Nginx
+      ansible.builtin.fail:
+        msg: "the isuscope LTSV log failed nginx -t on {{ inventory_hostname }}; the drop-in was removed"
+
+# Phase 3 switches measurement off by setting observability_nginx_ltsv=false and rerunning bootstrap.
+- name: Remove the isuscope LTSV log when measurement is switched off
+  ansible.builtin.file:
+    path: /etc/nginx/conf.d/00-isuscope-log.conf
+    state: absent
+  register: observability_nginx_log_removed
+  when: not (observability_nginx_ltsv | bool)
+
+- name: Reload Nginx without the LTSV log
+  ansible.builtin.shell: nginx -t && systemctl reload nginx
+  when:
+    - not (observability_nginx_ltsv | bool)
+    - observability_nginx_log_removed.changed

@@ -50,7 +50,7 @@
 - 一時的なトレース
 - 調査用プロセス
 
-停止後も、障害調査に最低限必要なログは残す。計測の有無を比べるためのベンチは行わず、最終構成への切り替えとして外す。
+初動で固定化したNginxのLTSV access logとMySQL slow logは、`ansible/playbooks/group_vars/all.yml`の`observability_nginx_ltsv`と`observability_mysql_slow_log`をfalseにしてbootstrapを該当tagだけ再実行し、撤去する（手順は`docs/initial-automation.md`）。停止後も、障害調査に最低限必要なログは残す。計測の有無を比べるためのベンチは行わず、最終構成への切り替えとして外す。
 
 ## 再現性を確認する
 

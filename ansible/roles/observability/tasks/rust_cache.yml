@@ -1,0 +1,25 @@
+---
+# config/sync.rust.example.json builds with CARGO_TARGET_DIR in this directory.
+- name: Create the persistent Rust build cache
+  ansible.builtin.file:
+    path: "{{ observability_rust_cache_dir }}"
+    state: directory
+    owner: "{{ observability_rust_user }}"
+    group: "{{ observability_rust_user }}"
+    mode: '0755'
+  failed_when: false
+  register: observability_rust_cache
+
+- name: Find the Rust toolchain of the application user
+  ansible.builtin.command:
+    argv: [sudo, -u, "{{ observability_rust_user }}", bash, -lc, "cargo --version && rustc --version"]
+  register: observability_rust_toolchain
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Show Rust toolchain availability
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }} rust={{ observability_rust_toolchain.stdout_lines | join(' / ')
+      if observability_rust_toolchain.rc == 0 else 'unavailable for ' ~ observability_rust_user }}

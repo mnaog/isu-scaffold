@@ -62,7 +62,7 @@ baseline分析後: mainを並行worktreeへ取り込む
 - nodeの分類が誤っている場合はprovider入力やdraftを直して再生成し、生成物を手作業で直し続けない
 - importで配布先のdigestが一致しない場合は、sourceを確認するまで進めない
 - 初期状態をcommitし、`make deploy`、`make status`、明示的な`make rollback`で稼働プロセスまで旧構成へ戻ることを確認する
-- package導入は、レギュレーションを確認してからAnsible変数で明示的に有効化する
+- 計測と運用の土台は初動のAnsibleで固定化される。レギュレーションで禁止された項目だけ変数で外し、性能を変える設定は初回baselineの後に入れる
 - ベンチ接続はisuscopeの`command` modeを標準とし、手動入力の`external` modeを通常運用にしない
 - `make phase1-check`はベンチを起動しない。初回ベンチは独立した明示操作にする
 

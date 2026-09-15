@@ -21,8 +21,8 @@ source "${environment_file}"
 ssh_user=${SSH_USER:?SSH_USER is required}
 identity_file=${SSH_IDENTITY_FILE:?SSH_IDENTITY_FILE is required}
 known_hosts_file=${SSH_KNOWN_HOSTS_FILE:-.local/known-hosts}
-nginx_access_log=${ISUSCOPE_NGINX_ACCESS_LOG:-/var/log/nginx/access.log}
-mysql_slow_log=${ISUSCOPE_MYSQL_SLOW_LOG:-/var/log/mysql/mysql-slow.log}
+nginx_access_log=${ISUSCOPE_NGINX_ACCESS_LOG:-/var/log/nginx/isuscope-access.log}
+mysql_slow_log=${ISUSCOPE_MYSQL_SLOW_LOG:-/var/log/mysql/isuscope-slow.log}
 service_units=${ISUSCOPE_SERVICE_UNITS:-}
 isuscope_overrides=${local_dir}/isuscope-overrides.json
 if [[ -f "${isuscope_overrides}" ]]; then

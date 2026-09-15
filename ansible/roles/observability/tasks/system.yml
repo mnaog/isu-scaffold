@@ -1,0 +1,76 @@
+---
+- name: Install chrony for node clock synchronization
+  ansible.builtin.apt:
+    name: chrony
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when:
+    - observability_time_sync | bool
+    - ansible_facts.os_family == 'Debian'
+
+- name: Keep chrony running
+  ansible.builtin.systemd:
+    name: chrony
+    enabled: true
+    state: started
+  when:
+    - observability_time_sync | bool
+    - ansible_facts.os_family == 'Debian'
+
+- name: Create the journald drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: observability_persistent_journal | bool
+
+- name: Persist the journal with a size limit
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/60-isucon.conf
+    content: |
+      # Managed by ansible/roles/observability: keep app errors across reboots without filling the disk.
+      [Journal]
+      Storage=persistent
+      SystemMaxUse={{ observability_journal_max_use }}
+    owner: root
+    group: root
+    mode: '0644'
+  register: observability_journald
+  when: observability_persistent_journal | bool
+
+- name: Create the persistent journal directory
+  ansible.builtin.file:
+    path: /var/log/journal
+    state: directory
+    owner: root
+    group: systemd-journal
+    mode: '2755'
+  when: observability_persistent_journal | bool
+
+- name: Restart journald after changing its storage
+  ansible.builtin.systemd:
+    name: systemd-journald
+    state: restarted
+  when:
+    - observability_persistent_journal | bool
+    - observability_journald.changed
+
+- name: Stop automatic package updates during the contest
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+    - unattended-upgrades.service
+  register: observability_disabled_updates
+  failed_when:
+    - observability_disabled_updates.failed
+    - "'Could not find the requested service' not in (observability_disabled_updates.msg | default(''))"
+  when:
+    - observability_stop_auto_updates | bool
+    - ansible_facts.os_family == 'Debian'

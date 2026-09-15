@@ -1,0 +1,32 @@
+---
+- name: Create isuscope helper directory
+  ansible.builtin.file:
+    path: "{{ isuscope_fingerprint_directory }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install the repository fingerprint helper
+  ansible.builtin.copy:
+    src: "{{ isuscope_fingerprint_source }}"
+    dest: "{{ isuscope_fingerprint_path }}"
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install declared fingerprint paths
+  ansible.builtin.copy:
+    content: "{{ (isuscope_fingerprint_paths | join('\n')) ~ ('\n' if isuscope_fingerprint_paths | length > 0 else '') }}"
+    dest: "{{ isuscope_fingerprint_directory }}/fingerprint-paths"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Install remote tree digest helper
+  ansible.builtin.copy:
+    src: "{{ isuscope_tree_digest_source }}"
+    dest: "{{ isuscope_tree_digest_path }}"
+    owner: root
+    group: root
+    mode: '0755'
