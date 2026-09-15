@@ -147,7 +147,7 @@ make phase1-check
 - ベンチマークの実行方法を設定する
 - 必要なログとcollectorを設定する
 - 動的URLの正規化を設定する
-- Codex履歴を`docs/codex-history`へ紐付ける
+- Codex・Claude Codeの会話履歴を`docs/agent-history`へ紐付ける
 - 計測結果をリポジトリ内の`isuscope-data/`へ保存する
 - 軽量なrun履歴はGitへ残し、重要なrunだけ生ログもpinする
 - `isuscope doctor`を成功させる

@@ -27,7 +27,7 @@ isuscope-data/   isuscopeが保存するrunと分析結果
 | `infra/` | CloudFormationなど、AWS環境を再現するための構成定義を保存します。認証情報や実行ごとに変わる出力は含めません。 |
 | `ansible/` | SSH確立後のpackage、toolchain、isuscope helper、node検査を冪等に揃え、初期構成を調査します。問題固有値は変数へ設定します。 |
 | `scripts/` | `import`、`deploy`、`restart`、`status`、`rollback`など、ローカルから環境を操作する処理を置きます。通常操作はMakefileから呼び出します。 |
-| `docs/` | `official/`へ一次情報、`phases/`へ進行手順、`codex-history/`へ会話履歴を保存します。調査やシナリオ分析もここへ残します。 |
+| `docs/` | `official/`へ一次情報、`phases/`へ進行手順、`agent-history/`へCodex・Claude Codeの会話履歴を保存します。調査やシナリオ分析もここへ残します。 |
 | `AGENTS.md` | このリポジトリで作業するAI向け指示の正本です。Codexは直接、Claude Codeはsymlink経由で読み込みます。 |
 | `.claude/` | Claude Codeが`AGENTS.md`を起動時に読み込むためのrule symlinkを置きます。`CLAUDE.md`は作成しません。 |
 | `.isuscope/` | node、collector、route正規化、ベンチ実行方法など、isuscopeの計測設定を管理します。 |

@@ -13,7 +13,7 @@
 | `infra/` | CloudFormationなど、AWS環境を再現するための構成定義。認証情報や実行ごとに変わる出力は含めない。 |
 | `ansible/` | 全nodeの初期access、toolchain、observability前提を冪等に揃えるplaybookと変数。 |
 | `scripts/` | `import`、`deploy`、`restart`、`status`、`rollback`など、ローカルから環境を操作する処理。通常操作はMakefileから呼び出す。 |
-| `docs/` | `official/`へ一次情報、`phases/`へ進行手順、`codex-history/`へ会話履歴を保存する。調査やシナリオ分析もここへ残す。 |
+| `docs/` | `official/`へ一次情報、`phases/`へ進行手順、`agent-history/`へCodex・Claude Codeの会話履歴を保存する。調査やシナリオ分析もここへ残す。 |
 | `.claude/` | Claude Codeがこの`AGENTS.md`を起動時に読み込むためのrule symlink。`CLAUDE.md`は作成しない。 |
 | `.isuscope/` | node、collector、route正規化、ベンチ実行方法など、isuscopeの計測設定。 |
 | `isuscope-data/` | スコア、仮説、分析、Git状態など、isuscopeのrun。生ログは既定で除外し、重要なrunだけpinする。 |
@@ -107,7 +107,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 
 初回runのHTTP routeに動的IDが残っている場合は、`make routes-suggest RUN=<run-id>`で`.local/route-suggestions.toml`を作る。候補を確認したものだけ`.isuscope/routes.toml`へ移し、再計測する。
 
-`[context.codex]`を有効にした後のベンチは、会話履歴を正しく紐付けるため現在のCodexセッションから実行する。
+`[context.agent]`を有効にした後のベンチは、会話履歴を正しく紐付けるため現在のCodexまたはClaude Codeのセッションから実行する。
 
 ## 基本フロー
 

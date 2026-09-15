@@ -4,7 +4,7 @@
 
 1. ベンチ起動方法を調べ、標準のlocal、SSH、HTTP API方式なら`config/benchmark.env`へ設定する。保存した実出力を`config/benchmark-sample.log`へ置き、標準方式で表せない場合だけ`benchmark.sh`を拡張する
 2. 必要なら`parse-benchmark.sh`で問題固有のbenchmark出力をmetric JSONLへ変換する
-3. Codex会話履歴とrunを紐付ける場合は、新しいCodexセッションを開始する前に`UserPromptSubmit` hookを導入・信頼し、`[context.codex]`を有効化する
+3. Codex・Claude Codeの会話履歴とrunを紐付ける場合は、新しいセッションを開始する前に共通の会話履歴hook（`~/.agent-history/agent_history.py`）を導入・信頼し、`[context.agent]`を有効化する
 4. `make discover`が生成した`.isuscope/config.toml`のnode、role、identity fileを確認する。修正は生成物でなくprovider入力へ行う。roleは固定的な種類ではなく、複数指定・run間の変更が可能なcollector選択tag
 5. `make inspect`、`make configure-draft`で検出したlog pathを確認し、Nginxアクセスログに時刻、匿名化session、method、URIがあるか確認する
 6. 生成済みのsysstat、perf、host-sampler、service-sampler、alp、slp、optionalなperf-flamegraph/offcpu collectorを確認する。負荷を担う少数のsystemd unitを`ISUSCOPE_SERVICE_UNITS`へ指定し、不要なら空のままにする。アクセスログ・slow logのpathとformat（時系列用field名を含む）を実環境へ合わせる。Flame Graph scriptsや`offcputime-bpfcc`がなければcollectorは`unavailable`になる。既定commandはalp 1.0.21とslp 0.2.1で検証済み。ALPの正確なcount、status、sum/avg、p50/p95/p99集約のため、`routes.toml`はpatternにcomma、replaceに`$1`などのcaptureを使わず、1規則から固定canonical routeへ置換する
@@ -22,4 +22,4 @@ remote変更を行う場合は、既存ファイルのbackup、設定検証、at
 
 `benchmark.sh`、`parse-benchmark.sh`、`setup.sh`、`config.toml`、`routes.toml`、`setup-state.json`およびisuscopeのversionは各runの`tooling/`へsnapshotされます。序盤の`survey-run`完了後は、仮説付きの`run`、小さい全体像を返す`brief`、同じselectorでrun間比較する`query --base`、結果を残す`analyze`を標準フローにします。`report`、`diff`、`metrics`は詳細診断、`series`は時系列、`enrich`は保存済みlogの再解析、`ui`は人が複数runを横断する用途に使います。
 
-`[context.codex]`を有効にした場合、runは`CODEX_SESSION_ID`または`CODEX_THREAD_ID`と一致するhistory fileだけを採用し、最後のUser `turn_id`をinput IDとして保存します。通常ターミナル、別セッション、hook未起動ではfallbackせず、benchmarkを開始しません。
+`[context.agent]`を有効にした場合、runはCodexの`CODEX_SESSION_ID`／`CODEX_THREAD_ID`、またはClaude Codeの`CLAUDE_CODE_SESSION_ID`と一致するhistory fileだけを採用し、最後のUser入力のID（Codexは`turn_id`、Claude Codeは`prompt_id`）をinput IDとして保存します。通常ターミナル、別セッション、hook未起動ではfallbackせず、benchmarkを開始しません。
