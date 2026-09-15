@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
 import sys
+import tomllib
 from collections import Counter
 from pathlib import Path
+
+REPO_DIR = Path(__file__).resolve().parent.parent
+# Deploying all of webapp/ copies the initial data on every release; deploy the adopted
+# language and small schema/init files instead and leave the data on the nodes.
+SQL_SUFFIXES = {".sql", ".sh"}
+SQL_MAX_BYTES = 1024 * 1024
 
 
 ROLE_RULES = {
@@ -81,6 +89,41 @@ def application_root(reports: list[dict]) -> str | None:
     return sorted(counts, key=lambda path: (-counts[path], "/webapp" not in path, len(path), path))[0]
 
 
+def read_application_env() -> dict[str, str]:
+    values = {}
+    path = REPO_DIR / "config/application.env"
+    if path.is_file():
+        for line in path.read_text().splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                key, value = line.split("=", 1)
+                values[key.strip()] = value.strip().strip("'\"")
+    return values
+
+
+def rust_binary_name(application_dir: Path) -> str | None:
+    manifest = application_dir / "Cargo.toml"
+    if not manifest.is_file():
+        return None
+    with manifest.open("rb") as source:
+        cargo = tomllib.load(source)
+    binaries = cargo.get("bin") or []
+    if binaries and binaries[0].get("name"):
+        return binaries[0]["name"]
+    return cargo.get("package", {}).get("name")
+
+
+def rust_service(service_fragments: list[str]) -> tuple[str, str] | None:
+    for line in sorted(service_fragments):
+        parts = line.split("\t", 1)
+        if len(parts) == 2 and "rust" in parts[0] and parts[1].startswith("/etc/systemd/system/"):
+            return parts[0].removesuffix(".service"), parts[1]
+    return None
+
+
+def safe_name(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-.")
+
+
 def application_owner(reports: list[dict], root: str | None) -> tuple[str, str] | None:
     if not root:
         return None
@@ -139,11 +182,16 @@ def main() -> int:
     mysql_logs = [path for report in reports.values() for path in report.get("mysql_slow_logs", [])]
     config_paths = [path for report in reports.values() for path in report.get("configuration_paths", [])]
     service_fragments = []
+    service_fragment_lines = []
     for report in reports.values():
         for line in report.get("service_fragments", []):
             parts = line.split("\t", 1)
             if len(parts) == 2 and parts[1].startswith("/etc/systemd/system/"):
                 service_fragments.append(parts[1])
+                service_fragment_lines.append(line)
+    application_env = read_application_env()
+    application_language = application_env.get("APPLICATION_LANGUAGE", "")
+    application_path = application_env.get("APPLICATION_PATH", "")
 
     default_user = inventory["all"]["vars"]["ansible_user"]
     default_source = next(iter(application_hosts))
@@ -152,8 +200,91 @@ def main() -> int:
         return next((node for node, roles in roles_by_node.items() if role in roles), default_source)
 
     items = []
-    if root:
+    build_commands = []
+    language_commands = []
+    language_status = []
+    draft_warnings = []
+    local_application = REPO_DIR / application_path if application_path else None
+    if root and application_language == "rust" and application_path.startswith("webapp/") and local_application.is_dir():
         app_owner, app_group = detected_owner or (default_user, default_user)
+        relative = application_path.removeprefix("webapp/")
+        # Prefer the directory whose Cargo.toml was actually found on the nodes; the common
+        # application root can be broader (for example /home/isucon) when other projects exist.
+        manifests = sorted({
+            str(Path(candidate).parent)
+            for report in reports.values()
+            for candidate in report.get("application_candidates", [])
+            if Path(candidate).name == "Cargo.toml" and Path(candidate).parent.name == Path(relative).name
+        }, key=lambda path: ("/webapp/" not in path, len(path)))
+        remote_application = manifests[0] if manifests else f"{root}/{relative}"
+        webapp_root = str(Path(remote_application).parent)
+        items.append({
+            "name": "rust-app",
+            "type": "directory",
+            "node_group": "role_app",
+            "local": application_path,
+            "remote": remote_application,
+            "owner": app_owner,
+            "owner_group": app_group,
+        })
+        example = read_json(REPO_DIR / "config/sync.rust.example.json")
+        binary = rust_binary_name(local_application)
+        service = rust_service(service_fragment_lines)
+        if not binary:
+            draft_warnings.append("Rust binary name was not found in Cargo.toml; replace replace-with-binary-name")
+        if not service:
+            running_units = sorted({
+                line.split("\t", 1)[0] for line in service_fragment_lines
+                if any(token in line for token in ("isu", "webapp", "app"))
+            })
+            draft_warnings.append(
+                "Rust systemd unit was not found (application units: "
+                + (", ".join(running_units) or "none")
+                + "); create config/systemd/<name>.service for Rust, add it as a sync item, "
+                "and add its restart/is-active commands before switching from the current implementation"
+            )
+        service_name = service[0] if service else "replace-with-service-name"
+
+        def adapt(command: str) -> str:
+            return (command.replace("replace-with-binary-name", binary or "replace-with-binary-name")
+                    .replace("replace-with-service-name", service_name))
+
+        build_commands = [dict(command, node_group="role_app", command=adapt(command["command"]))
+                          for command in example["build_commands"]]
+        if service:
+            language_commands = [{"node_group": "role_app", "command": adapt(command["command"])}
+                                 for command in example["post_deploy_commands"]]
+            language_status = [adapt(command) for command in example["status_commands"]]
+        if service:
+            items.append({
+                "name": "rust-service",
+                "type": "file",
+                "node_group": "role_app",
+                "local": f"config/systemd/{service[0]}.service",
+                "remote": service[1],
+                "owner": "root",
+                "owner_group": "root",
+            })
+        sql_dir = REPO_DIR / "webapp/sql"
+        if sql_dir.is_dir():
+            for path in sorted(sql_dir.rglob("*")):
+                if not path.is_file() or path.is_symlink() or path.suffix not in SQL_SUFFIXES:
+                    continue
+                if path.stat().st_size > SQL_MAX_BYTES:
+                    continue
+                relative_sql = path.relative_to(sql_dir).as_posix()
+                items.append({
+                    "name": "sql-" + safe_name(relative_sql),
+                    "type": "file",
+                    "node_group": "role_app",
+                    "local": f"webapp/sql/{relative_sql}",
+                    "remote": f"{webapp_root}/sql/{relative_sql}",
+                    "owner": app_owner,
+                    "owner_group": app_group,
+                })
+    elif root:
+        app_owner, app_group = detected_owner or (default_user, default_user)
+        draft_warnings.append("the adopted Rust code is not imported locally; the draft falls back to deploying all of webapp/")
         items.append({
             "name": "webapp",
             "type": "directory",
@@ -193,14 +324,18 @@ def main() -> int:
             {"node_group": "role_nginx", "command": "sudo nginx -t"},
             {"node_group": "role_nginx", "command": "sudo systemctl reload nginx"},
         ]
+    post_commands += language_commands
     post_commands += [f"sudo systemctl is-active --quiet {service}" for service in common_services]
-    status_commands = [f"systemctl is-active {service}" for service in common_services]
+    status_commands = language_status + [
+        f"systemctl is-active {service}" for service in common_services
+        if f"systemctl is-active {service}" not in language_status
+    ]
     sync = {
         "source_node": default_source,
-        "minimum_free_mb_after_deploy": 1024,
+        "minimum_free_mb_after_deploy": 2048 if build_commands else 1024,
         "pre_deploy_command": "",
         "items": items,
-        "build_commands": [],
+        "build_commands": build_commands,
         "post_deploy_commands": post_commands,
         "rollback_commands": post_commands,
         "status_commands": status_commands,
@@ -232,7 +367,7 @@ def main() -> int:
         "ISUSCOPE_MYSQL_SLOW_LOG": most_common(mysql_logs) or "/var/log/mysql/mysql-slow.log",
         "ISUSCOPE_SERVICE_UNITS": " ".join(observable_service_units),
     }
-    warnings = []
+    warnings = list(draft_warnings)
     if not root:
         warnings.append("application root was not detected")
     elif not detected_owner:

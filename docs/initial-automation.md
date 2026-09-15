@@ -27,6 +27,8 @@ make phase1-check
 
 続いて先行回収のcommitから別worktreeを作り、読む対象・修正範囲・検証方法・mainへの報告形式をまとめた引き継ぎ文を`<worktree>/.local/phase1-handoff.md`へ生成します。worktreeの場所は途中と最後に表示されるので、別セッションにこのファイルを読ませて開始します。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。
 
+Rustを採用しているため、draftは`webapp/`全体ではなく、`webapp/rust`（`sync.rust.example.json`のbuild設定とCargo.tomlのbinary名つき）、Rustのsystemd unit、`webapp/sql`内の1MiB以下の`.sql`・`.sh`、nginx・MySQL設定だけを同期対象に提案します。初期データはnodeに残し、配布しません。初期状態でRust用unitがない場合（他言語のunitだけが動いている場合）はrestart commandを入れずWARNにするので、unitを`config/systemd/`へ作ってitemとcommandを足してから切り替えます。
+
 draft reviewはnodeごとに1回のSSHで事実を集め、次をFAILにします。
 
 - 同期itemの配置先が`/`、`/etc`、`/home/isucon`などの広いsystem path、またはitem同士で重なる

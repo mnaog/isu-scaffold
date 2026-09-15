@@ -41,6 +41,7 @@ cp "${source_repo}/.isuscope/config.template.toml" \
 cp "${source_repo}/config/environment.example.env" "${fixture_repo}/.local/environment.env"
 cp "${source_repo}/config/nodes.example.json" "${fixture_repo}/.local/nodes.json"
 cp "${source_repo}/config/sync.example.json" "${fixture_repo}/config/sync.json"
+cp "${source_repo}/config/sync.rust.example.json" "${fixture_repo}/config/sync.rust.example.json"
 cp "${source_repo}/config/ansible-vars.json" "${fixture_repo}/config/ansible-vars.json"
 cp "${source_repo}/config/application.env" "${fixture_repo}/config/application.env"
 jq '.[0] as $app1 | . + [$app1 + {name:"app2", host:"192.0.2.11"}]' \
@@ -467,7 +468,7 @@ cat >"${fixture_repo}/.local/inspection/app1.json" <<'EOF'
   "application_candidates":["/home/isucon/webapp/go.mod"],
   "application_candidate_ownership":["/home/isucon/webapp/go.mod\tisucon\tisucon"],
   "configuration_paths":["/etc/nginx/nginx.conf","/etc/mysql"],
-  "service_fragments":["nginx.service\t/etc/systemd/system/nginx.service"],
+  "service_fragments":["nginx.service\t/etc/systemd/system/nginx.service","isu-rust.service\t/etc/systemd/system/isu-rust.service"],
   "nginx_access_logs":["/var/log/nginx/custom.log"],
   "mysql_slow_logs":["/var/log/mysql/slow.log"],
   "versions":{"nginx":"nginx/1","mysql":"mysql 8","perf":"perf 6","sar":"sar 12","alp":"alp 1","slp":"slp 1"}
@@ -486,10 +487,21 @@ cat >"${fixture_repo}/.local/inspection/app2.json" <<'EOF'
   "versions":{"nginx":"nginx/1","mysql":"","perf":"perf 6","sar":"sar 12","alp":"alp 1","slp":"slp 1"}
 }
 EOF
+printf '[package]\nname = "isu-app"\nversion = "0.1.0"\n' >"${fixture_repo}/webapp/rust/Cargo.toml"
 (cd "${fixture_repo}" && ./scripts/configure-draft.sh)
 jq -e '.items | any(.node_group == "role_mysql" and .source_node == "app1")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
-jq -e '.items | any(.name == "webapp" and .owner == "isucon" and .owner_group == "isucon")' \
+# Rustを採用した場合、webapp全体ではなくRust実装・unit・小さいSQLだけを配布候補にします。
+jq -e '.items | all(.name != "webapp")' "${fixture_repo}/.local/draft/sync.json" >/dev/null
+jq -e '.items | any(.name == "rust-app" and .local == "webapp/rust" and .remote == "/home/isucon/webapp/rust" and .owner == "isucon")' \
+  "${fixture_repo}/.local/draft/sync.json" >/dev/null
+jq -e '.items | any(.name == "rust-service" and .remote == "/etc/systemd/system/isu-rust.service")' \
+  "${fixture_repo}/.local/draft/sync.json" >/dev/null
+jq -e '.items | any(.name == "sql-schema.sql" and .remote == "/home/isucon/webapp/sql/schema.sql")' \
+  "${fixture_repo}/.local/draft/sync.json" >/dev/null
+jq -e '.build_commands[0].item == "rust-app" and (.build_commands[0].command | contains("release/isu-app")) and (.build_commands[0].command | contains("replace-with") | not)' \
+  "${fixture_repo}/.local/draft/sync.json" >/dev/null
+jq -e '.post_deploy_commands | any(.command == "sudo systemctl restart isu-rust")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
 jq -e '.post_deploy_commands | any(.node_group == "role_nginx" and .command == "sudo nginx -t")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
