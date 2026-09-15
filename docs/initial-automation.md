@@ -11,21 +11,32 @@ mkdir -p .local
 cp config/environment.example.env .local/environment.env
 ```
 
-コードレーンを最短で開始する場合は次の順で実行します。
+初動は次の2コマンドで進めます。採用言語はRustに固定しており、`config/application.env`の`APPLICATION_LANGUAGE=rust`、`APPLICATION_PATH=webapp/rust`を使います。問題にRust実装がない場合だけ、このファイルを書き換えてから始めます。
 
 ```bash
-make kickoff-code LANGUAGE=rust
-# config/application.env、webapp/rust、webapp/sqlを確認して初期commit
-make kickoff-code-ready
-# 別worktreeでコード読解を開始し、mainへ戻る
-make kickoff-draft
-CONFIRM_DRAFT=true make kickoff-apply LANGUAGE=rust
+make kickoff
+# 表示されたworktreeで別セッションのコード読解を始める
+# .local/draft/review.mdのFAILを直し、WARNを判断する
+CONFIRM_DRAFT=true make kickoff-apply
+# importを確認して初期状態をcommit
+make deploy
 make phase1-check
 ```
 
-`kickoff-code`はnode発見後、回収元の1台（既定では最初のapplication node）だけSSHを確立し、`/home/isucon/webapp/<language>`と`/home/isucon/webapp/sql`のDDL・初期化script（`.sql`、`.sh`、`.py`、`.rb`、`.pl`）だけを先行回収します。1ファイル1MiB・合計16MiBを超えるものやそれ以外の初期データは後回しにし、`.local/code-schema-manifest.log`へ`INCLUDED`／`DEFERRED`として記録します。上限は`CODE_SCHEMA_MAX_FILE_BYTES`、`CODE_SCHEMA_MAX_TOTAL_BYTES`で変更できます。残りのnodeのSSH確立はmainの`kickoff-draft`が担当します。生成物の`target`、`node_modules`、`.git`は除外します。pathが異なる場合は`CODE_SOURCE_NODE`、`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`、`CODE_SCHEMA_PATH`をコマンドの環境変数で明示します。この回収はコード読解開始用の暫定snapshotであり、全node一致の保証は後続の完全importが担当します。
+`kickoff`はまずnode発見後、回収元の1台（既定では最初のapplication node）だけSSHを確立し、`/home/isucon/webapp/rust`と`/home/isucon/webapp/sql`のDDL・初期化script（`.sql`、`.sh`、`.py`、`.rb`、`.pl`）だけを先行回収します。1ファイル1MiB・合計16MiBを超えるものやそれ以外の初期データは後回しにし、`.local/code-schema-manifest.log`へ`INCLUDED`／`DEFERRED`として記録します。上限は`CODE_SCHEMA_MAX_FILE_BYTES`、`CODE_SCHEMA_MAX_TOTAL_BYTES`で変更できます。生成物の`target`、`node_modules`、`.git`は除外します。pathが異なる場合は`CODE_SOURCE_NODE`、`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`、`CODE_SCHEMA_PATH`を環境変数で明示します。回収した`config/application.env`、`webapp/rust`、`webapp/sql`だけを自動commitし、他の未commit変更は含めません。この回収はコード読解開始用の暫定snapshotであり、全node一致の保証は後続の完全importが担当します。
 
-`kickoff-code-ready`は先行回収範囲がcommit済みであることを確認してworktreeを作り、読む対象・修正範囲・検証方法・mainへの報告形式をまとめた引き継ぎ文を`<worktree>/.local/phase1-handoff.md`へ生成します。別セッションにはこのファイルを読ませて開始します。`kickoff-draft`はbootstrap、inspection、draft生成を行って停止します。`kickoff-apply`は確認済みdraftの反映、再discover、sync検査、完全import、採用言語の固定まで進めます。ベンチ前gateは`make phase1-check`を一度だけ実行します。個別の段階をやり直す場合は、以下の各節にある`scripts/`のscriptを直接実行します。自動commit、初回`survey-run`、mergeは行いません。
+続いて先行回収のcommitから別worktreeを作り、読む対象・修正範囲・検証方法・mainへの報告形式をまとめた引き継ぎ文を`<worktree>/.local/phase1-handoff.md`へ生成します。worktreeの場所は途中と最後に表示されるので、別セッションにこのファイルを読ませて開始します。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。
+
+draft reviewはnodeごとに1回のSSHで事実を集め、次をFAILにします。
+
+- 同期itemの配置先が`/`、`/etc`、`/home/isucon`などの広いsystem path、またはitem同士で重なる
+- 配置先が存在しない、draftのdirectory／fileと種類が違う、ownerやgroupがnodeに存在しない
+- 対象groupにnodeがいない、source nodeが対象groupに含まれない、roleのないnodeがある
+- `post_deploy_commands`や`status_commands`で確認するserviceが動いていない
+
+512MiBを超える配布item、読めないlog、draft生成時の警告、nginx／db roleの欠落はWARNです。結果は`.local/draft/review.md`へ残ります。FAILがある場合`kickoff`は非0で終わり、draftを直して`python3 scripts/review-draft.py`で再検査します。`kickoff-apply`は反映前にもう一度同じ検査を行い、FAILなら何も変更しません。WARNの判断は、`review.md`を読んだ操作者（人間またはその作業セッション）が行います。
+
+`kickoff-apply`は検査済みdraftの反映、再discover、sync検査、完全import、採用言語の固定まで進めます。ベンチ前gateは`make phase1-check`を一度だけ実行します。個別の段階をやり直す場合は、以下の各節にある`scripts/`のscriptを直接実行します。初回`survey-run`、deploy、mergeは自動実行しません。
 
 SSH確立はinventoryのnode名で重複排除し、`SSH_MAX_PARALLEL_NODES`（既定5）台ずつ並列に行います。完全importはnodeごとに全itemのdigestを1回のSSHでまとめて計算し（`IMPORT_MAX_PARALLEL_NODES`、既定5）、localの内容がsourceのdigestと一致するitemは再転送しません。全itemのstagingと検証が終わるまで既存のlocalを置き換えず、途中で失敗した場合は元へ戻します。Ansible requirementsは内容hashが同じなら再installせず、bootstrap内のapplication nodeのfact収集も一度だけです。
 

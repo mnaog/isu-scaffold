@@ -9,7 +9,7 @@ test -f "${declaration}" || { echo "missing ${declaration}" >&2; exit 1; }
 source "${declaration}"
 
 test -n "${APPLICATION_LANGUAGE:-}" || {
-  echo "set the application language first: ./scripts/set-application-language.sh <name>" >&2
+  echo "set APPLICATION_LANGUAGE and APPLICATION_PATH in config/application.env" >&2
   exit 1
 }
 test -n "${APPLICATION_PATH:-}" || { echo "APPLICATION_PATH is empty" >&2; exit 1; }

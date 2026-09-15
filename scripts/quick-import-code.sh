@@ -110,5 +110,3 @@ fi
 "${script_dir}/set-application-language.sh" "${language}" "${application_path}"
 
 echo "quick code import complete from ${source_node}; schema omissions: .local/code-schema-manifest.log"
-echo "review and commit config/application.env, ${application_path}, and ${schema_path} if present"
-echo "then run: make kickoff-code-ready"

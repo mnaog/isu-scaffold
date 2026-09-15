@@ -28,6 +28,7 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/schema-archive.py \
   "${source_repo}"/scripts/tree-digest.py \
   "${source_repo}"/scripts/configure-draft.py \
+  "${source_repo}"/scripts/review-draft.py \
   "${source_repo}"/scripts/configure-draft.sh \
   "${source_repo}"/scripts/configure-apply.sh \
   "${source_repo}"/scripts/set-application-language.sh \
@@ -183,6 +184,52 @@ http_result=$(cd "${fixture_repo}" && \
   ./.isuscope/benchmark.sh | tail -n 1)
 jq -e '.score == 77 and .pass == true' <<<"${http_result}" >/dev/null
 
+
+# draft reviewはnodeごとの事実をSSHで集め、危険な配置先・実在しないpath・停止中serviceをFAILにします。
+review_dir=${fixture_repo}/.local/review
+mkdir -p "${review_dir}/draft" "${review_dir}/facts"
+cat >"${review_dir}/ssh-node" <<'EOF'
+#!/usr/bin/env bash
+cat "${REVIEW_FACTS_DIR:?}/$1"
+EOF
+chmod +x "${review_dir}/ssh-node"
+printf '[{"name":"app1","roles":["app","nginx","db"]},{"name":"app2","roles":["app","nginx","db"]}]\n' \
+  >"${review_dir}/draft/node-overrides.json"
+printf '{}\n' >"${review_dir}/draft/ansible-vars.json"
+printf '{"ISUSCOPE_NGINX_ACCESS_LOG":"/var/log/nginx/access.log","ISUSCOPE_MYSQL_SLOW_LOG":"/var/log/mysql/mysql-slow.log"}\n' \
+  >"${review_dir}/draft/isuscope.json"
+write_facts() {
+  local node=$1 webapp_kind=$2 webapp_kb=$3 service_state=$4
+  printf 'path\t/home/isucon/webapp/rust\t%s\t%s\nuser\tisucon\tyes\ngroup\tisucon\tyes\nservice\tisu.service\t%s\nlog\t/var/log/nginx/access.log\tyes\nlog\t/var/log/mysql/mysql-slow.log\tno\n' \
+    "${webapp_kind}" "${webapp_kb}" "${service_state}" >"${review_dir}/facts/${node}"
+}
+write_sync() {
+  jq -n --arg remote "$1" '{source_node:"app1", items:[{name:"webapp", type:"directory", node_group:"application", local:"webapp/rust", remote:$remote, owner:"isucon", owner_group:"isucon"}], post_deploy_commands:["sudo systemctl is-active --quiet isu.service"], status_commands:[]}' \
+    >"${review_dir}/draft/sync.json"
+}
+run_review() {
+  REVIEW_FACTS_DIR="${review_dir}/facts" python3 "${fixture_repo}/scripts/review-draft.py" \
+    "${fixture_repo}/.local/ansible-inventory.json" "${review_dir}/draft" "${review_dir}/ssh-node"
+}
+
+write_sync /home/isucon/webapp/rust
+write_facts app1 directory 2048 active
+write_facts app2 directory 999999 active
+run_review >/dev/null
+grep -q '^FAIL 0 / WARN 3 ' "${review_dir}/draft/review.md"
+grep -q 'WARN app2: webapp is .* MiB' "${review_dir}/draft/review.md"
+grep -q 'WARN app1: log not readable: /var/log/mysql/mysql-slow.log' "${review_dir}/draft/review.md"
+
+write_sync /home/isucon
+write_facts app2 missing 0 inactive
+set +e
+run_review >/dev/null
+review_exit=$?
+set -e
+test "${review_exit}" -eq 1
+grep -q 'FAIL webapp would replace a broad system path: /home/isucon' "${review_dir}/draft/review.md"
+grep -q 'FAIL app2: webapp remote path does not exist' "${review_dir}/draft/review.md"
+grep -q 'FAIL app2: service isu.service is inactive' "${review_dir}/draft/review.md"
 
 # importは全nodeのdigest一致を確認してからsource nodeを回収します。
 fake_remote=${fixture_repo}/.local/fake-remote

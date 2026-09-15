@@ -46,19 +46,17 @@
 大会開始後は、`config/environment.example.env`を`.local/environment.env`へコピーしてprovider、SSH、node分類を設定し、次の順で初動を進める。
 
 ```text
-make kickoff-code LANGUAGE=<name>
-  → node発見と回収元1台のSSH確立後、採用言語のコードとDDLだけを先行回収
-先行回収した範囲を確認して初期commit、make kickoff-code-ready
-  → 別worktreeでコード読解と自明な修正を開始
-mainでmake kickoff-draft
-  → 選択した方式でSSH確立、Ansible導入、全nodeの初期収束
-  → remoteを変更せず初期構成を.local/inspectionへ保存
+make kickoff
+  → 回収元1台のSSH確立後、webapp/rustとDDLを先行回収し、その範囲だけ自動commit
+  → 別worktreeと引き継ぎ文を作成（ここでコード読解セッションを開始）
+  → 全nodeのSSH確立、Ansible導入、初期収束、初期構成の調査
   → node role、同期対象、Ansible変数、log pathの候補を.local/draftへ生成
-draftを確認後、CONFIRM_DRAFT=true make kickoff-apply LANGUAGE=<name>
-  → 全配布先のdigest一致を確認して完全import。先行回収したコードもここで再検証
+  → draftを実nodeと照合し、.local/draft/review.mdを出して停止
+review.mdのFAILを直し、WARNをすべて判断してからCONFIRM_DRAFT=true make kickoff-apply
+  → draftを再検査して反映し、全配布先のdigest一致を確認して完全import
 make deploy
   → 全台preflight・staging後に切り替え、失敗時はtransaction全体を復旧
-config/benchmark.envを設定して.isuscope/benchmark.sh --check、.isuscope/benchmark.sh --probe
+config/benchmark.envを設定して.isuscope/benchmark.sh --check、--probe
 make phase1-check
   → 全node、同期、ベンチadapterと接続先、isuscope doctorをベンチなしで検査
 isuscope survey-run --hypothesis "..."
@@ -67,7 +65,7 @@ isuscope survey-run --hypothesis "..."
   → deployし、通常のisuscope runでbaselineと比較
 ```
 
-`kickoff-code`は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は、従来どおり`kickoff-apply`のimportで完了する。`kickoff-code-ready`はworktreeが既にあれば再利用する。main側のベンチ前gateは`make phase1-check`で行う。`make`は初動・deploy・検査の入口だけに絞っており、個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
+採用言語はRustに固定する（`config/application.env`）。先行回収は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は`kickoff-apply`のimportで完了する。`kickoff`は再実行でき、回収済みならimportを飛ばし、worktreeも再利用する。draftの判断は`review.md`を読んだ操作者（人間またはこのセッション）が行い、`make`の中で別のAIを呼んで承認させない。`make`は初動・deploy・検査の入口だけに絞っており、個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
 
 - `discover`と`bootstrap`は冪等に保ち、再実行で既存環境を壊さない。
 - package導入、sudo権限、ログ設定は当日のレギュレーションを確認してからAnsible変数で明示的に有効化する。

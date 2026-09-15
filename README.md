@@ -44,20 +44,17 @@ isuscope-data/   isuscopeが保存するrunと分析結果
 mkdir -p .local
 cp config/environment.example.env .local/environment.env
 
-make kickoff-code LANGUAGE=<name>
-# 先行回収したコードとschemaを確認して初期commit
-make kickoff-code-ready
-# 別worktreeでコード読解を開始し、mainは次へ進む
-make kickoff-draft
-# .local/draft/を確認・修正する
-CONFIRM_DRAFT=true make kickoff-apply LANGUAGE=<name>
+make kickoff
+# 表示されたworktreeで別セッションのコード読解を始める
+# .local/draft/review.mdのFAILを直し、WARNを判断する
+CONFIRM_DRAFT=true make kickoff-apply
 # 初期状態をcommitし、対象roleと検証・再起動commandを確認する
 make deploy
 make phase1-check
 isuscope survey-run --hypothesis "初期状態の負荷構造を記録する"
 ```
 
-`kickoff-draft`は、Ansible導入、node発見、SSH確立、全nodeの初期収束、初期構成の調査を行い、node role、同期対象、Ansible変数、isuscopeのlog path候補を`.local/draft/`へ作ります。所有者、配置先、service名は大会環境によって異なるため、人間が確認したdraftだけを`kickoff-apply`で反映します。`kickoff-apply`はdraft反映、再discover、sync検査、完全import、採用言語の固定まで進めます。初回ベンチ、deploy、mergeは自動実行しません。
+採用言語はRustに固定しています（`config/application.env`）。`kickoff`は先行回収したコードをcommitして並行worktreeを作り、Ansible導入、node発見、SSH確立、全nodeの初期収束、初期構成の調査を行って、node role、同期対象、Ansible変数、isuscopeのlog path候補を`.local/draft/`へ作ります。最後にdraftを実nodeと照合し、危険な配置先、存在しないpath、停止中のserviceなどを`.local/draft/review.md`へFAIL／WARNとして出して停止します。`kickoff-apply`は反映前にもう一度検査し、draft反映、再discover、sync検査、完全import、採用言語の固定まで進めます。初回ベンチ、deploy、mergeは自動実行しません。
 
 EC2の再起動などでIPが変わったら`make discover`で設定を再生成します。ベンチadapterを調整している間は`.isuscope/benchmark.sh --check`と`--probe`で、ベンチを起動せずに確認できます。途中の段階だけをやり直す場合は`scripts/`の該当scriptを直接実行します。
 
