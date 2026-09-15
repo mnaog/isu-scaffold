@@ -13,11 +13,22 @@
 | `infra/` | CloudFormationなど、AWS環境を再現するための構成定義。認証情報や実行ごとに変わる出力は含めない。 |
 | `ansible/` | 全nodeの初期access、toolchain、observability前提を冪等に揃えるplaybookと変数。 |
 | `scripts/` | `import`、`deploy`、`restart`、`status`、`rollback`など、ローカルから環境を操作する処理。通常操作はMakefileから呼び出す。 |
-| `docs/` | `official/`へ一次情報、`phases/`へ進行手順、`agent-history/`へCodex・Claude Codeの会話履歴を保存する。調査やシナリオ分析もここへ残す。 |
+| `docs/` | `official/`へ一次情報、`phases/`へ進行手順、`agent-history/`へCodex・Claude Codeの会話履歴（自動生成）を保存する。調査やシナリオ分析もここへ残す。 |
 | `.claude/` | Claude Codeがこの`AGENTS.md`を起動時に読み込むためのrule symlink。`CLAUDE.md`は作成しない。 |
 | `.isuscope/` | node、collector、route正規化、ベンチ実行方法など、isuscopeの計測設定。 |
 | `isuscope-data/` | スコア、仮説、分析、Git状態など、isuscopeのrun。生ログは既定で除外し、重要なrunだけpinする。 |
 | `.local/` | Public IP、秘密情報、AWSの一時出力など、環境固有の情報。Git管理しない。 |
+
+## 過去の記録の手がかり
+
+| 記録 | 場所 | 内容 |
+| --- | --- | --- |
+| 会話履歴 | `docs/agent-history/` | Codex・Claude Codeとの会話の縮約版（人間の入力、AIの最終回答、commit）。1ファイルが1セッションで、headerの`- Agent:`と`- Session:`で識別する。共通hook `~/.agent-history/agent_history.py`が自動生成するため、手で編集しない。形式は同ディレクトリの`Readme.md`を参照。 |
+| ベンチ記録 | `isuscope-data/` | score、仮説、分析、採否。`isuscope list`、`isuscope brief <run>`で読む。runの`agent_context`から、そのベンチを実行した会話の位置が分かる。 |
+| Codexの生ログ | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | 縮約版にない推論・ツール操作を含む。ローカルのみ。 |
+| Claude Codeの生ログ | `~/.claude/projects/<作業ディレクトリのパスの/を-にした名前>/<Session>.jsonl` | 同上。 |
+
+生ログは内部形式が非公開で変わり得るため読むだけにし、秘密情報を含み得るのでリポジトリへコピーしない。
 
 ## 作業ルール
 
@@ -77,7 +88,7 @@ make survey HYPOTHESIS="..."
 
 ## isuscopeの使い方
 
-このリポジトリでは、ベンチマークの測定結果と改善履歴をisuscopeで管理する。
+このリポジトリでは、ベンチマークの測定結果と改善履歴をisuscopeで管理する。isuscopeは、ベンチ1回ごとにscore、仮説、Gitの状態、HTTP・SQL・CPUの計測、会話の位置を1つのrunとして記録する自作CLIである。仕様とオプションは`isuscope --help`とリポジトリ（github.com/mnaog/isuscope）のREADMEを正とする。
 
 初回だけ`.isuscope/SETUP.md`に従って設定し、`make isuscope-doctor`を通してから`make survey`で初期状態と行動遷移を一度だけ記録する。
 
