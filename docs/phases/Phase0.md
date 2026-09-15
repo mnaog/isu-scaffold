@@ -9,7 +9,6 @@
 - テンプレートを大会用ディレクトリへコピーする
 - `git init`して初期状態をコミットする
 - GitHubにprivateリポジトリを作成してpushする
-- `make repo-init REPO=<name>`を使う場合はGitHub CLIの認証を確認する
 - `./scripts/ansible-install.sh`を実行し、controllerでAnsibleが起動することを確認する
 - 作成したリポジトリがprivateであることを確認する
 - 大会用リポジトリ内からCodexを起動する

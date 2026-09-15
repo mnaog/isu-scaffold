@@ -1,8 +1,7 @@
-.PHONY: help repo-init discover kickoff-code kickoff-code-ready kickoff-draft kickoff-apply deploy rollback status phase1-check test
+.PHONY: help discover kickoff-code kickoff-code-ready kickoff-draft kickoff-apply deploy rollback status phase1-check test
 
 help:
 	@printf '%s\n' \
-		'make repo-init REPO=<name>            private GitHub repositoryを作成する' \
 		'make discover                         providerからnodeと全設定を再生成する' \
 		'make kickoff-code LANGUAGE=<name>     SSH確立後にコードとschemaだけ先行回収する' \
 		'make kickoff-code-ready               commit済みコードから並行worktreeを作る' \
@@ -13,10 +12,6 @@ help:
 		'make status                           全application nodeを検査する' \
 		'make phase1-check                     ベンチ前の全node・isuscope検査を行う' \
 		'make test                             local fixtureで生成とadapterを検査する'
-
-repo-init:
-	@test -n "$(REPO)" || { echo 'REPO=<name>を指定してください' >&2; exit 2; }
-	@./scripts/repo-init.sh "$(REPO)"
 
 discover:
 	@./scripts/discover.sh
