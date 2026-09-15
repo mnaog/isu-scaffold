@@ -53,56 +53,18 @@ baseline分析後: mainを並行worktreeへ取り込む
 
 認証情報、Cookie、SSH秘密鍵などは保存しない。
 
-## AWS環境を立ち上げる
+## 環境を立ち上げて初期状態を保存する
 
-公式手順に従って、大会・練習用のAWS環境を立ち上げる。
+コマンドと各段階の詳細は[初動自動化](../initial-automation.md)を正とする。ここでは判断基準だけを定める。
 
-- 使用するAWSアカウントとリージョンを確認する
-- CloudFormationなどの構成定義をローカルへ保存する
-- コマンドから環境を作成できるようにする
-- 作成されたサーバー、IPアドレス、役割を確認する
-- SSH接続を確認する
-- 停止、再開、削除方法を確認する
-- AWSの認証情報はGitへ保存しない
-
-AWS環境の構成定義もローカルを正とする。
-
-## 接続先を発見して初期状態を揃える
-
-`config/environment.example.env`を`.local/environment.env`へコピーし、CloudFormationまたはstatic provider、SSH、node分類を設定する。
-
-```bash
-make discover
-./scripts/bootstrap.sh
-```
-
-`discover`が生成した`.local/nodes.snapshot.json`、`.local/ansible-inventory.json`、`.isuscope/config.toml`を確認する。nodeの分類が誤っている場合はprovider入力を直して再生成し、生成物を手作業で直し続けない。
-
-`bootstrap`はoperator鍵、任意のpackage、isuscope fingerprint helperを全nodeへ冪等に配置する。package導入と必須command・serviceは`ansible/playbooks/group_vars/all.yml`で明示する。レギュレーション確認前は自動package導入を有効にしない。
-
-`./scripts/inspect-environment.sh`で初期構成を調べ、`./scripts/configure-draft.sh`でnode role、回収・配布対象、Ansible変数、log pathの候補を作る。`.local/draft/`のremote path、owner、service、roleを確認した後だけ`CONFIRM_DRAFT=true ./scripts/configure-apply.sh`で反映し、`make discover`を再実行する。
-
-`./scripts/import.sh`は対象node間のdigestを比較してから初期状態を回収する。不一致ならsourceを確認するまで進めない。初期状態をcommitし、全台preflight・staging・失敗時のtransaction rollbackを行う`make deploy`と、role別の`make status`が通ることを確認する。`rollback_commands`には旧ファイル復元後のconfig検査、restart/reload、health checkを定義し、明示rollbackで稼働プロセスまで旧構成へ戻ることを確認する。
-
-`config/benchmark.env`へlocal、SSH、HTTP APIのいずれかのベンチ起動方法、起動しないprobe、実出力sample、score・PASS/FAILの規則を設定し、`.isuscope/benchmark.sh --check`と`.isuscope/benchmark.sh --probe`を通す。ベンチ接続はisuscopeの`command` modeを標準とし、手動入力の`external` modeを通常運用にしない。
-
-その後、次をベンチ前のgateにする。
-
-```bash
-make phase1-check
-```
-
-この検査はshellとAnsibleの構文、SSH、disk、必須service、sync manifest、benchmark adapter、isuscope設定を確認するが、ベンチは起動しない。
-
-## 初期状態を保存する
-
-- 配布されたコードを`webapp/`へ保存する
-- 各サーバーで使用されている設定ファイルを回収し、種類ごとに`config/`へ保存する
-- CloudFormationなどのAWS構成定義を`infra/`へ保存する
-- 接続先や端末固有の一時情報は、Git管理外の`.local/`へ保存する
-- Gitで初期状態をコミットする
-- 各サービスの起動、停止、再起動方法を確認する
-- 初期状態へ戻す方法を確保する
+- 練習でAWS環境を自分で作る場合は、構成定義を`infra/`へ保存し、停止・再開・削除をコマンドで行えるようにする。認証情報はGitへ保存しない
+- `make kickoff`が出す`.local/draft/review.md`のFAILはすべて直し、WARNは内容を読んで判断してから`make kickoff-apply`へ進む。draftのremote path、owner、service、roleは推測にすぎない
+- nodeの分類が誤っている場合はprovider入力やdraftを直して再生成し、生成物を手作業で直し続けない
+- importで配布先のdigestが一致しない場合は、sourceを確認するまで進めない
+- 初期状態をcommitし、`make deploy`、`make status`、明示的な`make rollback`で稼働プロセスまで旧構成へ戻ることを確認する
+- package導入は、レギュレーションを確認してからAnsible変数で明示的に有効化する
+- ベンチ接続はisuscopeの`command` modeを標準とし、手動入力の`external` modeを通常運用にしない
+- `make phase1-check`はベンチを起動しない。初回ベンチは独立した明示操作にする
 
 ## ローカルを正とする
 
@@ -123,49 +85,15 @@ make phase1-check
 
 秘密情報はGitへ追加せず、無視された環境ファイルなどで管理する。
 
-## デプロイを準備する
+## デプロイと計測を準備する
 
-ローカルのコードと設定を、コマンドからサーバーへ反映できるようにする。
+手作業のコピーを通常のデプロイ手順にしない。deployは、build成果物をlive切替前に検証し、設定を検証してから必要なserviceだけをreload・restartし、失敗時はファイルと稼働プロセスを旧構成へ戻せるようにする。
 
-デプロイ処理には必要に応じて次を含める。
-
-- アプリケーションのビルドと配置
-- node上でbuildする場合の永続cacheと、live切替前の成果物検証
-- 設定ファイルの配置
-- 設定ファイルの検証
-- サービスのreloadまたはrestart
-- デプロイ後の状態確認
-- 失敗時のファイル復元と、旧構成でのrestart/reload・状態確認
-
-手作業のコピーを通常のデプロイ手順にしない。
-
-初期状態をデプロイしたあと、サービスが正常に起動し、ベンチマークを実行できることを確認する。
-
-## isuscopeを準備する
-
-- サーバーとSSH接続を設定する
-- ベンチマークの実行方法を設定する
-- 必要なログとcollectorを設定する
-- 動的URLの正規化を設定する
-- Codex・Claude Codeの会話履歴を`docs/agent-history`へ紐付ける
-- 計測結果をリポジトリ内の`isuscope-data/`へ保存する
-- 軽量なrun履歴はGitへ残し、重要なrunだけ生ログもpinする
-- `isuscope doctor`を成功させる
-
-動的URLが初回runで細分化された場合は、`isuscope routes suggest <run-id> --output .local/route-suggestions.toml`で候補を作り、確認した規則だけ`.isuscope/routes.toml`へ反映する。
+isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的URLの正規化、会話履歴との紐付けを`isuscope doctor`で確認してから使う。計測結果は`isuscope-data/`へ保存し、軽量なrun履歴はGitへ残して、重要なrunだけ`isuscope pin`で生ログも残す。
 
 ## 初回ベンチを実行する
 
-初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。
-
-```bash
-isuscope survey-run --hypothesis "初期状態の負荷構造とベンチシナリオを記録する"
-isuscope brief latest
-isuscope query latest --metric-prefix benchmark. --group-by scenario --limit 100
-isuscope analyze RUN_ID supported --analysis "初回観測の結果と判断"
-```
-
-run IDは実行結果か`isuscope list`で確認する。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。
+初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[初動自動化](../initial-automation.md)の「ベンチ前gateと初回run」を参照する。
 
 確認するもの：
 

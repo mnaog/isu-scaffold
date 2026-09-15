@@ -20,7 +20,6 @@ python3 "${script_dir}/review-draft.py"
 "${script_dir}/discover.sh"
 "${script_dir}/sync-check.sh"
 "${script_dir}/import.sh"
-"${script_dir}/set-application-language.sh" "${APPLICATION_LANGUAGE}" "${APPLICATION_PATH}"
 
 echo "kickoff apply complete"
 echo "review the import, commit the initial state, then run: make deploy && make phase1-check"

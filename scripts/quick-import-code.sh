@@ -107,6 +107,5 @@ if [[ "${schema_imported}" == true ]]; then
 else
   echo "schema directory was not found; continuing without it: ${schema_remote:-disabled}"
 fi
-"${script_dir}/set-application-language.sh" "${language}" "${application_path}"
 
 echo "quick code import complete from ${source_node}; schema omissions: .local/code-schema-manifest.log"

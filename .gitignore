@@ -1,5 +1,4 @@
 # isuscopeのlocal state
-.isuscope/setup-state.json
 
 # 接続先、秘密情報、AWS出力などの端末固有state
 /.local/

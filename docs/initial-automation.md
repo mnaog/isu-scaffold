@@ -109,7 +109,7 @@ Git commitが存在する場合、`sync-check`はmanifest検証に加えて、Gi
 
 ## 5. local正本とdeployを接続する
 
-`config/sync.example.json`を参考に`config/sync.json`を編集します。
+通常は`make kickoff`が生成し`make kickoff-apply`が反映したdraftから`config/sync.json`を始めます。Rustのbuild設定は`config/sync.rust.example.json`を参照します。
 
 - `source_node`: 初期状態を回収するnode
 - `items`: local/remote path、file/directory、配布先group、owner
@@ -177,6 +177,16 @@ isuscope routes suggest <run-id> --output .local/route-suggestions.toml
 
 `.local/route-suggestions.toml`は候補であり、自動適用されません。実例とpatternを確認し、必要な規則だけ`.isuscope/routes.toml`へ移します。
 
+### isuscopeの設定で確認すること
+
+- `make discover`が生成する`.isuscope/config.toml`のnode、role、SSH設定は生成物なので、直す場合はprovider入力とdraftを直して再生成する。roleは複数指定でき、collectorの対象nodeを選ぶtagとして使う
+- 負荷を担う少数のsystemd unitだけを`ISUSCOPE_SERVICE_UNITS`へ指定する。アクセスログとslow logのpathと形式（時刻、匿名化session、method、URIなど時系列に使うfield）を実環境へ合わせる
+- app binaryや主要設定のpathを`isuscope_fingerprint_paths`へ指定すると、`fingerprint.sh`と一緒に各nodeへ冪等に配置される
+- 標準のlog collectorは`.1`〜`.5`と各`.gz`から開始時のlogを照合し、保持世代を越えたrotationや欠落は壊れた差分を返さず`unavailable`になる。非空logをalp/slpが1件も解析できない場合は設定不一致として`failed`になる
+- `.isuscope/routes.toml`は1規則から固定のcanonical routeへ置換し、patternにcomma、replaceに`$1`などのcaptureを使わない。初回runで動的URLが残ったら`isuscope routes suggest <run-id> --output .local/route-suggestions.toml`の候補を確認して移す
+- 会話履歴とrunを紐付ける`[context.agent]`を使う場合は、新しいセッションを開始する前に共通hook（`~/.agent-history/agent_history.py`）を有効にしておく
+- remote変更は既存fileのbackup、設定検証、atomicな配置、必要最小限のreloadで行い、package導入や常駐agentは既存機能で代替できない場合だけ使う
+
 ## 7. ベンチ前gateと初回run
 
 ```bash
@@ -184,4 +194,4 @@ make phase1-check
 isuscope survey-run --hypothesis "初期状態の負荷構造とベンチシナリオを記録する"
 ```
 
-`phase1-check`はshell・Ansible構文、全nodeのSSH、disk、必須service、sync manifest、benchmark adapter、ベンチ接続先、isuscope doctorに加えて、`scripts/collector-smoke.sh`でcollectorの入力を検査しますが、ベンチは起動しません。smokeは全nodeで`/proc/stat`の1秒sampling、`active` nodeのnginx access log読取、`db` nodeの`sudo -n`でのslow log読取、`config/benchmark.env`の`BENCHMARK_SAMPLE_FILE`に対するparserのJSONL出力を必須とし、`sar`・`alp`・`slp`の欠落やparser出力0件は警告に留めます。`survey`だけが初回ベンチを実行します。
+`phase1-check`はAnsibleの構文と全nodeのverify（SSH、disk、role別の必須service、必須command）、sync manifest、benchmark adapterのcheckとprobe、`isuscope doctor`を実行しますが、ベンチは起動しません。shell構文と空白の検査はCIが担当します。`isuscope doctor`は、各collectorの`preflight`（全nodeで`/proc/stat`の1秒sampling、nginx access logの読取、`sudo -n`でのslow log読取など）を対象nodeで実行し、`config/benchmark-sample.log`へ全parserを適用し、最新runに動的IDを含むrouteが残っていないかも確認します。

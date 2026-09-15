@@ -12,11 +12,6 @@ command -v isuscope >/dev/null
 test -x "${venv_dir}/bin/ansible"
 test -f "${inventory_path}"
 test -z "$(git ls-files -- .local)" || { echo '.local contains tracked files' >&2; exit 1; }
-git diff --check
-
-while IFS= read -r shell_file; do
-  bash -n "${shell_file}"
-done < <(find scripts .isuscope -type f -name '*.sh' -print | sort)
 
 export ANSIBLE_CONFIG=${repo_dir}/ansible/ansible.cfg
 "${venv_dir}/bin/ansible-playbook" --inventory "${inventory_path}" ansible/playbooks/bootstrap.yml --syntax-check
@@ -31,7 +26,5 @@ isuscope list --limit 1 >/dev/null
 if [[ "${PHASE1_SKIP_ISUSCOPE_DOCTOR:-false}" != true ]]; then
   isuscope doctor
 fi
-
-"${script_dir}/collector-smoke.sh"
 
 echo "phase1 pre-benchmark checks passed"

@@ -88,7 +88,7 @@ isuscope survey-run --hypothesis "..."
 
 このリポジトリでは、ベンチマークの測定結果と改善履歴をisuscopeで管理する。isuscopeは、ベンチ1回ごとにscore、仮説、Gitの状態、HTTP・SQL・CPUの計測、会話の位置を1つのrunとして記録する自作CLIである。仕様とオプションは`isuscope --help`とリポジトリ（github.com/mnaog/isuscope）のREADMEを正とする。
 
-初回だけ`.isuscope/SETUP.md`に従って設定し、`isuscope doctor`を通してから`isuscope survey-run`で初期状態と行動遷移を一度だけ記録する。
+初回は[初動自動化](docs/initial-automation.md)の手順でisuscopeを設定し、`isuscope doctor`を通してから`isuscope survey-run`で初期状態と行動遷移を一度だけ記録する。
 
 ```bash
 isuscope survey-run --hypothesis "初期状態の負荷構造を記録する"

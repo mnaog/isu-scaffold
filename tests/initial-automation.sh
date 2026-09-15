@@ -31,7 +31,6 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/review-draft.py \
   "${source_repo}"/scripts/configure-draft.sh \
   "${source_repo}"/scripts/configure-apply.sh \
-  "${source_repo}"/scripts/set-application-language.sh \
   "${source_repo}"/scripts/quick-import-code.sh \
   "${source_repo}"/scripts/create-phase1-worktree.sh \
   "${fixture_repo}/scripts/"
@@ -40,7 +39,7 @@ cp "${source_repo}/.isuscope/config.template.toml" \
   "${fixture_repo}/.isuscope/"
 cp "${source_repo}/config/environment.example.env" "${fixture_repo}/.local/environment.env"
 cp "${source_repo}/config/nodes.example.json" "${fixture_repo}/.local/nodes.json"
-cp "${source_repo}/config/sync.example.json" "${fixture_repo}/config/sync.json"
+cp "${source_repo}/tests/fixtures/sync.json" "${fixture_repo}/config/sync.json"
 cp "${source_repo}/config/sync.rust.example.json" "${fixture_repo}/config/sync.rust.example.json"
 cp "${source_repo}/config/ansible-vars.json" "${fixture_repo}/config/ansible-vars.json"
 cp "${source_repo}/config/application.env" "${fixture_repo}/config/application.env"
@@ -343,7 +342,6 @@ jq '.build_commands = [{"name":"fixture-build","node_group":"application","item"
   .rollback_commands = [{"node_group":"application","command":"echo fixture-runtime-rollback"}]' \
   "${fixture_repo}/config/sync.json" >"${fixture_repo}/config/sync.json.tmp"
 mv "${fixture_repo}/config/sync.json.tmp" "${fixture_repo}/config/sync.json"
-(cd "${fixture_repo}" && ./scripts/set-application-language.sh rust)
 (cd "${fixture_repo}" && git add . && git commit -qm initial)
 ssh_call_log=${fixture_repo}/.local/ssh-calls.log
 # deploy archiveはGitのHEADから作るため、ignored artifactを配布しません。
