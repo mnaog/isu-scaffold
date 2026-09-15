@@ -26,7 +26,6 @@ mode = "command"
 command = [".isuscope/benchmark.sh"]
 working_dir = "."
 stream_output = false
-
 # 問題固有の件数などがbenchmark stdoutに現れる場合に有効化します。
 # parserはベンチ終了後に実行され、保存済みrunへ`isuscope enrich`で再適用できます。
 # [[benchmark.parsers]]
@@ -379,11 +378,12 @@ set -eu
 log=@@MYSQL_SLOW_LOG@@
 marker=/tmp/isuscope-{run_id}.mysql.marker
 command -v sha256sum >/dev/null 2>&1 || exit 75
-test -r "$log" || exit 75
-offset=$(wc -c < "$log" | tr -d ' ')
+command -v sudo >/dev/null 2>&1 || exit 75
+sudo -n test -r "$log" || exit 75
+offset=$(sudo -n wc -c < /dev/null "$log" | awk '{print $1}')
 sample=$offset
 test "$sample" -le 65536 || sample=65536
-digest=$(head -c "$sample" "$log" | sha256sum)
+digest=$(sudo -n head -c "$sample" "$log" | sha256sum)
 prefix=${digest%% *}
 printf '%s %s %s\n' "$offset" "$sample" "$prefix" > "$marker"
 ''']
@@ -401,23 +401,24 @@ output=/tmp/isuscope-{run_id}.mysql.log
 temporary=$output.tmp
 trap 'rm -f "$temporary" "$marker"' EXIT
 command -v sha256sum >/dev/null 2>&1 || exit 75
-test -r "$log" || exit 75
+command -v sudo >/dev/null 2>&1 || exit 75
+sudo -n test -r "$log" || exit 75
 test -r "$marker" || exit 75
 read offset sample prefix < "$marker" || exit 75
 case "$offset:$sample" in *[!0-9:]*|:*|*:) exit 75 ;; esac
 
 stream_file() {
   case "$1" in
-    *.gz) gzip -cd -- "$1" ;;
-    *) cat -- "$1" ;;
+    *.gz) sudo -n gzip -cd -- "$1" ;;
+    *) sudo -n cat -- "$1" ;;
   esac
 }
 pick_generation() {
   plain=$log.$1
   compressed=$plain.gz
-  if test -r "$plain"; then
+  if sudo -n test -r "$plain"; then
     printf '%s\n' "$plain"
-  elif test -r "$compressed" && gzip -t -- "$compressed"; then
+  elif sudo -n test -r "$compressed" && sudo -n gzip -t -- "$compressed"; then
     printf '%s\n' "$compressed"
   else
     return 1
@@ -432,7 +433,7 @@ matches_marker() {
 
 : > "$temporary"
 if matches_marker "$log"; then
-  tail -c +$((offset + 1)) "$log" > "$temporary"
+  sudo -n tail -c +$((offset + 1)) "$log" > "$temporary"
 else
   origin_generation=0
   for generation in 1 2 3 4 5; do
@@ -456,7 +457,7 @@ else
     stream_file "$candidate" >> "$temporary"
     generation=$((generation - 1))
   done
-  cat "$log" >> "$temporary"
+  sudo -n cat "$log" >> "$temporary"
 fi
 mv "$temporary" "$output"
 cat "$output"

@@ -69,6 +69,8 @@ make survey HYPOTHESIS="初期状態の負荷構造を記録する"
 
 `configure-draft`は調査結果からnode role、同期対象、Ansible変数、isuscopeのlog path候補を`.local/draft/`へ作ります。所有者、配置先、service名は大会環境によって異なるため、人間が確認したdraftだけを明示的に反映します。
 
+コード読解を最短で始める場合は、`make kickoff-code LANGUAGE=<name>`でSSH確立とコード・schemaの先行回収を行い、確認・commit後に`make kickoff-code-ready`でworktreeを作ります。mainでは並行して`make kickoff-draft`、draft確認後の`CONFIRM_DRAFT=true make kickoff-apply LANGUAGE=<name>`、`make kickoff-ready`を実行します。初回ベンチ、deploy、mergeは自動実行しません。
+
 詳細は[初動自動化](docs/initial-automation.md)を参照してください。
 
 ## 基本フロー
@@ -87,4 +89,4 @@ make survey HYPOTHESIS="初期状態の負荷構造を記録する"
 
 変更系操作とベンチ実行は`.local/operation.lock`で排他されます。別のCodexセッションが実行中なら、PID・開始時刻・操作名を表示して終了します。異常終了で残ったlockは、記録されたprocessが存在しないことを確認して次回操作時に自動回収します。`status`や設定検査などのread-only操作は並行実行できます。
 
-実環境の接続先や公式ファイルの配置が確定したあと、Phase 1で`config/sync.json`と`config/benchmark.env`を完成させます。ベンチはlocal、SSH、HTTP APIを標準adapterで扱えます。node上のbuildは`build_commands`でstaging切替前に実行でき、Rustの永続Cargo cache例は`config/sync.rust.example.json`にあります。標準の宣言で表せない独自APIだけ、大会構成へ合わせてadapterを拡張します。
+実環境の接続先や公式ファイルの配置が確定したあと、Phase 1で`config/sync.json`と`config/benchmark.env`を完成させます。ベンチはlocal、SSH、HTTP APIを標準adapterで扱えます。node上のbuildは`build_commands`でstaging切替前に実行でき、Rustの永続Cargo cache例は`config/sync.rust.example.json`にあります。`rollback_commands`には旧ファイル復元後のconfig検査、restart/reload、health checkを定義します。deploy IDはコミットと実行時刻ごとに変わるため同一コミットを再deployでき、remote backupは既定で直近3世代を保持します。標準の宣言で表せない独自APIだけ、大会構成へ合わせてadapterを拡張します。

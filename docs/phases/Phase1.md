@@ -1,4 +1,4 @@
-# Phase 1: 初動・初回ベンチ・シナリオ分析
+# Phase 1: 初動・自明な改善・初回ベンチ分析
 
 ## 目的
 
@@ -6,7 +6,30 @@
 
 また、アプリケーションコードと設定ファイルをすべてローカルリポジトリで管理し、コマンドからサーバーへデプロイできる状態を作る。
 
-このPhaseでは性能改善を行わない。
+セットアップとコード読解を直列に実行しない。SSH確立直後に採用言語のコードとDB schemaだけを先行importし、その初期commitを分岐点とする。mainで完全import、計測・deploy・初回baselineを準備する一方、別worktreeで安全で自明な改善を実装する。
+
+初回baselineの比較可能性を守るため、並行worktreeの変更はbaseline取得後までremoteに反映しない。
+
+## コード先行import後は2レーンで進める
+
+```text
+main: bootstrap、全node調査、完全import、role・deploy・benchmark adapter・isuscopeを準備
+  → phase1-check
+  → 未変更のbaselineをsurvey-run
+  → スコア、シナリオ、HTTP、SQL、ホスト負荷を分析
+
+別worktree: 採用言語とschemaを読む
+  → インデックス不足、N+1、直列化、重複SQL、過大なtransactionを抽出
+  → 安全な修正を小さいcommitに分ける
+  → localのformat・build・testだけ実行
+
+baseline分析後: mainを並行worktreeへ取り込む
+  → 実測と変更根拠を照合
+  → mainへ統合・deploy
+  → 通常のisuscope runでbaselineと比較・採否
+```
+
+先行importはコード読解開始用の暫定snapshotである。mainの完全importで全配布先のdigest一致と設定を改めて確認する。並行worktreeは`webapp/`のコード・schemaとそのテストを所有する。mainは`config/`、`ansible/`、`scripts/`、`.isuscope/`、remote操作を所有する。競合を避けられない変更は、先に小さいcommitへ分離する。
 
 ## 公式情報を保存する
 
@@ -59,7 +82,7 @@ make bootstrap
 
 `make inspect`で初期構成を調べ、`make configure-draft`でnode role、回収・配布対象、Ansible変数、log pathの候補を作る。`.local/draft/`のremote path、owner、service、roleを確認した後だけ`CONFIRM_DRAFT=true make configure-apply`で反映し、`make discover`を再実行する。
 
-`make import`は対象node間のdigestを比較してから初期状態を回収する。不一致ならsourceを確認するまで進めない。初期状態をcommitし、全台preflight・staging・失敗時のtransaction rollbackを行う`make deploy`と、role別の`make status`が通ることを確認する。
+`make import`は対象node間のdigestを比較してから初期状態を回収する。不一致ならsourceを確認するまで進めない。初期状態をcommitし、全台preflight・staging・失敗時のtransaction rollbackを行う`make deploy`と、role別の`make status`が通ることを確認する。`rollback_commands`には旧ファイル復元後のconfig検査、restart/reload、health checkを定義し、明示rollbackで稼働プロセスまで旧構成へ戻ることを確認する。
 
 `config/benchmark.env`へlocal、SSH、HTTP APIのいずれかのベンチ起動方法、起動しないprobe、実出力sample、score・PASS/FAILの規則を設定し、`make benchmark-check`と`make benchmark-probe`を通す。ベンチ接続はisuscopeの`command` modeを標準とし、手動入力の`external` modeを通常運用にしない。
 
@@ -112,7 +135,7 @@ make phase1-check
 - 設定ファイルの検証
 - サービスのreloadまたはrestart
 - デプロイ後の状態確認
-- 失敗時の停止と復旧
+- 失敗時のファイル復元と、旧構成でのrestart/reload・状態確認
 
 手作業のコピーを通常のデプロイ手順にしない。
 
@@ -136,7 +159,7 @@ make phase1-check
 初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。
 
 ```bash
-isuscope survey-run --hypothesis "初期状態の負荷構造とベンチシナリオを記録する"
+make survey HYPOTHESIS="初期状態の負荷構造とベンチシナリオを記録する"
 isuscope brief latest
 isuscope query latest --metric-prefix benchmark. --group-by scenario --limit 100
 isuscope analyze RUN_ID supported --analysis "初回観測の結果と判断"
@@ -177,6 +200,22 @@ run IDは実行結果か`isuscope list`で確認する。追加でスコアの�
   → 得点または失敗条件
 ```
 
+## 自明なボトルネックを一掃する
+
+初回baselineの準備と並行して、次をコードから抽出・実装する。
+
+- WHERE、JOIN、ORDER BYに対する明らかなインデックス不足
+- ループ内SQLや要素ごとの更新などのN+1
+- 同一request内の重複query・重複計算
+- 単一行のカウンタや必要以上のlocking readによる直列化
+- 一括INSERT・UPDATE・UPSERTに置き換えられる逐次write
+- transaction内の不要な処理とDB往復
+- 明らかに不要なカラム、全件走査、外部呼び出し
+
+インデックスはSQLと初期化後のデータ量から根拠を残す。整合性条件を変えるもの、キャッシュ、メモリ保持、非同期化、サーバー分割はこの並行レーンでは扱わない。
+
+初回runから得た上位SQL・HTTP・エラーと候補を照合し、根拠が弱いcommitは統合しない。統合後は変更をまとめた最初の`isuscope run`で大きく改善することを確認し、その後はボトルネックごとの短いサイクルに切り替える。
+
 ## 残すもの
 
 - `docs/official/`
@@ -196,5 +235,8 @@ run IDは実行結果か`isuscope list`で確認する。追加でスコアの�
 - isuscopeでベンチと計測を実行できる
 - ベンチマークの得点、失敗条件、主要シナリオを説明できる
 - 主要シナリオとアプリ内の処理経路が対応付けられている
+- 主要SQLの明らかなインデックス不足が解消されている
+- 高頻度経路の主要なN+1、重複処理、逐次writeが解消されている
+- 自明な修正を統合したrunをbaselineと比較し、採否を記録している
 
-条件を満たしたらCodexはPhase 2への移行を提案し、人間が移行を決定する。
+条件を満たしたらCodexはPhase 2への移行を提案し、人間が移行を決定する。旧Phase 2の自明な改善はこのPhaseへ統合済みで、現在のPhase 2はアーキテクチャ改善を扱う。

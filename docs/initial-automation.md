@@ -11,6 +11,26 @@ mkdir -p .local
 cp config/environment.example.env .local/environment.env
 ```
 
+コードレーンを最短で開始する場合は次の順で実行します。
+
+```bash
+make kickoff-code LANGUAGE=rust
+# config/application.env、webapp/rust、webapp/sqlを確認して初期commit
+make kickoff-code-ready
+# 別worktreeでコード読解を開始し、mainへ戻る
+make kickoff-draft
+CONFIRM_DRAFT=true make kickoff-apply LANGUAGE=rust
+make kickoff-ready
+```
+
+`kickoff-code`はnode発見後、回収元の1台（既定では最初のapplication node）だけSSHを確立し、`/home/isucon/webapp/<language>`と`/home/isucon/webapp/sql`のDDL・初期化script（`.sql`、`.sh`、`.py`、`.rb`、`.pl`）だけを先行回収します。1ファイル1MiB・合計16MiBを超えるものやそれ以外の初期データは後回しにし、`.local/code-schema-manifest.log`へ`INCLUDED`／`DEFERRED`として記録します。上限は`CODE_SCHEMA_MAX_FILE_BYTES`、`CODE_SCHEMA_MAX_TOTAL_BYTES`で変更できます。残りのnodeのSSH確立はmainの`kickoff-draft`が担当します。生成物の`target`、`node_modules`、`.git`は除外します。pathが異なる場合は`CODE_SOURCE_NODE`、`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`、`CODE_SCHEMA_PATH`をコマンドの環境変数で明示します。この回収はコード読解開始用の暫定snapshotであり、全node一致の保証は後続の完全importが担当します。
+
+`kickoff-code-ready`は先行回収範囲がcommit済みであることを確認してworktreeを作り、読む対象・修正範囲・検証方法・mainへの報告形式をまとめた引き継ぎ文を`<worktree>/.local/phase1-handoff.md`へ生成します。別セッションにはこのファイルを読ませて開始します。`kickoff-draft`はbootstrap、inspection、draft生成を行って停止します。`kickoff-apply`は確認済みdraftの反映、再discover、sync検査、完全import、採用言語の固定まで進めます。`kickoff-ready`はworktreeを再利用し、重複する個別checkを挟まず`phase1-check`を一度だけ実行します。自動commit、初回`survey-run`、mergeは行いません。
+
+SSH確立はinventoryのnode名で重複排除し、`SSH_MAX_PARALLEL_NODES`（既定5）台ずつ並列に行います。完全importはnodeごとに全itemのdigestを1回のSSHでまとめて計算し（`IMPORT_MAX_PARALLEL_NODES`、既定5）、localの内容がsourceのdigestと一致するitemは再転送しません。全itemのstagingと検証が終わるまで既存のlocalを置き換えず、途中で失敗した場合は元へ戻します。Ansible requirementsは内容hashが同じなら再installせず、bootstrap内のapplication nodeのfact収集も一度だけです。
+
+lockを取る変更系操作は、終了時に`.local/timing-<UTC時刻>-<pid>.tsv`へ操作名・秒数・終了codeを残します。次回の初動改善はこの実測を根拠に判断します。
+
 接続先の取得方法は2種類です。
 
 - `DISCOVERY_PROVIDER=aws-cloudformation`: stack配下のEC2をName tagのregexで分類する
@@ -81,6 +101,7 @@ make sync-check
 - `pre_deploy_command`: local buildなど、配布前に一度実行する処理
 - `build_commands`: 配布済みstaging itemをnode上でbuild・検証する、切替前の処理
 - `post_deploy_commands`: config test、daemon-reload、restart、health check
+- `rollback_commands`: 旧ファイル復元後に行うconfig test、daemon-reload、restart、health check
 - `status_commands`: 通常確認に使うcommand
 
 commandは単なる文字列なら全application node、`{"node_group":"role_nginx","command":"..."}`なら指定groupだけで実行します。異なる役割のnodeへ無関係なreloadを送らないよう、分担構成ではgroupを明示します。
@@ -106,7 +127,9 @@ make status
 
 `import`は対象groupの全nodeでpathの内容・mode・symlinkをdigest比較し、不一致なら回収前に停止します。意図した差異だと確認した場合だけ`IMPORT_ALLOW_DIVERGENT=true make import`とし、itemごとの`source_node`から回収します。比較表は`.local/import-comparison.tsv`へ残ります。
 
-`deploy`は未コミットの同期対象を拒否します。全nodeでsudo、owner/group、空き容量、配置先をpreflightし、全fileをstagingし、build commandを完了してから切り替えます。一台でもbuild、配置、post-deploy検証に失敗すると、そのtransactionで触れた全対象を元へ戻します。状態は`.local/deploy-transactions/<release>.state`へ残ります。明示的に戻す場合は`make rollback RELEASE=<id>`を使います。manifestへ秘密情報を記録せず、そのようなファイルは`.local/`で別管理します。
+`deploy`は未コミットの同期対象を拒否します。全nodeでsudo、owner/group、空き容量、配置先をpreflightし、全fileをstagingし、build commandを完了してから切り替えます。一台でもbuild、配置、post-deploy検証に失敗すると、そのtransactionで触れた全対象を元へ戻し、live切替後なら`rollback_commands`で稼働プロセスも旧構成へ戻します。rollback自体が失敗した場合、stateは`rollback-failed`になります。
+
+transaction IDは既定で`<commit>-<UTC時刻>-<PID>`となり、同じコミットを繰り返しdeployできます。Gitコミットは`.local/current-commit`、transaction IDは`.local/current-release`へ保存し、明示rollbackが成功した場合は両方を直前の値へ戻します。remoteのrollback backupは既定で各配布先の直近3世代を保持し、`DEPLOY_BACKUP_RETENTION`で変更できます。明示的に戻す場合は、保持中のIDを指定して`make rollback RELEASE=<id>`を使います。rollbackは全対象のbackupが揃っていることを確認してから復元を開始します。manifestへ秘密情報を記録せず、そのようなファイルは`.local/`で別管理します。
 
 ## 6. isuscopeへベンチを接続する
 
@@ -146,4 +169,4 @@ make phase1-check
 make survey HYPOTHESIS="初期状態の負荷構造とベンチシナリオを記録する"
 ```
 
-`phase1-check`はshell・Ansible構文、全nodeのSSH、disk、必須service、sync manifest、benchmark adapter、ベンチ接続先、isuscope doctorを検査しますが、ベンチは起動しません。`survey`だけが初回ベンチを実行します。
+`phase1-check`はshell・Ansible構文、全nodeのSSH、disk、必須service、sync manifest、benchmark adapter、ベンチ接続先、isuscope doctorに加えて、`scripts/collector-smoke.sh`でcollectorの入力を検査しますが、ベンチは起動しません。smokeは全nodeで`/proc/stat`の1秒sampling、`active` nodeのnginx access log読取、`db` nodeの`sudo -n`でのslow log読取、`config/benchmark.env`の`BENCHMARK_SAMPLE_FILE`に対するparserのJSONL出力を必須とし、`sar`・`alp`・`slp`の欠落やparser出力0件は警告に留めます。`survey`だけが初回ベンチを実行します。

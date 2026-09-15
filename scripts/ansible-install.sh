@@ -14,9 +14,17 @@ command -v "${python_bin}" >/dev/null
 "${python_bin}" -c 'import sys; assert sys.version_info >= (3, 12), "Python 3.12 or newer is required"'
 test -f "${requirements_file}"
 
+requirements_hash=$("${python_bin}" -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "${requirements_file}")
+requirements_stamp=${venv_dir}/.requirements.sha256
+
 if [[ ! -x "${venv_dir}/bin/python" ]]; then
   "${python_bin}" -m venv "${venv_dir}"
 fi
 
-"${venv_dir}/bin/python" -m pip install --disable-pip-version-check --requirement "${requirements_file}"
+if [[ ! -x "${venv_dir}/bin/ansible-playbook" ]] ||
+  [[ ! -f "${requirements_stamp}" ]] ||
+  [[ "$(<"${requirements_stamp}")" != "${requirements_hash}" ]]; then
+  "${venv_dir}/bin/python" -m pip install --disable-pip-version-check --requirement "${requirements_file}"
+  printf '%s\n' "${requirements_hash}" >"${requirements_stamp}"
+fi
 "${venv_dir}/bin/ansible-playbook" --version | sed -n '1p'

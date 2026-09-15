@@ -1,14 +1,14 @@
 {
   "source_node": "app1",
   "minimum_free_mb_after_deploy": 2048,
-  "pre_deploy_command": "test ! -e webapp/rust/target || { echo 'remove imported webapp/rust/target before deploy; Cargo uses the remote persistent cache' >&2; exit 1; }",
+  "pre_deploy_command": "",
   "items": [
     {
-      "name": "webapp",
+      "name": "rust-app",
       "type": "directory",
       "node_group": "application",
-      "local": "webapp",
-      "remote": "/home/isucon/webapp",
+      "local": "webapp/rust",
+      "remote": "/home/isucon/webapp/rust",
       "owner": "isucon",
       "owner_group": "isucon"
     }
@@ -17,11 +17,21 @@
     {
       "name": "rust-release",
       "node_group": "application",
-      "item": "webapp",
-      "command": "cache_dir=/home/isucon/.cache/isucon-cargo-target; sudo install -d -o isucon -g isucon -m 0755 \"$cache_dir\"; if ! sudo test -f \"$cache_dir/.rustc_info.json\" && sudo test -d \"$ISUCON_DEPLOY_REMOTE_PATH/rust/target\"; then sudo -u isucon cp -a \"$ISUCON_DEPLOY_REMOTE_PATH/rust/target/.\" \"$cache_dir/\"; fi; cd \"$ISUCON_DEPLOY_STAGING_PATH/rust\"; sudo -u isucon env CARGO_TARGET_DIR=\"$cache_dir\" cargo build --release --locked; sudo -u isucon install -D -m 0755 \"$cache_dir/release/replace-with-binary-name\" \"$ISUCON_DEPLOY_STAGING_PATH/rust/target/release/replace-with-binary-name\"; test -x \"$ISUCON_DEPLOY_STAGING_PATH/rust/target/release/replace-with-binary-name\""
+      "item": "rust-app",
+      "command": "cache_dir=/home/isucon/.cache/isucon-cargo-target; input_marker=$cache_dir/.replace-with-binary-name-build-input; compiler_marker=$cache_dir/.replace-with-binary-name-rustc-version; sudo install -d -o isucon -g isucon -m 0755 \"$cache_dir\"; if ! sudo test -f \"$cache_dir/.rustc_info.json\" && sudo test -d \"$ISUCON_DEPLOY_REMOTE_PATH/target\"; then sudo -u isucon cp -a \"$ISUCON_DEPLOY_REMOTE_PATH/target/.\" \"$cache_dir/\"; fi; cached_input_id=$(sudo cat \"$input_marker\" 2>/dev/null || true); compiler_id=$(sudo -u isucon rustc -V); cached_compiler_id=$(sudo cat \"$compiler_marker\" 2>/dev/null || true); if test \"$ISUCON_DEPLOY_BUILD_INPUTS_UNCHANGED\" != true || test \"$ISUCON_DEPLOY_BUILD_INPUT_ID\" != \"$cached_input_id\" || ! sudo test -x \"$cache_dir/release/replace-with-binary-name\" || test \"$compiler_id\" != \"$cached_compiler_id\"; then cd \"$ISUCON_DEPLOY_STAGING_PATH\"; sudo -u isucon env CARGO_TARGET_DIR=\"$cache_dir\" cargo build --release --locked; sudo -u isucon sh -c 'printf \"%s\\n\" \"$1\" > \"$2\"; exec rustc -V > \"$3\"' sh \"$ISUCON_DEPLOY_BUILD_INPUT_ID\" \"$input_marker\" \"$compiler_marker\"; fi; sudo -u isucon install -D -m 0755 \"$cache_dir/release/replace-with-binary-name\" \"$ISUCON_DEPLOY_STAGING_PATH/target/release/replace-with-binary-name\"; test -x \"$ISUCON_DEPLOY_STAGING_PATH/target/release/replace-with-binary-name\""
     }
   ],
   "post_deploy_commands": [
+    {
+      "node_group": "application",
+      "command": "sudo systemctl restart replace-with-service-name"
+    },
+    {
+      "node_group": "application",
+      "command": "sudo systemctl is-active --quiet replace-with-service-name"
+    }
+  ],
+  "rollback_commands": [
     {
       "node_group": "application",
       "command": "sudo systemctl restart replace-with-service-name"

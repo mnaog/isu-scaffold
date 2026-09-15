@@ -42,6 +42,11 @@ sync_validate() {
       (type == "object" and
         (.node_group | type == "string" and test("^[A-Za-z0-9_.-]+$")) and
         (.command | type == "string" and length > 0)))) and
+    ((.rollback_commands // []) | type == "array" and all(.[];
+      (type == "string" and length > 0) or
+      (type == "object" and
+        (.node_group | type == "string" and test("^[A-Za-z0-9_.-]+$")) and
+        (.command | type == "string" and length > 0)))) and
     (.status_commands | type == "array" and all(.[];
       (type == "string" and length > 0) or
       (type == "object" and
@@ -81,7 +86,8 @@ sync_validate() {
         return 1
       }
   done < <(jq -r '
-    [(.build_commands // [])[], .post_deploy_commands[], .status_commands[]] | .[] |
+    [(.build_commands // [])[], .post_deploy_commands[],
+      (.rollback_commands // [])[], .status_commands[]] | .[] |
     if type == "string" then "application" else .node_group end
   ' "${sync_manifest}" | sort -u)
 
@@ -110,7 +116,7 @@ sync_group_nodes() {
 
 sync_commands() {
   jq -r --arg key "$1" '
-    .[$key][] |
+    (.[$key] // [])[] |
     if type == "string" then ["application", .] else [.node_group, .command] end |
     @tsv
   ' "${sync_manifest}"

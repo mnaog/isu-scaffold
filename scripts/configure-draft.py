@@ -202,6 +202,7 @@ def main() -> int:
         "items": items,
         "build_commands": [],
         "post_deploy_commands": post_commands,
+        "rollback_commands": post_commands,
         "status_commands": status_commands,
     }
 

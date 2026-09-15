@@ -8,7 +8,9 @@ if [[ "${ISUCON_INTERNAL_OPERATION_LOCK_HELD:-false}" != true ]]; then
 fi
 local_dir=${repo_dir}/.local
 environment_file=${ISUCON_ENV_FILE:-${local_dir}/environment.env}
-inventory_path=${local_dir}/ansible-inventory.json
+inventory_path=${ANSIBLE_INVENTORY:-${local_dir}/ansible-inventory.json}
+source "${script_dir}/parallel-lib.sh"
+parallel_init "${SSH_MAX_PARALLEL_NODES:-5}"
 
 command -v jq >/dev/null
 command -v ssh >/dev/null
@@ -44,14 +46,15 @@ else
 fi
 
 mkdir -p "$(dirname -- "${known_hosts_file}")"
-while IFS=$'\t' read -r host_alias endpoint ssh_user instance_id availability_zone instance_state <&3; do
-  if [[ -n "${instance_state}" && "${instance_state}" != running ]]; then
+connect_node() {
+  local host_alias=$1 endpoint=$2 ssh_user=$3 instance_id=$4 availability_zone=$5 instance_state=$6
+  if [[ "${instance_state}" != "-" && -n "${instance_state}" && "${instance_state}" != running ]]; then
     echo "${host_alias} is ${instance_state}; start it and run make discover again" >&2
     exit 1
   fi
   printf 'checking SSH: %s (%s)\n' "${host_alias}" "${endpoint}"
   if [[ "${method}" == eic ]]; then
-    test -n "${instance_id}" && test -n "${availability_zone}" || {
+    [[ "${instance_id}" != "-" && "${availability_zone}" != "-" ]] && test -n "${instance_id}" && test -n "${availability_zone}" || {
       echo "EIC requires AWS instance metadata for ${host_alias}" >&2
       exit 1
     }
@@ -86,11 +89,18 @@ while IFS=$'\t' read -r host_alias endpoint ssh_user instance_id availability_zo
       -o "UserKnownHostsFile=${known_hosts_file}" \
       "${ssh_user}@${endpoint}" true
   fi
-done 3< <(jq -r '
-  .all.children[]?.hosts | to_entries[] |
+}
+node_rows=$(jq -r --arg only "${SSH_ONLY_NODE:-}" '
+  [.all.children[]?.hosts | to_entries[]] | unique_by(.key)[] |
+  select($only == "" or .key == $only) |
   [.key, .value.ansible_host, .value.ansible_user,
-   (.value.aws_instance_id // ""), (.value.aws_availability_zone // ""),
-   (.value.node_state // "")] | @tsv
+   (.value.aws_instance_id // "-"), (.value.aws_availability_zone // "-"),
+   (.value.node_state // "-")] | @tsv
 ' "${inventory_path}")
+test -n "${node_rows}" || { echo "no matching SSH nodes" >&2; exit 2; }
+while IFS=$'\t' read -r host_alias endpoint ssh_user instance_id availability_zone instance_state; do
+  parallel_start connect_node "${host_alias}" "${endpoint}" "${ssh_user}" "${instance_id}" "${availability_zone}" "${instance_state}"
+done <<<"${node_rows}"
+parallel_wait
 
-echo "SSH is available on all discovered nodes"
+echo "SSH is available on selected nodes"

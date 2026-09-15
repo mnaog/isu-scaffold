@@ -33,6 +33,16 @@
       "command": "sudo systemctl reload nginx"
     }
   ],
+  "rollback_commands": [
+    {
+      "node_group": "application",
+      "command": "sudo nginx -t"
+    },
+    {
+      "node_group": "application",
+      "command": "sudo systemctl reload nginx"
+    }
+  ],
   "status_commands": [
     "systemctl --failed --no-pager",
     "systemctl is-active nginx"

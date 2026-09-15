@@ -45,4 +45,10 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 export ISUCON_INTERNAL_OPERATION_LOCK_HELD=true
-"$@"
+timing_file=${repo_dir}/.local/timing-$(date -u +%Y%m%dT%H%M%SZ)-$$.tsv
+started=$SECONDS
+result=0
+"$@" || result=$?
+printf '%s\t%s\t%s\n' "$(basename -- "$1")" "$((SECONDS-started))" "${result}" >"${timing_file}"
+echo "operation timing (step, seconds, exit): ${timing_file}" >&2
+exit "${result}"

@@ -25,10 +25,15 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/rollback.sh \
   "${source_repo}"/scripts/status.sh \
   "${source_repo}"/scripts/import.sh \
+  "${source_repo}"/scripts/parallel-lib.sh \
+  "${source_repo}"/scripts/schema-archive.py \
   "${source_repo}"/scripts/tree-digest.py \
   "${source_repo}"/scripts/configure-draft.py \
   "${source_repo}"/scripts/configure-draft.sh \
   "${source_repo}"/scripts/configure-apply.sh \
+  "${source_repo}"/scripts/set-application-language.sh \
+  "${source_repo}"/scripts/quick-import-code.sh \
+  "${source_repo}"/scripts/create-phase1-worktree.sh \
   "${source_repo}"/scripts/suggest-routes.py \
   "${source_repo}"/scripts/suggest-routes.sh \
   "${fixture_repo}/scripts/"
@@ -39,6 +44,7 @@ cp "${source_repo}/config/environment.example.env" "${fixture_repo}/.local/envir
 cp "${source_repo}/config/nodes.example.json" "${fixture_repo}/.local/nodes.json"
 cp "${source_repo}/config/sync.example.json" "${fixture_repo}/config/sync.json"
 cp "${source_repo}/config/ansible-vars.json" "${fixture_repo}/config/ansible-vars.json"
+cp "${source_repo}/config/application.env" "${fixture_repo}/config/application.env"
 jq '.[0] as $app1 | . + [$app1 + {name:"app2", host:"192.0.2.11"}]' \
   "${fixture_repo}/.local/nodes.json" >"${fixture_repo}/.local/nodes.json.tmp"
 mv "${fixture_repo}/.local/nodes.json.tmp" "${fixture_repo}/.local/nodes.json"
@@ -187,8 +193,13 @@ grep -Fq 'replace = "/items/:key"' "${fixture_repo}/.local/route-suggestions.tom
 # importは全nodeのdigest一致を確認してからsource nodeを回収します。
 fake_remote=${fixture_repo}/.local/fake-remote
 for node in app1 app2; do
-  mkdir -p "${fake_remote}/${node}/home/isucon/webapp" "${fake_remote}/${node}/etc/nginx"
+  mkdir -p "${fake_remote}/${node}/home/isucon/webapp/rust/target" \
+    "${fake_remote}/${node}/home/isucon/webapp/sql" "${fake_remote}/${node}/etc/nginx"
   printf 'remote application\n' >"${fake_remote}/${node}/home/isucon/webapp/main.txt"
+  printf 'fn main() {}\n' >"${fake_remote}/${node}/home/isucon/webapp/rust/main.rs"
+  printf 'generated artifact\n' >"${fake_remote}/${node}/home/isucon/webapp/rust/target/debug.bin"
+  printf 'CREATE TABLE fixture (id BIGINT);\n' >"${fake_remote}/${node}/home/isucon/webapp/sql/schema.sql"
+  printf '1\tinitial\n' >"${fake_remote}/${node}/home/isucon/webapp/sql/initial-data.tsv"
   printf 'remote nginx\n' >"${fake_remote}/${node}/etc/nginx/nginx.conf"
 done
 cat >"${fixture_repo}/scripts/ssh-node.sh" <<'EOF'
@@ -198,19 +209,52 @@ node=$1
 command=$2
 root=${FAKE_REMOTE_ROOT:?}/${node}
 case "${command}" in
+  *ISUCON_DIGEST_BATCH*)
+    exec bash -c "$(sed -e "s|sudo python3 /usr/local/lib/isuscope/tree-digest.py '|python3 '${TREE_DIGEST:?}' '${root}|g" <<<"${command}")" ;;
+  "sudo test -d '/home/isucon/webapp/rust'") test -d "${root}/home/isucon/webapp/rust" ;;
+  "sudo test -d '/home/isucon/webapp/sql'") test -d "${root}/home/isucon/webapp/sql" ;;
   *tree-digest.py*'/home/isucon/webapp'*) exec python3 "${TREE_DIGEST:?}" "${root}/home/isucon/webapp" ;;
   *tree-digest.py*'/etc/nginx/nginx.conf'*) exec python3 "${TREE_DIGEST:?}" "${root}/etc/nginx/nginx.conf" ;;
+  *"tar -C '/home/isucon/webapp/rust'"*) exec tar -C "${root}/home/isucon/webapp/rust" --exclude='./target' -cf - . ;;
+  *"sudo -n python3 -c"*) exec bash -c "$(sed -e 's|^sudo -n ||' -e "s| /home/isucon/webapp/sql | ${root}/home/isucon/webapp/sql |" <<<"${command}")" ;;
   *"tar -C '/home/isucon/webapp'"*) exec tar -C "${root}/home/isucon/webapp" -cf - . ;;
   *"tar -C '/etc/nginx'"*) exec tar -C "${root}/etc/nginx" -cf - nginx.conf ;;
   *) echo "unexpected fake import command: ${command}" >&2; exit 1 ;;
 esac
 EOF
 chmod +x "${fixture_repo}/scripts/ssh-node.sh"
+(cd "${fixture_repo}" && git init -q && git config user.name test && git config user.email test@example.com && \
+  git add . && git commit -qm fixture-base)
+(cd "${fixture_repo}" && FAKE_REMOTE_ROOT="${fake_remote}" ./scripts/quick-import-code.sh rust)
+grep -q '^fn main()' "${fixture_repo}/webapp/rust/main.rs"
+grep -q '^CREATE TABLE fixture' "${fixture_repo}/webapp/sql/schema.sql"
+# 初期データはコードレーンの開始を待たせないよう後回しにします。
+test ! -e "${fixture_repo}/webapp/sql/initial-data.tsv"
+grep -q '^DEFERRED data-or-link initial-data.tsv$' "${fixture_repo}/.local/code-schema-manifest.log"
+test ! -e "${fixture_repo}/webapp/rust/target"
+grep -q '^APPLICATION_LANGUAGE=rust$' "${fixture_repo}/config/application.env"
+set +e
+(cd "${fixture_repo}" && \
+  PHASE1_WORKTREE_BRANCH=optimize/uncommitted-code \
+  PHASE1_WORKTREE_PATH="${fixture_root}/uncommitted-code" \
+  ./scripts/create-phase1-worktree.sh >/dev/null 2>&1)
+uncommitted_worktree_exit=$?
+set -e
+test "${uncommitted_worktree_exit}" -ne 0
 (cd "${fixture_repo}" && \
   FAKE_REMOTE_ROOT="${fake_remote}" TREE_DIGEST="${fixture_repo}/scripts/tree-digest.py" \
   ./scripts/import.sh)
 grep -q '^remote application$' "${fixture_repo}/webapp/main.txt"
 test "$(wc -l <"${fixture_repo}/.local/import-comparison.tsv" | tr -d ' ')" -eq 5
+# 内容が一致するlocal itemは再転送しません。
+reimport_output=$(cd "${fixture_repo}" && \
+  FAKE_REMOTE_ROOT="${fake_remote}" TREE_DIGEST="${fixture_repo}/scripts/tree-digest.py" \
+  ./scripts/import.sh 2>/dev/null)
+grep -q 'reusing unchanged local item' <<<"${reimport_output}"
+if grep -q '^importing ' <<<"${reimport_output}"; then
+  echo "unchanged import transferred items again" >&2
+  exit 1
+fi
 printf 'divergent\n' >>"${fake_remote}/app2/home/isucon/webapp/main.txt"
 set +e
 (cd "${fixture_repo}" && \
@@ -226,12 +270,16 @@ fi
 
 # SSHがstdinを読む処理を含んでも全node・全itemを処理することをfake remoteで確認します。
 printf 'fixture\n' >"${fixture_repo}/webapp/README.txt"
+mkdir -p "${fixture_repo}/webapp/rust"
+printf 'fn main() {}\n' >"${fixture_repo}/webapp/rust/main.rs"
 printf 'events {}\n' >"${fixture_repo}/config/nginx/nginx.conf"
 cat >"${fixture_repo}/scripts/ssh-node.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\t%s\n' "$1" "$2" >>"${SSH_CALL_LOG:?}"
-if [[ -n "${FAIL_SWITCH_NODE:-}" && "$1" == "${FAIL_SWITCH_NODE}" && "$2" == *"sudo test -e"*isuscope-staging* && ! -e "${FAIL_MARKER:?}" ]]; then
+if [[ -n "${FAIL_SWITCH_NODE:-}" && "$1" == "${FAIL_SWITCH_NODE}" && \
+  "$2" == *"sudo test -e '/home/isucon/webapp.isuscope-staging."*"'; if sudo test"* && \
+  ! -e "${FAIL_MARKER:?}" ]]; then
   : >"${FAIL_MARKER}"
   exit 1
 fi
@@ -241,22 +289,37 @@ fi
 case "$2" in *"tar -C '"*"' -xf -"*) cat >/dev/null ;; esac
 EOF
 chmod +x "${fixture_repo}/scripts/ssh-node.sh"
-jq '.build_commands = [{"name":"fixture-build","node_group":"application","item":"webapp","command":"test -n \"$ISUCON_DEPLOY_RELEASE\" && test -n \"$ISUCON_DEPLOY_REMOTE_PATH\" && test -n \"$ISUCON_DEPLOY_STAGING_PATH\" # fixture-build-command"}]' \
+jq '.build_commands = [{"name":"fixture-build","node_group":"application","item":"webapp","command":"test -n \"$ISUCON_DEPLOY_RELEASE\" && test -n \"$ISUCON_DEPLOY_REMOTE_PATH\" && test -n \"$ISUCON_DEPLOY_STAGING_PATH\" # fixture-build-command"}] |
+  .rollback_commands = [{"node_group":"application","command":"echo fixture-runtime-rollback"}]' \
   "${fixture_repo}/config/sync.json" >"${fixture_repo}/config/sync.json.tmp"
 mv "${fixture_repo}/config/sync.json.tmp" "${fixture_repo}/config/sync.json"
-(cd "${fixture_repo}" && git init -q && git config user.name test && git config user.email test@example.com && git add . && git commit -qm initial)
+(cd "${fixture_repo}" && ./scripts/set-application-language.sh rust)
+(cd "${fixture_repo}" && git add . && git commit -qm initial)
 ssh_call_log=${fixture_repo}/.local/ssh-calls.log
 (cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" ./scripts/deploy.sh)
-test "$(wc -l <"${ssh_call_log}" | tr -d ' ')" -eq 32
 build_line=$(grep -n -m1 'fixture-build-command' "${ssh_call_log}" | cut -d: -f1)
 switch_line=$(grep -n -m1 "sudo test -e '/home/isucon/webapp.isuscope-staging.*'; if sudo test" \
   "${ssh_call_log}" | cut -d: -f1)
 test "${build_line}" -lt "${switch_line}"
 grep -q "export ISUCON_DEPLOY_RELEASE=.*export ISUCON_DEPLOY_REMOTE_PATH=.*export ISUCON_DEPLOY_STAGING_PATH=" \
   "${ssh_call_log}"
-release=$(cat "${fixture_repo}/.local/current-release")
-(cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" ./scripts/rollback.sh "${release}")
-test "$(wc -l <"${ssh_call_log}" | tr -d ' ')" -eq 40
+grep -q "find '/home/isucon'.*isuscope-backup" "${ssh_call_log}"
+first_release=$(cat "${fixture_repo}/.local/current-release")
+test "$(cat "${fixture_repo}/.local/current-commit")" = \
+  "$(git -C "${fixture_repo}" rev-parse HEAD)"
+
+# 同じcommitを続けてdeployしてもtransaction IDが衝突しません。
+(cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" ./scripts/deploy.sh)
+second_release=$(cat "${fixture_repo}/.local/current-release")
+test "${first_release}" != "${second_release}"
+rollback_start=$(wc -l <"${ssh_call_log}" | tr -d ' ')
+(cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" ./scripts/rollback.sh "${second_release}")
+tail -n "+$((rollback_start + 1))" "${ssh_call_log}" >"${fixture_repo}/.local/explicit-rollback-calls.log"
+grep -q 'fixture-runtime-rollback' "${fixture_repo}/.local/explicit-rollback-calls.log"
+test "$(cat "${fixture_repo}/.local/current-release")" = "${first_release}"
+test "$(cat "${fixture_repo}/.local/current-commit")" = \
+  "$(git -C "${fixture_repo}" rev-parse HEAD)"
+
 build_failure_start=$(wc -l <"${ssh_call_log}" | tr -d ' ')
 set +e
 (cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" FAIL_BUILD_NODE=app2 \
@@ -272,6 +335,11 @@ if grep -q "sudo test -e '/home/isucon/webapp.isuscope-staging.build-failure'; i
   echo "deploy switched live files after a staging build failure" >&2
   exit 1
 fi
+if grep -q 'fixture-runtime-rollback' "${fixture_repo}/.local/build-failure-calls.log"; then
+  echo "deploy ran runtime rollback before switching live files" >&2
+  exit 1
+fi
+transaction_failure_start=$(wc -l <"${ssh_call_log}" | tr -d ' ')
 set +e
 (cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" FAIL_SWITCH_NODE=app2 \
   FAIL_MARKER="${fixture_repo}/.local/fail-marker" RELEASE=transaction-failure ./scripts/deploy.sh >/dev/null 2>&1)
@@ -279,6 +347,24 @@ transaction_exit=$?
 set -e
 test "${transaction_exit}" -ne 0
 grep -q '^failed$' "${fixture_repo}/.local/deploy-transactions/transaction-failure.state"
+tail -n "+$((transaction_failure_start + 1))" "${ssh_call_log}" >"${fixture_repo}/.local/transaction-failure-calls.log"
+grep -q 'fixture-runtime-rollback' "${fixture_repo}/.local/transaction-failure-calls.log" || {
+  echo "deploy did not restore runtime after a switching failure" >&2
+  cat "${fixture_repo}/.local/transaction-failure-calls.log" >&2
+  exit 1
+}
+
+(cd "${fixture_repo}" && \
+  PHASE1_WORKTREE_BRANCH=optimize/fixture-obvious \
+  PHASE1_WORKTREE_PATH="${fixture_root}/phase1-obvious" \
+  ./scripts/create-phase1-worktree.sh)
+(cd "${fixture_repo}" && \
+  PHASE1_WORKTREE_BRANCH=optimize/fixture-obvious \
+  PHASE1_WORKTREE_PATH="${fixture_root}/phase1-obvious" \
+  ./scripts/create-phase1-worktree.sh)
+test -f "${fixture_root}/phase1-obvious/webapp/rust/main.rs"
+grep -q '^APPLICATION_LANGUAGE=rust$' "${fixture_root}/phase1-obvious/config/application.env"
+grep -q "^- branch: optimize/fixture-obvious$" "${fixture_root}/phase1-obvious/.local/phase1-handoff.md"
 
 mkdir -p "${fixture_repo}/.local/inspection"
 cat >"${fixture_repo}/.local/inspection/app1.json" <<'EOF'
@@ -313,6 +399,8 @@ jq -e '.items | any(.node_group == "role_mysql" and .source_node == "app1")' \
 jq -e '.items | any(.name == "webapp" and .owner == "isucon" and .owner_group == "isucon")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
 jq -e '.post_deploy_commands | any(.node_group == "role_nginx" and .command == "sudo nginx -t")' \
+  "${fixture_repo}/.local/draft/sync.json" >/dev/null
+jq -e '.rollback_commands | any(.node_group == "role_nginx" and .command == "sudo systemctl reload nginx")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
 jq -e '.ISUSCOPE_SERVICE_UNITS == "mysql.service nginx.service"' \
   "${fixture_repo}/.local/draft/isuscope.json" >/dev/null

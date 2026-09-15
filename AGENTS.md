@@ -35,17 +35,16 @@
 大会開始後は、`config/environment.example.env`を`.local/environment.env`へコピーしてprovider、SSH、node分類を設定し、次の順で初動を進める。
 
 ```text
-make discover
-  → .localのnode snapshot、Ansible inventory、生成済みisuscope configを確認
-make bootstrap
+make kickoff-code LANGUAGE=<name>
+  → node発見と回収元1台のSSH確立後、採用言語のコードとDDLだけを先行回収
+先行回収した範囲を確認して初期commit、make kickoff-code-ready
+  → 別worktreeでコード読解と自明な修正を開始
+mainでmake kickoff-draft
   → 選択した方式でSSH確立、Ansible導入、全nodeの初期収束
-make inspect
   → remoteを変更せず初期構成を.local/inspectionへ保存
-make configure-draft
   → node role、同期対象、Ansible変数、log pathの候補を.local/draftへ生成
-draftを確認後、CONFIRM_DRAFT=true make configure-apply、make discover
-make import
-  → 全配布先のdigest一致を確認してからlocalへ回収し、初期commit
+draftを確認後、CONFIRM_DRAFT=true make kickoff-apply LANGUAGE=<name>
+  → 全配布先のdigest一致を確認して完全import。先行回収したコードもここで再検証
 make deploy
   → 全台preflight・staging後に切り替え、失敗時はtransaction全体を復旧
 config/benchmark.envを設定してmake benchmark-check、make benchmark-probe
@@ -53,15 +52,24 @@ make phase1-check
   → 全node、同期、ベンチadapterと接続先、isuscope doctorをベンチなしで検査
 make survey HYPOTHESIS="..."
   → 人間が確認した後に初回ベンチを一度だけ実行
+初回runの分析後に別worktreeをmainへ統合
+  → deployし、通常のisuscope runでbaselineと比較
 ```
+
+`kickoff-code`は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は、従来どおり`kickoff-apply`のimportで完了する。`kickoff-ready`はworktreeが既にあれば再利用し、main側のベンチ前gateを続行する。
 
 - `discover`と`bootstrap`は冪等に保ち、再実行で既存環境を壊さない。
 - package導入、sudo権限、ログ設定は当日のレギュレーションを確認してからAnsible変数で明示的に有効化する。
 - provider固有のnode発見、remoteからlocalへの初回import、benchmark adapterはshellで扱う。remoteの初期状態収束はAnsibleへ寄せる。
 - `bootstrap`や`phase1-check`からベンチを起動しない。`survey-run`は必ず独立した明示操作にする。
+- SSH確立後にコードとschemaの先行importをcommitし、Phase 1の全nodeセットアップを待たずに別worktreeでコード読解と自明な修正を始める。
+- 並行worktreeは`webapp/`のコード・schemaとローカルテストだけを扱い、remote変更、deploy、ベンチ、`.local/operation.lock`を使う操作はmain側だけが行う。
+- 自明な修正は初回baselineを取るまでremoteへ反映しない。baselineの分析後にmainの最新設定を取り込み、変更根拠を照合してから統合する。
 - 調査から作った`.local/draft/`は候補にすぎない。remote path、owner、service、node roleを確認してから明示的に反映する。
 - `config/sync.json`のitemとcommandには対象node groupを明示し、役割を持たないnodeへ設定や再起動を配らない。
 - remote buildは`build_commands`でstaging itemに対して実行し、成果物をstaging内へ固定してからlive pathを切り替える。永続cacheには再生成可能なartifactだけを置く。
+- `rollback_commands`には旧ファイル復元後のconfig検査、restart/reload、health checkをrole別に定義する。ファイルだけを戻して稼働プロセスを新版のまま残さない。
+- deploy transaction IDはGitコミットと実行時刻から生成される。同じコミットを再deployしてよい。remote backupは既定で直近3世代だけ保持する。
 - `.local/ansible-inventory.json`や接続情報をGitへ追加しない。固定化すべき構成だけを`ansible/`、`config/`、`scripts/`へ残す。
 - isuscopeは`command` modeを標準とし、Phase 1でベンチ起動・完了待ち・score取得まで繋ぐ。`external` modeは通常運用にしない。
 
@@ -71,10 +79,10 @@ make survey HYPOTHESIS="..."
 
 このリポジトリでは、ベンチマークの測定結果と改善履歴をisuscopeで管理する。
 
-初回だけ`.isuscope/SETUP.md`に従って設定し、`isuscope doctor`を通してから`survey-run`で初期状態と行動遷移を一度だけ記録する。
+初回だけ`.isuscope/SETUP.md`に従って設定し、`make isuscope-doctor`を通してから`make survey`で初期状態と行動遷移を一度だけ記録する。
 
 ```bash
-isuscope survey-run --hypothesis "初期状態の負荷構造を記録する"
+make survey HYPOTHESIS="初期状態の負荷構造を記録する"
 isuscope brief latest
 isuscope query latest --metric-prefix benchmark. --group-by scenario --limit 100
 isuscope analyze RUN_ID supported --analysis "観測結果と判断"
@@ -83,7 +91,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 通常の改善は、仮説付きのベンチと分析を一単位にする。
 
 ```bash
-isuscope run --hypothesis "変更理由と改善を期待する観測値"
+make isuscope-run HYPOTHESIS="変更理由と改善を期待する観測値"
 isuscope brief latest
 isuscope query latest --base BASE_RUN --metric-prefix benchmark. --group-by scenario --limit 100
 isuscope analyze RUN_ID supported --analysis "観測結果と判断"

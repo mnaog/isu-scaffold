@@ -13,7 +13,8 @@
 - name: Prepare observability on application nodes
   hosts: application
   become: true
-  gather_facts: true
+  # Facts for these hosts were gathered by the preceding play in this run.
+  gather_facts: false
   any_errors_fatal: true
   vars_files:
     - "{{ playbook_dir }}/../../config/ansible-vars.json"

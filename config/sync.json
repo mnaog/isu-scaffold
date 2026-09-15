@@ -5,5 +5,6 @@
   "items": [],
   "build_commands": [],
   "post_deploy_commands": [],
+  "rollback_commands": [],
   "status_commands": []
 }

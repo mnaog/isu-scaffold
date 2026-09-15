@@ -22,15 +22,16 @@ export ANSIBLE_CONFIG=${repo_dir}/ansible/ansible.cfg
 "${venv_dir}/bin/ansible-playbook" --inventory "${inventory_path}" ansible/playbooks/bootstrap.yml --syntax-check
 "${venv_dir}/bin/ansible-playbook" --inventory "${inventory_path}" ansible/playbooks/verify.yml --syntax-check
 "${venv_dir}/bin/ansible-playbook" --inventory "${inventory_path}" ansible/playbooks/inspect.yml --syntax-check
-"${venv_dir}/bin/ansible" --inventory "${inventory_path}" all --module-name ansible.builtin.ping
 "${script_dir}/run-ansible-playbook.sh" verify.yml
 "${script_dir}/sync-check.sh"
 "${script_dir}/benchmark-check.sh"
 "${script_dir}/benchmark-probe.sh"
 
-isuscope list >/dev/null
+"${script_dir}/run-isuscope.sh" list >/dev/null
 if [[ "${PHASE1_SKIP_ISUSCOPE_DOCTOR:-false}" != true ]]; then
-  isuscope doctor
+  "${script_dir}/run-isuscope.sh" doctor
 fi
+
+"${script_dir}/collector-smoke.sh"
 
 echo "phase1 pre-benchmark checks passed"
