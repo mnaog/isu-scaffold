@@ -3,8 +3,8 @@ set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "${script_dir}/.." && pwd)
-if [[ "${ISUCON_INTERNAL_OPERATION_LOCK_HELD:-false}" != true ]]; then
-  exec "${script_dir}/with-operation-lock.sh" "$0" "$@"
+if [[ "${ISUSCOPE_LOCK_HELD:-}" != 1 ]]; then
+  exec isuscope lock --path "${script_dir}/../.local/operation.lock" -- "$0" "$@"
 fi
 python_bin=${PYTHON_BIN:-python3}
 venv_dir=${ANSIBLE_VENV_DIR:-${repo_dir}/.local/ansible-venv}

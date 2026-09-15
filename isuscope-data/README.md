@@ -20,7 +20,7 @@
 重要なrunの生ログまでGitへ残す場合は、run IDを指定してstageします。
 
 ```bash
-make isuscope-pin RUN=<run-id>
+isuscope pin <run-id>
 git diff --cached --stat
 git commit
 ```

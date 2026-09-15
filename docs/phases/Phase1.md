@@ -152,14 +152,14 @@ make phase1-check
 - 軽量なrun履歴はGitへ残し、重要なrunだけ生ログもpinする
 - `isuscope doctor`を成功させる
 
-動的URLが初回runで細分化された場合は、`make routes-suggest RUN=<run-id>`で候補を作り、確認した規則だけ`.isuscope/routes.toml`へ反映する。
+動的URLが初回runで細分化された場合は、`isuscope routes suggest <run-id> --output .local/route-suggestions.toml`で候補を作り、確認した規則だけ`.isuscope/routes.toml`へ反映する。
 
 ## 初回ベンチを実行する
 
 初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。
 
 ```bash
-make survey HYPOTHESIS="初期状態の負荷構造とベンチシナリオを記録する"
+isuscope survey-run --hypothesis "初期状態の負荷構造とベンチシナリオを記録する"
 isuscope brief latest
 isuscope query latest --metric-prefix benchmark. --group-by scenario --limit 100
 isuscope analyze RUN_ID supported --analysis "初回観測の結果と判断"

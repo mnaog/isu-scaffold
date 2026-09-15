@@ -2,7 +2,7 @@
 
 大会ごとに変わる接続先、配布path、ベンチ起動方法だけを宣言し、node発見からisuscopeの初回`survey-run`直前までを再現可能にします。生成されるIP、SSH秘密鍵、調査結果は`.local/`へ置き、コード、同期規則、ベンチ接続はGitへ残します。
 
-`discover`、`bootstrap`、`inspect`、設定draft生成・反映、`import`、`deploy`、`rollback`、ベンチ実行などの変更系操作は`.local/operation.lock`を共有します。複数セッションから同時に開始した場合、後から来た操作は実行中のPID・開始時刻・操作名を表示して終了します。processが存在しない古いlockだけは次回操作時に自動回収します。
+`discover`、`bootstrap`、`inspect`、設定draft生成・反映、`import`、`deploy`、`rollback`、ベンチ実行などの変更系操作は`.local/operation.lock`を共有します。scriptは`isuscope lock --path .local/operation.lock -- <script>`で自分自身を実行し直し、`isuscope run`/`survey-run`は`make discover`が書き出す`[lock] path`で同じlockを取ります。複数セッションから同時に開始した場合、後から来た操作は実行中のPID・開始時刻・操作名を表示して終了します。processが存在しない古いlockだけは次回操作時に自動回収します。
 
 ## 1. local設定を作る
 
@@ -29,7 +29,7 @@ make kickoff-ready
 
 SSH確立はinventoryのnode名で重複排除し、`SSH_MAX_PARALLEL_NODES`（既定5）台ずつ並列に行います。完全importはnodeごとに全itemのdigestを1回のSSHでまとめて計算し（`IMPORT_MAX_PARALLEL_NODES`、既定5）、localの内容がsourceのdigestと一致するitemは再転送しません。全itemのstagingと検証が終わるまで既存のlocalを置き換えず、途中で失敗した場合は元へ戻します。Ansible requirementsは内容hashが同じなら再installせず、bootstrap内のapplication nodeのfact収集も一度だけです。
 
-lockを取る変更系操作は、終了時に`.local/timing-<UTC時刻>-<pid>.tsv`へ操作名・秒数・終了codeを残します。次回の初動改善はこの実測を根拠に判断します。
+lockを取る変更系操作は、終了時に`.local/operation-timing.tsv`へ開始時刻・操作名・秒数・終了codeを残します。次回の初動改善はこの実測を根拠に判断します。
 
 接続先の取得方法は2種類です。
 
@@ -159,7 +159,7 @@ make benchmark-probe
 `make discover`はinspection draftで選んだNginx・MySQL log pathも生成済みisuscope設定へ反映します。初回run後、動的IDのためrouteが細分化されていれば次を実行します。
 
 ```bash
-make routes-suggest RUN=<run-id>
+isuscope routes suggest <run-id> --output .local/route-suggestions.toml
 ```
 
 `.local/route-suggestions.toml`は候補であり、自動適用されません。実例とpatternを確認し、必要な規則だけ`.isuscope/routes.toml`へ移します。
@@ -168,7 +168,7 @@ make routes-suggest RUN=<run-id>
 
 ```bash
 make phase1-check
-make survey HYPOTHESIS="初期状態の負荷構造とベンチシナリオを記録する"
+isuscope survey-run --hypothesis "初期状態の負荷構造とベンチシナリオを記録する"
 ```
 
 `phase1-check`はshell・Ansible構文、全nodeのSSH、disk、必須service、sync manifest、benchmark adapter、ベンチ接続先、isuscope doctorに加えて、`scripts/collector-smoke.sh`でcollectorの入力を検査しますが、ベンチは起動しません。smokeは全nodeで`/proc/stat`の1秒sampling、`active` nodeのnginx access log読取、`db` nodeの`sudo -n`でのslow log読取、`config/benchmark.env`の`BENCHMARK_SAMPLE_FILE`に対するparserのJSONL出力を必須とし、`sar`・`alp`・`slp`の欠落やparser出力0件は警告に留めます。`survey`だけが初回ベンチを実行します。

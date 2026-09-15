@@ -24,7 +24,7 @@ __pycache__/
 /isuscope-data/runs/*/tmp/
 
 # 生ログは容量が大きいため既定では記録しない。
-# 必要なrunだけ `make isuscope-pin RUN=<run-id>` で強制追加する。
+# 必要なrunだけ `isuscope pin <run-id>` で強制追加する。
 /isuscope-data/runs/*/logs/
 
 # `isuscope`が生成する最新runの展開ビューは再生成できる。

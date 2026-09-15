@@ -9,8 +9,8 @@ application_path=${2:-}
   exit 2
 }
 test -n "${language}" || { echo "LANGUAGE=<name> is required" >&2; exit 2; }
-if [[ "${ISUCON_INTERNAL_OPERATION_LOCK_HELD:-false}" != true ]]; then
-  exec "${script_dir}/with-operation-lock.sh" "$0" "$@"
+if [[ "${ISUSCOPE_LOCK_HELD:-}" != 1 ]]; then
+  exec isuscope lock --path "${script_dir}/../.local/operation.lock" -- "$0" "$@"
 fi
 
 "${script_dir}/configure-apply.sh"

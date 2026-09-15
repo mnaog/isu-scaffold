@@ -1,4 +1,4 @@
-.PHONY: help repo-init ansible-install discover ssh-bootstrap bootstrap inspect configure-draft configure-apply sync-check import language-set kickoff-code kickoff-code-ready kickoff-draft kickoff-apply kickoff-ready deploy rollback status benchmark-check benchmark-probe phase1-check test isuscope-doctor survey isuscope-run routes-suggest isuscope-pin
+.PHONY: help repo-init ansible-install discover ssh-bootstrap bootstrap inspect configure-draft configure-apply sync-check import language-set kickoff-code kickoff-code-ready kickoff-draft kickoff-apply kickoff-ready deploy rollback status benchmark-check benchmark-probe phase1-check test
 
 help:
 	@printf '%s\n' \
@@ -24,12 +24,7 @@ help:
 		'make benchmark-check                  ベンチを起動せずadapter設定を検査する' \
 		'make benchmark-probe                  ベンチを起動せず接続先を疎通確認する' \
 		'make phase1-check                     ベンチ前の全node・isuscope検査を行う' \
-		'make test                             local fixtureで生成とadapterを検査する' \
-		'make isuscope-doctor                  isuscope設定と接続を検査する' \
-		'make survey HYPOTHESIS="..."          初回survey-runを明示的に実行する' \
-		'make isuscope-run HYPOTHESIS="..."    operation lock下で通常runを実行する' \
-		'make routes-suggest RUN=latest        runからroute正規化候補を生成する' \
-		'make isuscope-pin RUN=<run-id>        重要なrunの生ログをGitへstageする'
+		'make test                             local fixtureで生成とadapterを検査する'
 
 repo-init:
 	@test -n "$(REPO)" || { echo 'REPO=<name>を指定してください' >&2; exit 2; }
@@ -105,20 +100,3 @@ phase1-check:
 test:
 	@./tests/initial-automation.sh
 
-isuscope-doctor:
-	@isuscope doctor
-
-survey:
-	@test -n "$(HYPOTHESIS)" || { echo 'HYPOTHESIS="..."を指定してください' >&2; exit 2; }
-	@./scripts/with-operation-lock.sh isuscope survey-run --hypothesis "$(HYPOTHESIS)"
-
-isuscope-run:
-	@test -n "$(HYPOTHESIS)" || { echo 'HYPOTHESIS="..."を指定してください' >&2; exit 2; }
-	@./scripts/with-operation-lock.sh isuscope run --hypothesis "$(HYPOTHESIS)"
-
-routes-suggest:
-	@./scripts/suggest-routes.sh "$(or $(RUN),latest)"
-
-isuscope-pin:
-	@test -n "$(RUN)" || { echo 'RUN=<run-id> を指定してください' >&2; exit 2; }
-	@./scripts/isuscope-pin.sh "$(RUN)"

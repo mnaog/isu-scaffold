@@ -11,10 +11,10 @@
 7. app binaryや主要設定を`isuscope_fingerprint_paths`へ指定し、`make bootstrap`で汎用`fingerprint.sh`と一緒に各nodeへ冪等配置する
 8. `bash -n benchmark.sh`、`bash -n parse-benchmark.sh`、`bash -n setup.sh`、`isuscope list`を実行してから、不足する場合だけ`setup.sh`の`apply_environment`へ冪等な導入処理を追加する
 9. ここで初めて`setup.sh`を実行し、`setup-state.json`が生成されることを確認する。標準ツールは自動installされない
-10. `make benchmark-check`、`make benchmark-probe`、`make isuscope-doctor`を実行し、ベンチを起動せずfailureを解消する
-11. `make survey HYPOTHESIS="初期状態の負荷構造を記録する"`を一度実行し、`isuscope brief latest`と`isuscope query latest --metric-prefix benchmark. --group-by scenario --limit 100`でcollector異常、主要metric、scenario、transitionを確認する。初期化を除くhost/service集約は`isuscope query latest --scope series --window load --metric-prefix service. --group-by node --group-by service`、時系列は`isuscope series latest --window load --metric <name>`で掘り下げる。動的routeが未正規化なら`make routes-suggest RUN=<run-id>`の候補を確認する。PASS後は出力されたIDを指定して`isuscope analyze RUN_ID VERDICT --analysis "結果"`で記録する
+10. `make benchmark-check`、`make benchmark-probe`、`isuscope doctor`を実行し、ベンチを起動せずfailureを解消する
+11. `isuscope survey-run --hypothesis "初期状態の負荷構造を記録する"`を一度実行し、`isuscope brief latest`と`isuscope query latest --metric-prefix benchmark. --group-by scenario --limit 100`でcollector異常、主要metric、scenario、transitionを確認する。初期化を除くhost/service集約は`isuscope query latest --scope series --window load --metric-prefix service. --group-by node --group-by service`、時系列は`isuscope series latest --window load --metric <name>`で掘り下げる。動的routeが未正規化なら`isuscope routes suggest <run-id> --output .local/route-suggestions.toml`の候補を確認する。PASS後は出力されたIDを指定して`isuscope analyze RUN_ID VERDICT --analysis "結果"`で記録する
 
-計測結果はリポジトリ内の`isuscope-data/`へ保存します。`run.json`、`source/`、`tooling/`、`structured.json.zst`は通常のGit操作で記録し、容量の大きいSQLiteと`logs/`は既定でGit管理から除外します。再現に必要な重要runの生ログは`make isuscope-pin RUN=<run-id>`で明示的にstageしてください。
+計測結果はリポジトリ内の`isuscope-data/`へ保存します。`run.json`、`source/`、`tooling/`、`structured.json.zst`は通常のGit操作で記録し、容量の大きいSQLiteと`logs/`は既定でGit管理から除外します。再現に必要な重要runの生ログは`isuscope pin <run-id>`で明示的にstageしてください。
 
 remote変更を行う場合は、既存ファイルのbackup、設定検証、atomicな配置、必要最小限のreloadを行います。パッケージ導入やremote build、常駐agentは既存機能で代替できない場合だけ使用します。
 

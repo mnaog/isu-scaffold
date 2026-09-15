@@ -38,7 +38,7 @@
 - 秘密情報は`.local/`へ置く。再現に必要な定義は`webapp/`、`config/`、`infra/`、`scripts/`へ残す。
 - 公式情報は要約だけで済ませず、可能な限り原文を`docs/official/`へ保存する。
 - 現在のPhaseと完了条件は`docs/phases/`に従い、Phaseの移行は人間が決定する。
-- isuscopeの軽量なrun履歴は通常のコミットへ含める。重要なrunの生ログを残す場合は`make isuscope-pin RUN=<run-id>`を使う。
+- isuscopeの軽量なrun履歴は通常のコミットへ含める。重要なrunの生ログを残す場合は`isuscope pin <run-id>`を使う。
 - `.local/operation.lock`を変更系操作の共通排他とする。実行中のlockを手作業で消さず、別セッションは終了を待つ。status・checkなどのread-only操作は並行してよい。
 
 ## 初動の自動化
@@ -61,7 +61,7 @@ make deploy
 config/benchmark.envを設定してmake benchmark-check、make benchmark-probe
 make phase1-check
   → 全node、同期、ベンチadapterと接続先、isuscope doctorをベンチなしで検査
-make survey HYPOTHESIS="..."
+isuscope survey-run --hypothesis "..."
   → 人間が確認した後に初回ベンチを一度だけ実行
 初回runの分析後に別worktreeをmainへ統合
   → deployし、通常のisuscope runでbaselineと比較
@@ -90,10 +90,10 @@ make survey HYPOTHESIS="..."
 
 このリポジトリでは、ベンチマークの測定結果と改善履歴をisuscopeで管理する。isuscopeは、ベンチ1回ごとにscore、仮説、Gitの状態、HTTP・SQL・CPUの計測、会話の位置を1つのrunとして記録する自作CLIである。仕様とオプションは`isuscope --help`とリポジトリ（github.com/mnaog/isuscope）のREADMEを正とする。
 
-初回だけ`.isuscope/SETUP.md`に従って設定し、`make isuscope-doctor`を通してから`make survey`で初期状態と行動遷移を一度だけ記録する。
+初回だけ`.isuscope/SETUP.md`に従って設定し、`isuscope doctor`を通してから`isuscope survey-run`で初期状態と行動遷移を一度だけ記録する。
 
 ```bash
-make survey HYPOTHESIS="初期状態の負荷構造を記録する"
+isuscope survey-run --hypothesis "初期状態の負荷構造を記録する"
 isuscope brief latest
 isuscope query latest --metric-prefix benchmark. --group-by scenario --limit 100
 isuscope analyze RUN_ID supported --analysis "観測結果と判断"
@@ -102,7 +102,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 通常の改善は、仮説付きのベンチと分析を一単位にする。
 
 ```bash
-make isuscope-run HYPOTHESIS="変更理由と改善を期待する観測値"
+isuscope run --hypothesis "変更理由と改善を期待する観測値"
 isuscope brief latest
 isuscope query latest --base BASE_RUN --metric-prefix benchmark. --group-by scenario --limit 100
 isuscope analyze RUN_ID supported --analysis "観測結果と判断"
@@ -116,7 +116,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 
 最初は`isuscope brief latest`で全体を確認し、`isuscope query latest --base BASE_RUN ...`で仮説対象だけを比較する。初期化を除くhost/service集約は`query --scope series --window load`、時間帯を掘り下げる場合は`isuscope series latest --window load --metric <name>`を使う。`whole`、`initialize`、`load`を意図に応じて選び、初期化負荷と通常負荷を混ぜない。`report`、`diff`、`metrics`はcompactな出力だけでは足りない場合の詳細診断に限定する。人が複数runを横断して確認するときは`isuscope ui`を使う。collectorの失敗はbriefのcoverage issueを入口にし、必要ならreportのcoverageとrun配下のlogで確認する。
 
-初回runのHTTP routeに動的IDが残っている場合は、`make routes-suggest RUN=<run-id>`で`.local/route-suggestions.toml`を作る。候補を確認したものだけ`.isuscope/routes.toml`へ移し、再計測する。
+初回runのHTTP routeに動的IDが残っている場合は、`isuscope routes suggest <run-id> --output .local/route-suggestions.toml`で`.local/route-suggestions.toml`を作る。候補を確認したものだけ`.isuscope/routes.toml`へ移し、再計測する。
 
 `[context.agent]`を有効にした後のベンチは、会話履歴を正しく紐付けるため現在のCodexまたはClaude Codeのセッションから実行する。
 

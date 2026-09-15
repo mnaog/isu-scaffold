@@ -11,7 +11,6 @@ trap cleanup EXIT
 mkdir -p "${fixture_repo}/scripts" "${fixture_repo}/config" "${fixture_repo}/.isuscope" \
   "${fixture_repo}/.local" "${fixture_repo}/isuscope-data"
 cp "${source_repo}"/scripts/discover.sh \
-  "${source_repo}"/scripts/with-operation-lock.sh \
   "${source_repo}"/scripts/discover-static.sh \
   "${source_repo}"/scripts/discover-aws.sh \
   "${source_repo}"/scripts/apply-node-overrides.sh \
@@ -34,8 +33,6 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/set-application-language.sh \
   "${source_repo}"/scripts/quick-import-code.sh \
   "${source_repo}"/scripts/create-phase1-worktree.sh \
-  "${source_repo}"/scripts/suggest-routes.py \
-  "${source_repo}"/scripts/suggest-routes.sh \
   "${fixture_repo}/scripts/"
 cp "${source_repo}/.isuscope/config.template.toml" \
   "${source_repo}/.isuscope/benchmark.sh" \
@@ -55,7 +52,7 @@ rm -f "${fixture_repo}/.local/environment.env.bak"
 (cd "${fixture_repo}" && ./scripts/discover.sh)
 test ! -e "${fixture_repo}/.local/operation.lock"
 
-# 生きている変更系操作は拒否し、死んだprocessのlockだけ自動回収します。
+# isuscope lockは生きている変更系操作を拒否し、死んだprocessのlockだけ自動回収します。
 mkdir "${fixture_repo}/.local/operation.lock"
 printf 'pid=%s\nstarted_at=test\noperation=test\n' "$$" \
   >"${fixture_repo}/.local/operation.lock/owner"
@@ -78,6 +75,7 @@ jq -e '.all.children.application.hosts | length == 2' \
   "${fixture_repo}/.local/ansible-inventory.json" >/dev/null
 grep -q '^mode = "command"$' "${fixture_repo}/.isuscope/config.toml"
 grep -q '^known_hosts_file = ".local/known-hosts"$' "${fixture_repo}/.isuscope/config.toml"
+grep -q '^path = ".local/operation.lock"$' "${fixture_repo}/.isuscope/config.toml"
 python3 - "${fixture_repo}/.isuscope/config.toml" <<'PY'
 import sys, tomllib
 config = tomllib.load(open(sys.argv[1], "rb"))
@@ -185,20 +183,6 @@ http_result=$(cd "${fixture_repo}" && \
   ./.isuscope/benchmark.sh | tail -n 1)
 jq -e '.score == 77 and .pass == true' <<<"${http_result}" >/dev/null
 
-cat >"${mock_bin}/isuscope" <<'EOF'
-#!/usr/bin/env bash
-cat <<'JSON'
-{"rows":[
-  {"labels":{"route":"/users/12345/profile"}},
-  {"labels":{"route":"/users/67890/profile"}},
-  {"labels":{"route":"/items/0123456789abcdef01234567"}}
-]}
-JSON
-EOF
-chmod +x "${mock_bin}/isuscope"
-(cd "${fixture_repo}" && PATH="${mock_bin}:${PATH}" ./scripts/suggest-routes.sh latest)
-grep -Fq 'replace = "/users/:id/profile"' "${fixture_repo}/.local/route-suggestions.toml"
-grep -Fq 'replace = "/items/:key"' "${fixture_repo}/.local/route-suggestions.toml"
 
 # importは全nodeのdigest一致を確認してからsource nodeを回収します。
 fake_remote=${fixture_repo}/.local/fake-remote

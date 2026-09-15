@@ -133,8 +133,8 @@ if [[ "${1:-}" == --probe ]]; then
   exit 0
 fi
 
-if [[ "${ISUCON_INTERNAL_OPERATION_LOCK_HELD:-false}" != true ]]; then
-  exec "${project_root}/scripts/with-operation-lock.sh" "$0" "$@"
+if [[ "${ISUSCOPE_LOCK_HELD:-}" != 1 ]]; then
+  exec isuscope lock --path "${project_root}/.local/operation.lock" -- "$0" "$@"
 fi
 
 command -v jq >/dev/null

@@ -5,8 +5,8 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 readonly SCRIPT_DIR
 PROJECT_ROOT=$(cd -- "${SCRIPT_DIR}/.." && pwd)
 readonly PROJECT_ROOT
-if [[ "${ISUCON_INTERNAL_OPERATION_LOCK_HELD:-false}" != true ]]; then
-  exec "${PROJECT_ROOT}/scripts/with-operation-lock.sh" "$0" "$@"
+if [[ "${ISUSCOPE_LOCK_HELD:-}" != 1 ]]; then
+  exec isuscope lock --path "${PROJECT_ROOT}/.local/operation.lock" -- "$0" "$@"
 fi
 readonly CONFIG_FILE="${SCRIPT_DIR}/config.toml"
 readonly ROUTES_FILE="${SCRIPT_DIR}/routes.toml"
