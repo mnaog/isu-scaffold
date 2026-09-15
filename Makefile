@@ -1,4 +1,4 @@
-.PHONY: help discover kickoff-code kickoff-code-ready kickoff-draft kickoff-apply deploy rollback status phase1-check test
+.PHONY: help discover kickoff-code kickoff-code-ready kickoff-draft kickoff-apply deploy rollback status phase1-check
 
 help:
 	@printf '%s\n' \
@@ -10,8 +10,7 @@ help:
 		'make deploy                           commit済みのlocal状態を全nodeへ反映する' \
 		'make rollback RELEASE=<id>            deploy前のremote状態へ戻す' \
 		'make status                           全application nodeを検査する' \
-		'make phase1-check                     ベンチ前の全node・isuscope検査を行う' \
-		'make test                             local fixtureで生成とadapterを検査する'
+		'make phase1-check                     ベンチ前の全node・isuscope検査を行う'
 
 discover:
 	@./scripts/discover.sh
@@ -43,7 +42,3 @@ status:
 
 phase1-check:
 	@./scripts/phase1-check.sh
-
-test:
-	@./tests/initial-automation.sh
-

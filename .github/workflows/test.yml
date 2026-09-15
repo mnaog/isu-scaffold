@@ -1,0 +1,50 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  initial-automation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends jq zstd
+
+      # Scripts take the operation lock through `isuscope lock`, so the fixture needs the CLI.
+      - name: Resolve isuscope revision
+        id: isuscope
+        run: echo "rev=$(git ls-remote https://github.com/mnaog/isuscope refs/heads/main | cut -f1)" >>"$GITHUB_OUTPUT"
+
+      - name: Cache isuscope
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/isuscope
+          key: isuscope-${{ runner.os }}-${{ steps.isuscope.outputs.rev }}
+
+      - name: Build isuscope
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          rustup toolchain install stable --profile minimal
+          cargo +stable install --locked --git https://github.com/mnaog/isuscope --rev "${{ steps.isuscope.outputs.rev }}" isuscope
+
+      - name: Check shell syntax and whitespace
+        run: |
+          git diff --check "$(git hash-object -t tree /dev/null)" HEAD -- . ':!docs/official'
+          find scripts .isuscope tests -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+
+      - name: Run initial automation fixture
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          isuscope --version
+          ./tests/initial-automation.sh
