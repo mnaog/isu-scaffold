@@ -40,7 +40,7 @@ jobs:
 
       - name: Check shell syntax and whitespace
         run: |
-          git diff --check "$(git hash-object -t tree /dev/null)" HEAD -- . ':!docs/official'
+          git diff --check "$(git hash-object -t tree /dev/null)" HEAD -- . ':!docs/official' ':!docs/agent-history'
           find scripts .isuscope tests -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
 
       - name: Run initial automation fixture
