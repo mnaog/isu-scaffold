@@ -190,7 +190,10 @@ review_dir=${fixture_repo}/.local/review
 mkdir -p "${review_dir}/draft" "${review_dir}/facts"
 cat >"${review_dir}/ssh-node" <<'EOF'
 #!/usr/bin/env bash
-cat "${REVIEW_FACTS_DIR:?}/$1"
+case "$2" in
+  *"nginx -T"*) cat "${REVIEW_FACTS_DIR:?}/$1.nginx" 2>/dev/null || true ;;
+  *) cat "${REVIEW_FACTS_DIR:?}/$1" ;;
+esac
 EOF
 chmod +x "${review_dir}/ssh-node"
 printf '[{"name":"app1","roles":["app","nginx","db"]},{"name":"app2","roles":["app","nginx","db"]}]\n' \
@@ -214,9 +217,28 @@ run_review() {
 
 write_sync /home/isucon/webapp/rust
 write_facts app1 directory 2048 active
+# serverブロックのaccess_log（offを含む）はhttpレベルの計測logを上書きするのでWARNにします。
+cat >"${review_dir}/facts/app1.nginx" <<'EOF'
+# configuration file /etc/nginx/nginx.conf:
+http {
+    access_log /var/log/nginx/access.log;
+    include /etc/nginx/sites-enabled/*;
+}
+# configuration file /etc/nginx/sites-enabled/app.conf:
+server {
+    listen 443 ssl; # comment ; with separators {
+    access_log off;
+    location / { proxy_pass http://127.0.0.1:8080; }
+}
+EOF
 write_facts app2 directory 999999 active
 run_review >/dev/null
-grep -q '^FAIL 0 / WARN 3 ' "${review_dir}/draft/review.md"
+grep -q '^FAIL 0 / WARN 4 ' "${review_dir}/draft/review.md"
+grep -q 'WARN app1: server block in /etc/nginx/sites-enabled/app.conf sets access_log off' "${review_dir}/draft/review.md"
+if grep -q 'nginx.conf sets access_log' "${review_dir}/draft/review.md"; then
+  echo "http-level access_log was reported as a server override" >&2
+  exit 1
+fi
 grep -q 'WARN app2: webapp is .* MiB' "${review_dir}/draft/review.md"
 grep -q 'WARN app1: log not readable: /var/log/mysql/mysql-slow.log' "${review_dir}/draft/review.md"
 
@@ -487,6 +509,8 @@ cat >"${fixture_repo}/.local/inspection/app2.json" <<'EOF'
 }
 EOF
 printf '[package]\nname = "isu-app"\nversion = "0.1.0"\n' >"${fixture_repo}/webapp/rust/Cargo.toml"
+mkdir -p "${fixture_repo}/webapp/rust/src"
+printf 'let cookie = Cookie::build("app_session", id);\nlet owner = jar.cookie("owner_session");\nconst SESSION_EXPIRES_KEY: &str = "EXPIRES";\n' >"${fixture_repo}/webapp/rust/src/session.rs"
 (cd "${fixture_repo}" && ./scripts/configure-draft.sh)
 jq -e '.items | any(.node_group == "role_mysql" and .source_node == "app1")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
@@ -502,6 +526,10 @@ jq -e '.build_commands[0].item == "rust-app" and (.build_commands[0].command | c
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
 jq -e '.post_deploy_commands | any(.command == "sudo systemctl restart isu-rust")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
+# sessionを識別するnginx変数をコードから推定し、確認を促します。
+jq -e '.observability_nginx_session_source == "$cookie_app_session$cookie_owner_session"' \
+  "${fixture_repo}/.local/draft/ansible-vars.json" >/dev/null
+jq -e '.warnings | any(test("session source guessed"))' "${fixture_repo}/.local/draft/summary.json" >/dev/null
 jq -e '.post_deploy_commands | any(.node_group == "role_nginx" and .command == "sudo nginx -t")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
 jq -e '.rollback_commands | any(.node_group == "role_nginx" and .command == "sudo systemctl reload nginx")' \

@@ -28,6 +28,9 @@ working_dir = "."
 stream_output = false
 # 保存した実際のベンチ出力。`isuscope doctor`が全parserをこれに適用して検査します。
 sample_output = "config/benchmark-sample.log"
+# initialize区間と負荷区間の境界になるbenchmark出力の文言。大会ごとに違うため、sampleで`isuscope doctor`が検査します。
+# initialize_start_marker = "当日のbenchmarkerがinitialize開始時に出す文言"
+# initialize_finish_marker = "当日のbenchmarkerがinitialize完了時に出す文言"
 # 問題固有の件数などがbenchmark stdoutに現れる場合に有効化します。
 # parserはベンチ終了後に実行され、保存済みrunへ`isuscope enrich`で再適用できます。
 # [[benchmark.parsers]]

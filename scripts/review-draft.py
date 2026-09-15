@@ -7,6 +7,7 @@ written to <draft>/review.md. Exit status 1 means at least one FAIL: the draft m
 fixed before `make kickoff-apply`. WARN lines need an explicit human or agent decision.
 """
 import json
+import re
 import shlex
 import subprocess
 import sys
@@ -70,6 +71,51 @@ def remote_script(checks: dict) -> str:
         quoted = shlex.quote(path)
         lines.append(f"if sudo -n test -r {quoted}; then r=yes; else r=no; fi; printf 'log\\t%s\\t%s\\n' {quoted} \"$r\"")
     return "\n".join(lines)
+
+
+def server_access_logs(config: str) -> list[tuple[str, str]]:
+    """access_log directives inside server blocks of `nginx -T` output.
+
+    Any server-level access_log, including `off`, replaces the http-level measurement log
+    for that server, so its requests would be missing from the LTSV log.
+    """
+    found = []
+    current_file = "-"
+    stack: list[str] = []
+    words: list[str] = []
+    for line in config.splitlines():
+        marker = re.match(r"^# configuration file (.+):$", line)
+        if marker:
+            current_file = marker.group(1)
+            stack, words = [], []
+            continue
+        line = line.split("#", 1)[0]
+        for token in re.findall(r"[{};]|[^\s{};]+", line):
+            if token == "{":
+                stack.append(words[0] if words else "")
+                words = []
+            elif token == "}":
+                if stack:
+                    stack.pop()
+                words = []
+            elif token == ";":
+                if words and words[0] == "access_log" and "server" in stack:
+                    found.append((current_file, " ".join(words[1:])))
+                words = []
+            else:
+                words.append(token)
+    return found
+
+
+def nginx_config(ssh_node: str, node: str) -> str:
+    try:
+        completed = subprocess.run(
+            [ssh_node, node, "sudo -n nginx -T 2>/dev/null"],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return completed.stdout if completed.returncode == 0 else ""
 
 
 def collect(ssh_node: str, node: str, checks: dict) -> tuple[str, dict, str | None]:
@@ -198,6 +244,9 @@ def main() -> int:
         for service in sorted(checks[node]["services"]):
             state = (facts.get(("service", service)) or ["unknown"])[0]
             record("OK" if state == "active" else "FAIL", f"{node}: service {service} is {state}")
+        if checks[node]["dropins"]:
+            for file, value in server_access_logs(nginx_config(ssh_node, node)):
+                record("WARN", f"{node}: server block in {file} sets access_log {value}; its requests are not written to the isuscope LTSV log")
         for dropin in sorted(checks[node]["dropins"]):
             if (facts.get(("dropin", dropin)) or ["no"])[0] != "yes":
                 record("FAIL", f"{node}: measurement drop-in is missing: {dropin} (nginx.conf must include conf.d inside http; rerun ./scripts/bootstrap.sh)")

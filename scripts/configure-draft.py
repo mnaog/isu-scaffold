@@ -120,6 +120,49 @@ def rust_service(service_fragments: list[str]) -> tuple[str, str] | None:
     return None
 
 
+SESSION_HEADER = re.compile(r'get\(\s*"(x-[a-z0-9-]*session[a-z0-9-]*)"', re.IGNORECASE)
+SESSION_COOKIE_PATTERNS = (
+    re.compile(r'Cookie::(?:new|build)\(\s*"([A-Za-z0-9_]+)"'),
+    re.compile(r'\.cookie\(\s*"([A-Za-z0-9_]+)"\s*\)'),
+    re.compile(r'cookie_name\(\s*"([A-Za-z0-9_]+)"'),
+    re.compile(r'const\s+[A-Z0-9_]*(?:SESSION|COOKIE)[A-Z0-9_]*\s*:\s*&str\s*=\s*"([A-Za-z0-9_]+)"'),
+)
+NON_MYSQL_CRATES = re.compile(r'\b(rusqlite|sqlite|postgres|tokio-postgres)\b')
+
+
+def session_source(application_dir: Path) -> tuple[str | None, list[str]]:
+    """Guess the Nginx variable that identifies a user session from the application code."""
+    headers: list[str] = []
+    cookies: list[str] = []
+    if application_dir.is_dir():
+        for source in sorted(application_dir.rglob("*.rs")):
+            if "target" in source.parts:
+                continue
+            text = source.read_text(errors="ignore")
+            for match in SESSION_HEADER.finditer(text):
+                name = match.group(1).lower()
+                if name not in headers:
+                    headers.append(name)
+            for pattern in SESSION_COOKIE_PATTERNS:
+                for match in pattern.finditer(text):
+                    name = match.group(1)
+                    if name not in cookies and "expire" not in name.lower():
+                        cookies.append(name)
+    variables = [f"$http_{name.replace('-', '_')}" for name in headers] + [f"$cookie_{name}" for name in cookies]
+    # Only one of the candidates is normally present per request, so concatenation keeps the one sent.
+    return ("".join(variables) if variables else None), headers + cookies
+
+
+def application_database_warnings(application_dir: Path) -> list[str]:
+    manifest = application_dir / "Cargo.toml"
+    if not manifest.is_file():
+        return []
+    found = sorted(set(NON_MYSQL_CRATES.findall(manifest.read_text(errors="ignore"))))
+    if not found:
+        return []
+    return [f"the application depends on {', '.join(found)}; isuscope collects database metrics only from the MySQL slow log"]
+
+
 def safe_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-.")
 
@@ -357,10 +400,26 @@ def main() -> int:
         node: sorted(set(OBSERVABILITY_TOOLS) - set(tools))
         for node, tools in available_tools_by_node.items()
     }
+    session_expression, session_names = session_source(local_application) if local_application else (None, [])
+    if session_expression:
+        draft_warnings.append(
+            f"session source guessed from the code as {session_expression} ({', '.join(session_names)}); "
+            "confirm observability_nginx_session_source in ansible-vars.json"
+        )
+    else:
+        draft_warnings.append(
+            "no session cookie or header was found in the code; set observability_nginx_session_source "
+            "(for example $cookie_session) for behavior transitions"
+        )
+    if local_application:
+        draft_warnings.extend(application_database_warnings(local_application))
+    if any(role == "postgres" for roles in roles_by_node.values() for role in roles):
+        draft_warnings.append("PostgreSQL is running; isuscope collects database metrics only from the MySQL slow log")
     ansible_vars = {
         "bootstrap_required_services": common_services,
         "isuscope_fingerprint_paths": fingerprint_paths,
         "observability_required_commands": common_tools,
+        **({"observability_nginx_session_source": session_expression} if session_expression else {}),
     }
     isuscope_environment = {
         # Ansible bootstrap adds dedicated measurement logs; prefer them over problem-provided logs.
@@ -398,6 +457,7 @@ def main() -> int:
             "systemd_fragment_candidates": sorted(set(service_fragments)),
             "available_tools_by_node": available_tools_by_node,
             "missing_tools_by_node": missing_tools_by_node,
+            "session_source_candidates": session_names,
             "warnings": warnings,
         },
     }

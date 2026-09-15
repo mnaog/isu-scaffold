@@ -18,6 +18,8 @@ source "${repo_dir}/config/application.env"
 python3 "${script_dir}/review-draft.py"
 "${script_dir}/configure-apply.sh"
 "${script_dir}/discover.sh"
+# The applied draft may set the session source for the measurement log; rewrite only that drop-in.
+"${script_dir}/run-ansible-playbook.sh" bootstrap.yml --tags observability_nginx_log
 "${script_dir}/sync-check.sh"
 "${script_dir}/import.sh"
 
