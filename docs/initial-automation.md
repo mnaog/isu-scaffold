@@ -90,6 +90,8 @@ make discover
 make sync-check
 ```
 
+Git commitが存在する場合、`sync-check`はmanifest検証に加えて、Git管理中の配布byte数とnode複製後の合計byte数を表示します。local・remoteの配置先が重なるitemやbuild commandの名前の重複、改行を含むcommandは拒否します。ignored artifactはこの値にも実際のdeploy archiveにも含まれません。
+
 反映前の設定は`.local/draft-backup/`へ退避されます。node roleを反映した後の`discover`は`role_nginx`、`role_mysql`などのAnsible groupも生成します。
 
 ## 5. local正本とdeployを接続する

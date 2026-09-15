@@ -296,7 +296,15 @@ fi
 if [[ -n "${FAIL_BUILD_NODE:-}" && "$1" == "${FAIL_BUILD_NODE}" && "$2" == *"fixture-build-command"* ]]; then
   exit 1
 fi
-case "$2" in *"tar -C '"*"' -xf -"*) cat >/dev/null ;; esac
+case "$2" in
+  *"tar -C '"*"' -xf -"*)
+    if [[ -n "${ARCHIVE_LIST_LOG:-}" ]]; then
+      tar -tf - >>"${ARCHIVE_LIST_LOG}"
+    else
+      cat >/dev/null
+    fi
+    ;;
+esac
 EOF
 chmod +x "${fixture_repo}/scripts/ssh-node.sh"
 jq '.build_commands = [{"name":"fixture-build","node_group":"application","item":"webapp","command":"test -n \"$ISUCON_DEPLOY_RELEASE\" && test -n \"$ISUCON_DEPLOY_REMOTE_PATH\" && test -n \"$ISUCON_DEPLOY_STAGING_PATH\" # fixture-build-command"}] |
@@ -306,7 +314,24 @@ mv "${fixture_repo}/config/sync.json.tmp" "${fixture_repo}/config/sync.json"
 (cd "${fixture_repo}" && ./scripts/set-application-language.sh rust)
 (cd "${fixture_repo}" && git add . && git commit -qm initial)
 ssh_call_log=${fixture_repo}/.local/ssh-calls.log
-(cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" ./scripts/deploy.sh)
+# deploy archiveはGitのHEADから作るため、ignored artifactを配布しません。
+archive_list_log=${fixture_repo}/.local/archive-list.log
+printf '/webapp/ignored-artifact\n' >>"${fixture_repo}/.git/info/exclude"
+printf 'must not deploy\n' >"${fixture_repo}/webapp/ignored-artifact"
+(cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" \
+  ARCHIVE_LIST_LOG="${archive_list_log}" DEPLOY_MAX_PARALLEL_NODES=2 ./scripts/deploy.sh)
+grep -q '^webapp/README.txt$' "${archive_list_log}"
+if grep -q 'ignored-artifact' "${archive_list_log}"; then
+  echo "deploy archive included an ignored artifact" >&2
+  exit 1
+fi
+build_input_id() {
+  grep 'fixture-build-command' "$1" | head -n 1 | \
+    sed -E "s/.*ISUCON_DEPLOY_BUILD_INPUT_ID='([^']+)'.*/\\1/"
+}
+grep -q "ISUCON_DEPLOY_BUILD_INPUTS_UNCHANGED='false'" "${ssh_call_log}"
+initial_build_input_id=$(build_input_id "${ssh_call_log}")
+test -n "${initial_build_input_id}"
 build_line=$(grep -n -m1 'fixture-build-command' "${ssh_call_log}" | cut -d: -f1)
 switch_line=$(grep -n -m1 "sudo test -e '/home/isucon/webapp.isuscope-staging.*'; if sudo test" \
   "${ssh_call_log}" | cut -d: -f1)
@@ -329,6 +354,33 @@ grep -q 'fixture-runtime-rollback' "${fixture_repo}/.local/explicit-rollback-cal
 test "$(cat "${fixture_repo}/.local/current-release")" = "${first_release}"
 test "$(cat "${fixture_repo}/.local/current-commit")" = \
   "$(git -C "${fixture_repo}" rev-parse HEAD)"
+
+# build対象とbuild commandが前回成功時と同じdeployだけをcache再利用候補にします。
+unchanged_build_start=$(wc -l <"${ssh_call_log}" | tr -d ' ')
+printf 'events { worker_connections 2; }\n' >"${fixture_repo}/config/nginx/nginx.conf"
+(cd "${fixture_repo}" && git add config/nginx/nginx.conf && git commit -qm config-only)
+(cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" ./scripts/deploy.sh)
+tail -n "+$((unchanged_build_start + 1))" "${ssh_call_log}" >"${fixture_repo}/.local/unchanged-build-calls.log"
+grep -q "ISUCON_DEPLOY_BUILD_INPUTS_UNCHANGED='true'" "${fixture_repo}/.local/unchanged-build-calls.log"
+test "$(build_input_id "${fixture_repo}/.local/unchanged-build-calls.log")" = "${initial_build_input_id}"
+
+changed_build_start=$(wc -l <"${ssh_call_log}" | tr -d ' ')
+printf 'changed build input\n' >>"${fixture_repo}/webapp/README.txt"
+(cd "${fixture_repo}" && git add webapp/README.txt && git commit -qm app-change)
+(cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" ./scripts/deploy.sh)
+tail -n "+$((changed_build_start + 1))" "${ssh_call_log}" >"${fixture_repo}/.local/changed-build-calls.log"
+grep -q "ISUCON_DEPLOY_BUILD_INPUTS_UNCHANGED='false'" "${fixture_repo}/.local/changed-build-calls.log"
+test "$(build_input_id "${fixture_repo}/.local/changed-build-calls.log")" != "${initial_build_input_id}"
+
+overlap_manifest=${fixture_repo}/.local/sync-overlap.json
+jq '.items += [(.items[0] | .name = "overlap" | .local = (.local + "/nested") | .remote = "/tmp/isuscope-overlap")]' \
+  "${fixture_repo}/config/sync.json" >"${overlap_manifest}"
+set +e
+overlap_output=$(cd "${fixture_repo}" && SYNC_MANIFEST="${overlap_manifest}" ./scripts/sync-check.sh 2>&1)
+overlap_exit=$?
+set -e
+test "${overlap_exit}" -ne 0
+grep -q 'must not overlap' <<<"${overlap_output}"
 
 build_failure_start=$(wc -l <"${ssh_call_log}" | tr -d ' ')
 set +e

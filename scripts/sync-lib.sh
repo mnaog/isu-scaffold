@@ -29,7 +29,8 @@ sync_validate() {
         . != "/root" and . != "/srv" and . != "/usr" and . != "/var") and
       (.owner | type == "string" and test("^[A-Za-z0-9_.-]+$")) and
       (.owner_group | type == "string" and test("^[A-Za-z0-9_.-]+$"))) and
-    ((.build_commands // []) | type == "array" and all(.[];
+    ((.build_commands // []) | type == "array" and
+      (map(.name) | length == (unique | length)) and all(.[];
       (type == "object") and
       (.name | type == "string" and test("^[A-Za-z0-9_.-]+$")) and
       (.node_group | type == "string" and test("^[A-Za-z0-9_.-]+$")) and
@@ -38,24 +39,48 @@ sync_validate() {
     (($items | map(.name)) as $item_names |
       all((.build_commands // [])[]; .item as $item | $item_names | index($item) != null)) and
     (.post_deploy_commands | type == "array" and all(.[];
-      (type == "string" and length > 0) or
+      (type == "string" and length > 0 and (test("[\\t\\r\\n]") | not)) or
       (type == "object" and
         (.node_group | type == "string" and test("^[A-Za-z0-9_.-]+$")) and
-        (.command | type == "string" and length > 0)))) and
+        (.command | type == "string" and length > 0 and (test("[\\t\\r\\n]") | not))))) and
     ((.rollback_commands // []) | type == "array" and all(.[];
-      (type == "string" and length > 0) or
+      (type == "string" and length > 0 and (test("[\\t\\r\\n]") | not)) or
       (type == "object" and
         (.node_group | type == "string" and test("^[A-Za-z0-9_.-]+$")) and
-        (.command | type == "string" and length > 0)))) and
+        (.command | type == "string" and length > 0 and (test("[\\t\\r\\n]") | not))))) and
     (.status_commands | type == "array" and all(.[];
-      (type == "string" and length > 0) or
+      (type == "string" and length > 0 and (test("[\\t\\r\\n]") | not)) or
       (type == "object" and
         (.node_group | type == "string" and test("^[A-Za-z0-9_.-]+$")) and
-        (.command | type == "string" and length > 0))))
+        (.command | type == "string" and length > 0 and (test("[\\t\\r\\n]") | not)))))
   ' "${sync_manifest}" >/dev/null || {
     echo "config/sync.json is incomplete or invalid" >&2
     return 1
   }
+
+  local path_name path_value other_name other_value
+  while IFS=$'\t' read -r path_name path_value; do
+    while IFS=$'\t' read -r other_name other_value; do
+      [[ "${path_name}" == "${other_name}" ]] && continue
+      case "${other_value}" in
+        "${path_value}"|"${path_value}"/*)
+          echo "sync local paths must not overlap: ${path_value} and ${other_value}" >&2
+          return 1
+          ;;
+      esac
+    done < <(jq -r '.items[] | [.name, .local] | @tsv' "${sync_manifest}")
+  done < <(jq -r '.items[] | [.name, .local] | @tsv' "${sync_manifest}")
+  while IFS=$'\t' read -r path_name path_value; do
+    while IFS=$'\t' read -r other_name other_value; do
+      [[ "${path_name}" == "${other_name}" ]] && continue
+      case "${other_value}" in
+        "${path_value}"|"${path_value}"/*)
+          echo "sync remote paths must not overlap: ${path_value} and ${other_value}" >&2
+          return 1
+          ;;
+      esac
+    done < <(jq -r '.items[] | [.name, .remote] | @tsv' "${sync_manifest}")
+  done < <(jq -r '.items[] | [.name, .remote] | @tsv' "${sync_manifest}")
 
   local source_node item_source item_group local_path
   source_node=$(jq -r '.source_node' "${sync_manifest}")
