@@ -6,6 +6,9 @@ bootstrap_packages: []
 observability_install_packages: false
 observability_packages:
   - sysstat
+  # `linux-tools-aws`などのmeta packageは、起動中kernelと異なる世代のperfを入れることがある。
+  # 実行中kernelに対応するbinaryを明示し、requiredにしたperfは`perf --version`まで検査する。
+  - "linux-tools-{{ ansible_facts['kernel'] }}"
 
 # 存在を調べるcommandです。requiredへ移したものだけverifyを失敗させます。
 observability_probe_commands:
@@ -26,6 +29,8 @@ observability_local_tools: []
 
 # 当日必要なservice名を追加します。空ならservice状態では失敗しません。
 bootstrap_required_services: []
+# roleごとに必須のservice。例: {"role_app": ["nginx", "isu"], "role_db": ["mysql"]}
+bootstrap_required_services_by_role: {}
 bootstrap_minimum_disk_available_mb: 1024
 
 isuscope_fingerprint_source: "{{ playbook_dir }}/../../.isuscope/fingerprint.sh"

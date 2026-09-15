@@ -33,12 +33,35 @@
       loop: "{{ bootstrap_required_services }}"
       when: inventory_hostname in groups['application']
 
+    - name: Require role-specific services to be running
+      ansible.builtin.assert:
+        that:
+          - >-
+            (item.1 ~ '.service') in ansible_facts.services and
+            ansible_facts.services[item.1 ~ '.service'].state == 'running'
+        fail_msg: "required service {{ item.1 }} is not running on {{ inventory_hostname }}"
+      loop: "{{ bootstrap_required_services_by_role | default({}) | dict2items | subelements('value') }}"
+      loop_control:
+        label: "{{ item.0.key }}:{{ item.1 }}"
+      when:
+        - inventory_hostname in groups['application']
+        - item.0.key in groups
+        - inventory_hostname in groups[item.0.key]
+
     - name: Probe required observability commands
       ansible.builtin.command:
         argv: [sh, -lc, "command -v -- {{ item }}"]
       loop: "{{ observability_required_commands }}"
       changed_when: false
       when: inventory_hostname in groups['application']
+
+    - name: Require perf for the running kernel
+      ansible.builtin.command:
+        argv: [perf, --version]
+      changed_when: false
+      when:
+        - inventory_hostname in groups['application']
+        - "'perf' in observability_required_commands"
 
     - name: Show node summary
       ansible.builtin.debug:

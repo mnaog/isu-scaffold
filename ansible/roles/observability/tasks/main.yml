@@ -1,9 +1,21 @@
 ---
-- name: Install explicitly enabled observability packages
+- name: Install explicitly enabled observability packages on Debian family
+  ansible.builtin.apt:
+    name: "{{ observability_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when:
+    - ansible_facts.os_family == 'Debian'
+    - observability_install_packages | bool
+    - observability_packages | length > 0
+
+- name: Install explicitly enabled observability packages on other systems
   ansible.builtin.package:
     name: "{{ observability_packages }}"
     state: present
   when:
+    - ansible_facts.os_family != 'Debian'
     - observability_install_packages | bool
     - observability_packages | length > 0
 
@@ -66,3 +78,9 @@
   loop: "{{ observability_command_probes.results }}"
   loop_control:
     label: "{{ item.item }}"
+
+- name: Verify perf matches the running kernel
+  ansible.builtin.command:
+    argv: [perf, --version]
+  changed_when: false
+  when: "'perf' in observability_required_commands"
