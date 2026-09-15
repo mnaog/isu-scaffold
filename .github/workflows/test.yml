@@ -16,6 +16,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends jq zstd
@@ -38,9 +40,15 @@ jobs:
           rustup toolchain install stable --profile minimal
           cargo +stable install --locked --git https://github.com/mnaog/isuscope --rev "${{ steps.isuscope.outputs.rev }}" isuscope
 
+      # Whitespace is checked only in the pushed changes: imported contest files and generated
+      # conversation snapshots may legitimately contain trailing spaces.
       - name: Check shell syntax and whitespace
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          git diff --check "$(git hash-object -t tree /dev/null)" HEAD -- . ':!docs/official' ':!docs/agent-history' ':!isuscope-data'
+          if [[ -n "${BASE}" && ! "${BASE}" =~ ^0+$ ]] && git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            git diff --check "${BASE}" HEAD -- . ':!docs/official' ':!docs/agent-history' ':!isuscope-data'
+          fi
           find scripts .isuscope tests -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
 
       - name: Run initial automation fixture
