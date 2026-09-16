@@ -32,7 +32,7 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/configure-draft.sh \
   "${source_repo}"/scripts/configure-apply.sh \
   "${source_repo}"/scripts/quick-import-code.sh \
-  "${source_repo}"/scripts/create-phase1-worktree.sh \
+  "${source_repo}"/scripts/worktree.sh \
   "${fixture_repo}/scripts/"
 cp "${source_repo}/.isuscope/config.template.toml" \
   "${source_repo}/.isuscope/benchmark.sh" \
@@ -297,14 +297,14 @@ test ! -e "${fixture_repo}/webapp/sql/initial-data.tsv"
 grep -q '^DEFERRED data-or-link initial-data.tsv$' "${fixture_repo}/.local/code-schema-manifest.log"
 test ! -e "${fixture_repo}/webapp/rust/target"
 grep -q '^APPLICATION_LANGUAGE=rust$' "${fixture_repo}/config/application.env"
+# laneは目的の記載が必須です。
 set +e
-(cd "${fixture_repo}" && \
-  PHASE1_WORKTREE_BRANCH=optimize/uncommitted-code \
-  PHASE1_WORKTREE_PATH="${fixture_root}/uncommitted-code" \
-  ./scripts/create-phase1-worktree.sh >/dev/null 2>&1)
-uncommitted_worktree_exit=$?
+(cd "${fixture_repo}" && WORKTREE_PATH="${fixture_root}/no-purpose" \
+  ./scripts/worktree.sh optimize/no-purpose "" >/dev/null 2>&1)
+no_purpose_exit=$?
 set -e
-test "${uncommitted_worktree_exit}" -ne 0
+test "${no_purpose_exit}" -eq 2
+test ! -e "${fixture_root}/no-purpose"
 (cd "${fixture_repo}" && \
   FAKE_REMOTE_ROOT="${fake_remote}" TREE_DIGEST="${fixture_repo}/scripts/tree-digest.py" \
   ./scripts/import.sh)
@@ -469,17 +469,19 @@ grep -q 'fixture-runtime-rollback' "${fixture_repo}/.local/transaction-failure-c
   exit 1
 }
 
-(cd "${fixture_repo}" && \
-  PHASE1_WORKTREE_BRANCH=optimize/fixture-obvious \
-  PHASE1_WORKTREE_PATH="${fixture_root}/phase1-obvious" \
-  ./scripts/create-phase1-worktree.sh)
-(cd "${fixture_repo}" && \
-  PHASE1_WORKTREE_BRANCH=optimize/fixture-obvious \
-  PHASE1_WORKTREE_PATH="${fixture_root}/phase1-obvious" \
-  ./scripts/create-phase1-worktree.sh)
+# 目的はbranchに記録され、他のlaneは毎回gitから計算して引き継ぎ文へ書きます。
+(cd "${fixture_repo}" && WORKTREE_PATH="${fixture_root}/other-lane" \
+  ./scripts/worktree.sh optimize/other-lane "受取履歴を分離する" HEAD >/dev/null)
+lane_output=$(cd "${fixture_repo}" && WORKTREE_PATH="${fixture_root}/phase1-obvious" \
+  ./scripts/worktree.sh optimize/fixture-obvious "自明な改善を入れる" HEAD)
+grep -q "^目的:     自明な改善を入れる$" <<<"${lane_output}"
+grep -q "optimize/other-lane" <<<"${lane_output}"
+(cd "${fixture_repo}" && WORKTREE_PATH="${fixture_root}/phase1-obvious" \
+  ./scripts/worktree.sh optimize/fixture-obvious "自明な改善を入れる" HEAD >/dev/null)
 test -f "${fixture_root}/phase1-obvious/webapp/rust/main.rs"
-grep -q '^APPLICATION_LANGUAGE=rust$' "${fixture_root}/phase1-obvious/config/application.env"
-grep -q "^- branch: optimize/fixture-obvious$" "${fixture_root}/phase1-obvious/.local/phase1-handoff.md"
+test "$(git -C "${fixture_repo}" config branch.optimize/fixture-obvious.description)" = "自明な改善を入れる"
+grep -q "^- 目的: 自明な改善を入れる$" "${fixture_root}/phase1-obvious/.local/lane.md"
+grep -q "optimize/other-lane" "${fixture_root}/phase1-obvious/.local/lane.md"
 
 mkdir -p "${fixture_repo}/.local/inspection"
 cat >"${fixture_repo}/.local/inspection/app1.json" <<'EOF'

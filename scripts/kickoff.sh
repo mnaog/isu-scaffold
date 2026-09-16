@@ -44,7 +44,8 @@ else
 fi
 
 echo "== code lane: worktree"
-worktree_output=$("${script_dir}/create-phase1-worktree.sh")
+worktree_output=$("${script_dir}/worktree.sh" "${PHASE1_WORKTREE_BRANCH:-optimize/phase1-obvious}" \
+  "${language}のコードとschemaを読み、index不足・N+1・逐次write・重複queryなど自明な改善を入れる" "HEAD")
 printf '%s\n' "${worktree_output}"
 echo ">> start the code-reading session in the worktree above now; setup continues here"
 
@@ -59,7 +60,7 @@ python3 "${script_dir}/review-draft.py" || review_status=$?
 
 echo
 echo "kickoff stopped before applying the draft"
-printf '%s\n' "${worktree_output}" | grep -E '^(phase1 code worktree|handoff brief):' || true
+printf '%s\n' "${worktree_output}" | grep -E '^(worktree|引き継ぎ文):' || true
 if [[ "${review_status}" -ne 0 ]]; then
   echo "draft review has FAIL items: fix .local/draft/ and rerun python3 scripts/review-draft.py"
   exit "${review_status}"
