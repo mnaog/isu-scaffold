@@ -4,6 +4,10 @@
 
 この`AGENTS.md`をAI向け指示の正本とする。Codexは直接、Claude Codeは`.claude/rules/agents.md`のsymlink経由で同じ内容を読み込む。
 
+## 練習用記述
+現在は練習中です(注意：この記述は10月30日頃に除去する)。禁止事項として、ベンチマーカーの中を確認すること、ベンチマーカーにログを仕込むこと、以前開催された攻略法を検索しない（現在練習中のものとは他の開催回は確認は可）。
+
+
 ## ディレクトリ
 
 | ディレクトリ | 扱うもの |
@@ -33,13 +37,12 @@
 ## 作業ルール
 
 - アプリケーションと設定はローカルリポジトリを正とする。
-- サーバーごとにコードを複製せず、役割の違いは設定とデプロイ処理で扱う。
-- サーバー上のファイルを直接編集し続けない。緊急で変更した場合は、直ちにローカルへ反映してGit差分を残す。
+- サーバーごとにコードを複製せず、役割の違いは設定とデプロイ処理で扱う。サーバー上のファイルを直接編集しない。
 - 秘密情報は`.local/`へ置く。再現に必要な定義は`webapp/`、`config/`、`infra/`、`scripts/`へ残す。
 - 公式情報は要約だけで済ませず、可能な限り原文を`docs/official/`へ保存する。
 - 現在のPhaseと完了条件は`docs/phases/`に従い、Phaseの移行は人間が決定する。
 - isuscopeの軽量なrun履歴は通常のコミットへ含める。重要なrunの生ログを残す場合は`isuscope pin <run-id>`を使う。
-- `.local/operation.lock`を変更系操作の共通排他とする。実行中のlockを手作業で消さず、別セッションは終了を待つ。status・checkなどのread-only操作は並行してよい。
+- `.local/operation.lock`を変更系操作の共通排他とする。実行中のlockは基本的に手作業で消さず、別セッションの終了を待つ。status・checkなどのread-only操作は並行してよい。
 
 ## 初動の自動化
 
@@ -100,11 +103,15 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 
 仮説の対象は`query --base`へ同じselectorを指定して比較する。HTTPは`--view http`と`--label route=...`、DBは`--view database`、必要な`--source`、`--label-contains digest=...`、`--group-by sql-shape`を使い、対象を絞らない巨大JSONを避ける。
 
-判定には`supported`、`rejected`、`inconclusive`、`skipped`を使う。更新対象を誤らないよう、`analyze`には実行結果か`isuscope list`で得たrun IDを明示する。PASSしたrunは分析を記録するまで次のベンチを開始できない。FAILまたは中断したrunには分析は不要。
+判定には`supported`、`rejected`、`inconclusive`、`skipped`を使う。更新対象を誤らないよう、`analyze`には実行結果か`isuscope list`で得たrun IDを明示する。仮説や分析の本文でrunに触れるときは、`run`・`list`・`brief`が表示する`short_id`（末尾8文字）にそろえる。PASSしたrunは分析を記録するまで次のベンチを開始できない。FAILまたは中断したrunには分析は不要。
+
+変更を残すか戻すかを決めたら、分析と同時に`--change <変更ID> --decision <accepted|provisional|rejected|deferred>`で記録する（`provisional`は`--revisit`必須）。仮説の判定と変更の採否は別に扱い、本文に「採用」と書くだけで済ませない。
+
+FAILしたrunの理由とエラーの実例は、`.isuscope/parse-benchmark.sh`がベンチの出力から`message`として残し、`isuscope list`の`failure`と`brief`の`benchmark_messages`で読む。benchmarkerが運営向けに出す行（ISUCON12の`[ADMIN]`など）はルール側の情報なので、判断材料にもmessageの入力にも使わない。
 
 `survey-run`はPhase 1の初回調査だけに使い、その後は構成やroutingを大きく変えた場合も`run`を使う。時間が最大の制約なので、同じ変更の比較のためにベンチを重ねない。終了前はprofilerや重いログを外した構成へ切り替え、確認のベンチは通常の`run`で一度だけ行う。
 
-最初は`isuscope brief latest`で全体を確認し、`isuscope query latest --base BASE_RUN ...`で仮説対象だけを比較する。初期化を除くhost/service集約は`query --scope series --window load`、時間帯を掘り下げる場合は`isuscope series latest --window load --metric <name>`を使う。`whole`、`initialize`、`load`を意図に応じて選び、初期化負荷と通常負荷を混ぜない。`report`、`diff`、`metrics`はcompactな出力だけでは足りない場合の詳細診断に限定する。人が複数runを横断して確認するときは`isuscope ui`を使う。collectorの失敗はbriefのcoverage issueを入口にし、必要ならreportのcoverageとrun配下のlogで確認する。
+isucopeの取得データについてより自由度の高い分析や比較にはsqliteを用いて内容を確認する。
 
 初回runのHTTP routeに動的IDが残っている場合は、`isuscope routes suggest <run-id> --output .local/route-suggestions.toml`で`.local/route-suggestions.toml`を作る。候補を確認したものだけ`.isuscope/routes.toml`へ移し、再計測する。
 
