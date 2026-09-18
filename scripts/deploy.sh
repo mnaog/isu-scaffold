@@ -92,6 +92,13 @@ commit_file=${transaction_dir}/${release}.commit
 previous_release_file=${transaction_dir}/${release}.previous-release
 previous_commit_file=${transaction_dir}/${release}.previous-commit
 mkdir -p "${transaction_dir}"
+if [[ -e "${state_file}" ]]; then
+  # 同じrelease名を再利用すると、前回の退避（*.isuscope-backup.<release>）を
+  # 今回のものと誤認し、失敗時に古い版へ戻してしまう。
+  echo "release ${release} was already used: ${state_file}" >&2
+  echo "unset RELEASE, or choose a name that has not been deployed" >&2
+  exit 1
+fi
 : >"${plan_file}"
 : >"${build_plan_file}"
 : >"${post_plan_file}"
@@ -314,15 +321,35 @@ restore_node() {
     [[ "${node}" == "${target_node}" ]] || continue
     staging=${remote_path}.isuscope-staging.${release}
     backup=${remote_path}.isuscope-backup.${release}
-    command+="; { if sudo test -e '${backup}'; then sudo rm -rf '${remote_path}'; sudo mv '${backup}' '${remote_path}'; elif sudo test -e '${backup}.absent'; then sudo rm -rf '${remote_path}'; sudo rm -f '${backup}.absent'; fi; sudo rm -rf '${staging}' '${staging}.dir'; } || failed=1"
+    # 段階ごとに結果を見る。まとめて`||`にすると、最後のrmの成功が
+    # mvの失敗を隠し、復旧できていないのにdeployが成功扱いで終わる。
+    command+="; if sudo test -e '${backup}'; then"
+    command+="   if sudo rm -rf '${remote_path}'; then"
+    command+="     sudo mv '${backup}' '${remote_path}' || { echo 'restore: mv ${backup} -> ${remote_path} failed' >&2; failed=1; };"
+    command+="   else echo 'restore: rm ${remote_path} failed' >&2; failed=1; fi;"
+    command+=" elif sudo test -e '${backup}.absent'; then"
+    command+="   sudo rm -rf '${remote_path}' || { echo 'restore: rm ${remote_path} failed' >&2; failed=1; };"
+    command+="   sudo rm -f '${backup}.absent' || { echo 'restore: rm ${backup}.absent failed' >&2; failed=1; };"
+    command+=" fi"
+    command+="; sudo rm -rf '${staging}' '${staging}.dir' || { echo 'restore: rm ${staging} failed' >&2; failed=1; }"
   done 3<"${plan_file}"
   command+="; sudo rm -rf '/tmp/isucon-deploy-${release}' || failed=1; exit \"\$failed\""
-  "${script_dir}/ssh-node.sh" "${target_node}" "${command}" >/dev/null 2>&1
+  # 復旧の失敗は最も知りたい出力なので、捨てずに操作者へ見せる。
+  "${script_dir}/ssh-node.sh" "${target_node}" "${command}" || {
+    echo "restore failed on ${target_node}" >&2
+    return 1
+  }
 }
 
 rollback_transaction() {
   local failed_state
   failed_state=$(cat "${state_file}" 2>/dev/null || true)
+  # preflightはremoteを一切変えないため、復旧対象がない。ここで復旧を走らせると
+  # 触るべきでないremote_pathへrm/mvを出すことになる。
+  if [[ "${failed_state}" == preflight || -z "${failed_state}" ]]; then
+    echo "deploy transaction ${release} failed before any remote change" >&2
+    return 0
+  fi
   echo "rolling back deploy transaction ${release}" >&2
   run_node_phase restore || echo "one or more nodes failed to restore transaction ${release}" >&2
   case "${failed_state}" in

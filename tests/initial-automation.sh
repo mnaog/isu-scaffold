@@ -349,6 +349,14 @@ fi
 if [[ -n "${FAIL_BUILD_NODE:-}" && "$1" == "${FAIL_BUILD_NODE}" && "$2" == *"fixture-build-command"* ]]; then
   exit 1
 fi
+if [[ -n "${FAIL_PREFLIGHT_NODE:-}" && "$1" == "${FAIL_PREFLIGHT_NODE}" && "$2" == *"sudo -n true"* ]]; then
+  echo "no space left on device" >&2
+  exit 1
+fi
+if [[ -n "${FAIL_RESTORE_NODE:-}" && "$1" == "${FAIL_RESTORE_NODE}" && "$2" == *"failed=0"* ]]; then
+  echo "restore: mv failed" >&2
+  exit 1
+fi
 case "$2" in
   *"tar -C '"*"' -xf -"*)
     if [[ -n "${ARCHIVE_LIST_LOG:-}" ]]; then
@@ -453,6 +461,43 @@ if grep -q 'fixture-runtime-rollback' "${fixture_repo}/.local/build-failure-call
   echo "deploy ran runtime rollback before switching live files" >&2
   exit 1
 fi
+# preflightはremoteを変えないので、そこで失敗しても復旧処理を走らせません。
+preflight_failure_start=$(wc -l <"${ssh_call_log}" | tr -d ' ')
+set +e
+preflight_failure_output=$(cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" \
+  FAIL_PREFLIGHT_NODE=app2 RELEASE=preflight-failure ./scripts/deploy.sh 2>&1)
+preflight_failure_exit=$?
+set -e
+test "${preflight_failure_exit}" -ne 0
+tail -n "+$((preflight_failure_start + 1))" "${ssh_call_log}" \
+  >"${fixture_repo}/.local/preflight-failure-calls.log"
+if grep -q 'failed=0' "${fixture_repo}/.local/preflight-failure-calls.log"; then
+  echo "deploy restored remote paths after a preflight failure" >&2
+  exit 1
+fi
+grep -q 'failed before any remote change' <<<"${preflight_failure_output}"
+
+# 同じrelease名を再利用すると、前回の退避を今回のものと誤認します。
+set +e
+duplicate_output=$(cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" \
+  RELEASE=preflight-failure ./scripts/deploy.sh 2>&1)
+duplicate_exit=$?
+set -e
+test "${duplicate_exit}" -ne 0
+grep -q 'was already used' <<<"${duplicate_output}"
+
+# 復旧が失敗したら、deployはそれを出力して失敗として扱います。
+restore_failure_start=$(wc -l <"${ssh_call_log}" | tr -d ' ')
+set +e
+restore_failure_output=$(cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" \
+  FAIL_SWITCH_NODE=app2 FAIL_MARKER="${fixture_repo}/.local/restore-fail-marker" \
+  FAIL_RESTORE_NODE=app1 RELEASE=restore-failure ./scripts/deploy.sh 2>&1)
+restore_failure_exit=$?
+set -e
+test "${restore_failure_exit}" -ne 0
+grep -q 'restore failed on app1' <<<"${restore_failure_output}"
+grep -q 'failed to restore transaction restore-failure' <<<"${restore_failure_output}"
+
 transaction_failure_start=$(wc -l <"${ssh_call_log}" | tr -d ' ')
 set +e
 (cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" FAIL_SWITCH_NODE=app2 \
