@@ -67,9 +67,9 @@ providerの出力は共通形式へ正規化され、次を一度に生成しま
 | `.local/nodes.snapshot.json` | 生成日時を含む確認用snapshot |
 | `.local/ansible-inventory.json` | AnsibleとSSH helperが使う接続先 |
 | `.local/isuscope-nodes.toml` | isuscopeへ反映したapplication node |
-| `.isuscope/config.toml` | `config.template.toml`とnode情報から作るisuscope実設定 |
+| `.isuscope/config.toml` | `isuscope init --print config`とnode情報から作るisuscope実設定 |
 
-`.isuscope/config.toml`にはIPとSSH identityが入るためGit管理しません。collectorの正本は`.isuscope/config.template.toml`です。IPやnode数が変わったら手編集せず`make discover`を再実行します。
+`.isuscope/config.toml`にはIPとSSH identityが入るためGit管理しません。collectorの正本はisuscope側（`isuscope init`が配る設定）で、`make discover`が`isuscope init --print config`にlog pathとservice unitを渡して生成し、`[lock]`・`[ssh]`・`[[nodes]]`を追記します。collectorを足すときはisuscopeを更新してinstallし直します。IPやnode数が変わったら手編集せず`make discover`を再実行します。
 
 負荷を担うsystemd unitが判明したら`.local/environment.env`の`ISUSCOPE_SERVICE_UNITS`へ空白区切りで指定します。`configure-draft`はinspectionで関連すると判断したrunning serviceの和集合も`.local/draft/isuscope.json`へ候補として出すため、`configure-apply`前に過不足を確認できます。生成されたservice-samplerはそのunitのcgroup v2だけを1秒間隔で読み、CPU core使用量、memory、read/write帯域、PID数を記録します。空の場合やcgroup v2でない環境では`unavailable`となります。
 

@@ -34,9 +34,8 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/quick-import-code.sh \
   "${source_repo}"/scripts/worktree.sh \
   "${fixture_repo}/scripts/"
-cp "${source_repo}/.isuscope/config.template.toml" \
-  "${source_repo}/.isuscope/benchmark.sh" \
-  "${fixture_repo}/.isuscope/"
+# collectorの正本はisuscopeが配るので、fixtureにはbenchmark adapterだけを置く。
+cp "${source_repo}/.isuscope/benchmark.sh" "${fixture_repo}/.isuscope/"
 cp "${source_repo}/config/environment.example.env" "${fixture_repo}/.local/environment.env"
 cp "${source_repo}/config/nodes.example.json" "${fixture_repo}/.local/nodes.json"
 cp "${source_repo}/tests/fixtures/sync.json" "${fixture_repo}/config/sync.json"

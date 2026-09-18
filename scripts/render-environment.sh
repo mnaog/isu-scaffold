@@ -8,13 +8,13 @@ environment_file=${ISUCON_ENV_FILE:-${local_dir}/environment.env}
 nodes_file=${local_dir}/discovered-nodes.json
 inventory_file=${local_dir}/ansible-inventory.json
 node_toml_file=${local_dir}/isuscope-nodes.toml
-isuscope_template=${repo_dir}/.isuscope/config.template.toml
 isuscope_config=${repo_dir}/.isuscope/config.toml
 
 command -v jq >/dev/null
+# collectorの正本はisuscopeが配る。ここはそれを実環境の値で書き出し、SSHとnodeを足すだけ。
+command -v isuscope >/dev/null
 test -f "${environment_file}"
 test -f "${nodes_file}"
-test -f "${isuscope_template}"
 # shellcheck disable=SC1090
 source "${environment_file}"
 
@@ -36,17 +36,12 @@ for log_path in "${nginx_access_log}" "${mysql_slow_log}"; do
     exit 1
   }
 done
-service_units_toml=
+# 値の検査だけ行い、TOMLへの書き出しはisuscopeに任せる。
 for unit in ${service_units}; do
   [[ "${unit}" =~ ^[A-Za-z0-9._@-]+$ ]] || {
     echo "invalid isuscope service unit: ${unit}" >&2
     exit 1
   }
-  encoded=$(jq -Rn --arg value "${unit}" '$value')
-  if [[ -n "${service_units_toml}" ]]; then
-    service_units_toml+=", "
-  fi
-  service_units_toml+="${encoded}"
 done
 
 jq -e '
@@ -126,11 +121,13 @@ jq -r '
 ' "${nodes_file}" >"${nodes_tmp}"
 
 {
-  sed \
-    -e "s|@@NGINX_ACCESS_LOG@@|${nginx_access_log}|g" \
-    -e "s|@@MYSQL_SLOW_LOG@@|${mysql_slow_log}|g" \
-    -e "s|@@SERVICE_UNITS@@|${service_units_toml}|g" \
-    "${isuscope_template}"
+  isuscope init --print config \
+    --no-scaffold \
+    --data-dir isuscope-data \
+    --nginx-access-log "${nginx_access_log}" \
+    --mysql-slow-log "${mysql_slow_log}" \
+    --service-units "${service_units}" \
+    --sample-output config/benchmark-sample.log
   printf '\n[lock]\npath = ".local/operation.lock"\n'
   printf '\n[ssh]\nuser = %s\nidentity_file = %s\nknown_hosts_file = %s\nconnect_timeout_seconds = 5\n\n' \
     "$(jq -Rn --arg value "${ssh_user}" '$value')" \
