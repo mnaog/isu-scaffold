@@ -50,24 +50,28 @@ sed -i.bak 's/^DISCOVERY_PROVIDER=.*/DISCOVERY_PROVIDER=static/' "${fixture_repo
 sed -i.bak 's/^ISUSCOPE_SERVICE_UNITS=.*/ISUSCOPE_SERVICE_UNITS='\''nginx.service isu.service'\''/' "${fixture_repo}/.local/environment.env"
 rm -f "${fixture_repo}/.local/environment.env.bak"
 (cd "${fixture_repo}" && ./scripts/discover.sh)
-test ! -e "${fixture_repo}/.local/operation.lock"
+# lockはflockなので、解放後もlock fileは残り、誰が握っていたかの説明（owner）だけが消えます。
+test ! -e "${fixture_repo}/.local/operation.lock/owner"
 
-# isuscope lockは生きている変更系操作を拒否し、死んだprocessのlockだけ自動回収します。
-mkdir "${fixture_repo}/.local/operation.lock"
-printf 'pid=%s\nstarted_at=test\noperation=test\n' "$$" \
-  >"${fixture_repo}/.local/operation.lock/owner"
+# isuscope lockは生きている変更系操作を拒否します。
+holding=${fixture_root}/holding
+(cd "${fixture_repo}" && isuscope lock --path .local/operation.lock -- \
+  sh -c 'touch "$1"; while test -e "$1"; do sleep 0.05; done' sh "${holding}") &
+holder=$!
+while test ! -e "${holding}"; do sleep 0.05; done
 set +e
 (cd "${fixture_repo}" && ./scripts/discover.sh >/dev/null 2>&1)
 locked_exit=$?
 set -e
 test "${locked_exit}" -eq 75
-rm -f "${fixture_repo}/.local/operation.lock/owner"
-rmdir "${fixture_repo}/.local/operation.lock"
-mkdir "${fixture_repo}/.local/operation.lock"
+rm -f "${holding}"
+wait "${holder}"
+
+# 落ちたprocessが残したownerは、次の操作を止めません（lockはkernelが外しています）。
 printf 'pid=99999999\nstarted_at=test\noperation=stale\n' \
   >"${fixture_repo}/.local/operation.lock/owner"
 (cd "${fixture_repo}" && ./scripts/discover.sh)
-test ! -e "${fixture_repo}/.local/operation.lock"
+test ! -e "${fixture_repo}/.local/operation.lock/owner"
 
 jq -e '.all.children.application.hosts.app1.ansible_host == "192.0.2.10"' \
   "${fixture_repo}/.local/ansible-inventory.json" >/dev/null

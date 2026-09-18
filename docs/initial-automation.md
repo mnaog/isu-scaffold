@@ -2,7 +2,7 @@
 
 大会ごとに変わる接続先、配布path、ベンチ起動方法だけを宣言し、node発見からisuscopeの初回`survey-run`直前までを再現可能にします。生成されるIP、SSH秘密鍵、調査結果は`.local/`へ置き、コード、同期規則、ベンチ接続はGitへ残します。
 
-`discover`、`bootstrap`、`inspect`、設定draft生成・反映、`import`、`deploy`、`rollback`、ベンチ実行などの変更系操作は`.local/operation.lock`を共有します。scriptは`isuscope lock --path .local/operation.lock -- <script>`で自分自身を実行し直し、`isuscope run`/`survey-run`は`make discover`が書き出す`[lock] path`で同じlockを取ります。複数セッションから同時に開始した場合、後から来た操作は実行中のPID・開始時刻・操作名を表示して終了します。processが存在しない古いlockだけは次回操作時に自動回収します。
+`discover`、`bootstrap`、`inspect`、設定draft生成・反映、`import`、`deploy`、`rollback`、ベンチ実行などの変更系操作は`.local/operation.lock`を共有します。scriptは`isuscope lock --path .local/operation.lock -- <script>`で自分自身を実行し直し、`isuscope run`/`survey-run`は`make discover`が書き出す`[lock] path`で同じlockを取ります。複数セッションから同時に開始した場合、後から来た操作は実行中のPID・開始時刻・操作名を表示して終了します。lockは`flock`で握るので、processが落ちればkernelが外し、古いlockは残りません。lock file自体は解放後も残ります。
 
 ## 1. local設定を作る
 
