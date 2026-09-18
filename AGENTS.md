@@ -88,7 +88,7 @@ isuscope survey-run --hypothesis "..."
 ```bash
 isuscope survey-run --hypothesis "初期状態の負荷構造を記録する"
 isuscope brief latest
-isuscope query latest --metric-prefix benchmark. --group-by scenario --limit 100
+isuscope query latest --metric-prefix benchmark. --limit 100
 isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 ```
 
@@ -97,7 +97,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 ```bash
 isuscope run --hypothesis "変更理由と改善を期待する観測値"
 isuscope brief latest
-isuscope query latest --base BASE_RUN --metric-prefix benchmark. --group-by scenario --limit 100
+isuscope query latest --base BASE_RUN --metric-prefix benchmark. --limit 100
 isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 ```
 
