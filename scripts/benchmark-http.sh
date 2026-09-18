@@ -66,10 +66,15 @@ if [[ -n "${BENCHMARK_HTTP_STATUS_URL:-}" ]]; then
   done
 fi
 
-score=$(jq -er "${BENCHMARK_HTTP_SCORE_JQ}" "${final_response}")
-pass=$(jq -er "${BENCHMARK_HTTP_PASS_JQ}" "${final_response}")
+# 値の取り出しに`jq -e`は使わない。`-e`はfalseやnullを終了statusで表すため、
+# FAILした（pass=false）正常な応答が`set -e`でここを落としてしまう。
+score=$(jq -r "${BENCHMARK_HTTP_SCORE_JQ}" "${final_response}")
+pass=$(jq -r "${BENCHMARK_HTTP_PASS_JQ}" "${final_response}")
 message=$(jq -r "${BENCHMARK_HTTP_MESSAGE_JQ}" "${final_response}")
-[[ "${score}" =~ ^[0-9]+$ ]] || { echo "HTTP score is not an integer" >&2; exit 1; }
-[[ "${pass}" == true || "${pass}" == false ]] || { echo "HTTP pass is not boolean" >&2; exit 1; }
+[[ "${score}" =~ ^[0-9]+$ ]] || { echo "HTTP score is not an integer: ${score}" >&2; exit 1; }
+[[ "${pass}" == true || "${pass}" == false ]] || {
+  echo "HTTP pass is not boolean: ${pass}" >&2
+  exit 1
+}
 jq -nc --argjson score "${score}" --argjson pass "${pass}" --arg message "${message}" \
   '{score:$score,pass:$pass,message:$message}'
