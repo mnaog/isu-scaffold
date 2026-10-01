@@ -1,0 +1,62 @@
+# worker
+
+起動時に役割をworkerと明示し、この文書を読む。`SCAFFOLD_ROLE=worker`も設定する。
+目的・変更範囲・完了条件が明確で、独立して統合・評価できる1つの改善仮説または修正を担当する。同じ仮説の実現と整合性保証に必要な複数ファイルの変更はまとめる。独立した改善を混ぜない。所要時間だけを理由に分割しない。
+
+自分のworktreeで、作業開始を記録してから実装とローカル検証を行う。見込みは分単位の概算でよく、予測精度の保証は不要。大きく変わったら残り時間を更新し、詰まったら理由を残す。範囲が大きく広がる場合はoperatorへ判断を戻す。
+
+## SQLiteへの記録
+
+`./scripts/worker-db`は標準入力のSQLを共通SQLiteへ実行する薄い入口。Pythonは内部実装であり、操作ごとの独自コマンドは設けない。作業情報はINSERT / UPDATEで記録する。SQL全体は1 transactionで実行し、エラー時は戻す。
+
+fork起動側が以下を環境へ渡す。Claude Codeの子セッションIDはCLIやhookで判明した実際のIDを渡す。Codexの子IDは`CODEX_THREAD_ID`からも取得できる。親IDは推測せず、起動側から渡す。
+
+```bash
+export SCAFFOLD_ROLE=worker
+export SCAFFOLD_AGENT=codex  # または claude
+export SCAFFOLD_PARENT_SESSION_ID='<親operatorの実セッションID>'
+export SCAFFOLD_SESSION_ID='<子workerの実セッションID>'
+# 任意: SCAFFOLD_BASE_COMMIT, SCAFFOLD_TASK_ID
+```
+
+開始時のtask ID、時刻、worktree、branch、分岐元commitは自動取得する。`make worktree`で作ったbranchは作成時のbase commitを使用し、それ以外は`SCAFFOLD_BASE_COMMIT`、未指定なら`merge-base HEAD main`を使う。既に変更したbranchを後付け登録する場合は正確な分岐元を指定する。
+
+```bash
+./scripts/worker-db <<'SQL'
+INSERT INTO worker_start(task, estimate_minutes, completion_criteria, planned_validation)
+VALUES ('一覧取得のN+1解消', 5, '同じレスポンスでSQLを一括取得する', 'cargo testと対象のローカル検証');
+SQL
+```
+
+返り値に生成されたtask IDを含む。以後は現在のworktreeの未統合タスクを自動選択する。再開等で明示する場合は`SCAFFOLD_TASK_ID`を設定する。
+
+```bash
+./scripts/worker-db <<'SQL'
+UPDATE workers SET remaining_minutes=3, notes='呼び出し元も修正中'
+WHERE task_id=(SELECT task_id FROM worker_context);
+SQL
+```
+
+詰まった場合は`state='blocked'`と理由、再開時は`state='working'`を記録する。
+commitと検証を終えたら、必ず開発完了を記録する。注意点がなければ「なし」と記す。
+
+```bash
+./scripts/worker-db <<'SQL'
+UPDATE workers SET state='developed', completed_at=strftime('%s','now'),
+ result_commit=(SELECT head_commit FROM worker_context),
+ validation='cargo test成功。対象ケースのローカル検証成功', notes='共有ベンチでの確認待ち'
+WHERE task_id=(SELECT task_id FROM worker_context);
+SQL
+```
+
+開発完了後は待機する。自分でmerge、deploy、共有ベンチ、worktree削除を行わない。開発完了は統合済みではない。
+
+## forkスキルとの接続契約
+
+スキルは実際の会話履歴をforkし、専用branch/worktreeと人間が見られる独立ターミナルを使う。今回スキルそのものは変更しない。要約からの新規セッションやサブエージェントへの置き換えはしない。
+
+接続入口は上記の環境変数、`worker_start`、`workers`、`worker_processes`。一時表`worker_context`には`task_id,parent_session_id,session_id,agent,worktree,branch,base_commit,head_commit`がある。
+
+CLI起動・終了は起動側が`worker_processes`へ記録する。`task_id`は作業開始までNULLでよく、後で紐付ける。起動側は実際のCLI PIDとセッションIDをINSERTし、終了時に`exited_at`と`exit_code`をUPDATEする。プロセス終了からworkersのstateを更新する処理はない。異常終了しても作業状態は残る。
+
+DBの場所は`./scripts/scout db-path`で取得でき、通常のsqlite3から直接操作することもできる。その場合は`worker_start`と`worker_context`はないため、`workers`の機械項目も明示する。schemaは`scripts/operations/schema.sql`。秘密・接続情報は記録しない。

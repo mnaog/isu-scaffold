@@ -5,7 +5,9 @@
 この`AGENTS.md`をAI向け指示の正本とする。Codexは直接、Claude Codeは`.claude/rules/agents.md`のsymlink経由で同じ内容を読み込む。
 
 ## 練習用記述
-現在は練習中です(注意：この記述は10月30日頃に除去する)。禁止事項として、ベンチマーカーの中を確認すること、ベンチマーカーにログを仕込むこと、以前開催された攻略法を検索しない（現在練習中のものとは他の開催回は確認は可）。
+現在は練習中です(注意：この記述は10月30日頃に除去する)。ベンチマーカー内部の閲覧、ベンチマーカーへのログ追加、現在練習中の開催回の攻略法の検索は禁止する（他の開催回の攻略法は確認可）。この制限は全ロール・全AIとモデル比較実験にも適用する。
+
+シナリオや得点構造の分析には、参加者向けの公式文書、アプリケーションコード・schema、参加者向けベンチ出力、アプリ側の計測結果を使う。運営向け出力は使わない。資料から確認できない内部条件は不明とし、観測からの推測と確認済みの事実を区別する。モデル比較実験では、閲覧可能な資料と開始時に渡す情報を共通にする。
 
 
 ## ディレクトリ
@@ -44,6 +46,24 @@
 - isuscopeの軽量なrun履歴は通常のコミットへ含める。重要なrunの生ログを残す場合は`isuscope pin <run-id>`を使う。
 - `.local/operation.lock`を変更系操作の共通排他とする。実行中のlockは基本的に手作業で消さず、別セッションの終了を待つ。status・checkなどのread-only操作は並行してよい。
 
+## 運用時の役割
+
+人間が主導し、起動プロンプトで`役割: operator / worker / scout / researcher / reviewer`を明示し、対応する`docs/roles/`を読む。起動側は`SCAFFOLD_ROLE`にも同じ値を渡す。既存セッションの役割を更新時刻やagentの種類から推測しない。以下はISUCON運用時の責任分担であり、scaffold自体の開発では必要なコード・設定・文書を編集してよい。
+
+| 役割 | 責任 |
+| --- | --- |
+| [operator](docs/roles/operator.md) | コード編集は担当せず、観測、ボトルネック調査・計測、人間との対話、worker起動、変更の統合、deploy、ベンチ、worktreeの後片付けを担う。 |
+| [worker](docs/roles/worker.md) | 開始・分単位の見込みを共通SQLiteへ記録し、自分のworktreeで1目的の実装とローカル検証を行う。結果commit・検証結果・注意点とともに開発完了を記録して待機する。統合済みの記録と後片付けはoperatorが行う。 |
+| [scout](docs/roles/scout.md) | 生成された最新入力から自由に探索し、発見・疑問・仮説を300字以内で報告する。角度は割り当てず、発見なしでもよい。変更やベンチを実行しない。 |
+| [researcher](docs/roles/researcher.md) | operatorの問いから自由に調査を深め、事実・仮説・根拠・成立条件・未確認点を伴う提案を速報公開する。実装・remote変更・deploy・ベンチは行わない。 |
+| [reviewer](docs/roles/reviewer.md) | 正式公開された全提案の固定版をCodex／Claude Codeの独立セッションで非同期レビューする。根拠と照合し、判断に影響する情報を先頭に示す。 |
+
+operatorはClaude CodeとCodexの2セッションを常時開き、積極的に動かすのは基本的に片方。担当調整・実験所有権・leaseは追加せず、既存の操作排他を維持する。operatorの実セッションIDを明示登録し、scout入力へworkerの会話を混ぜない。
+workerの作業開始・開発完了・統合済みとCLIプロセスの起動・終了は別に記録する。作業記録の共通SQLiteへの書き込みはworkerにも許可するが、remote変更・deploy・共有ベンチ・worktree削除は許可しない。
+scoutは人間がPhase 2開始を決めてから`make scout-start`で起動し、`make scout-stop`で止める。ボードは`make board`で開く読み取り専用画面。最新報告の`docs/scout-board.md`は通常のコミットに含める。
+
+researcherの正式提案だけを全件レビュー対象にする。提案はレビュー起動・完了を待たず利用でき、採否・追加調査・worker依頼はoperatorが判断する。researcher/reviewerは自分の成果物・状態だけを保存できる。`scripts/researcher`の起動・停止・再試行は[運用手順](docs/roles/researcher.md)に従う。外部応答待ちに共通操作lockを保持せず、担当調整・実験leaseは追加しない。提案とレビューは`docs/research/proposals/`、状態概要は`docs/scout-board.md`へ出力し通常のコミットに含める。練習ルールは両役割にも適用する。
+
 ## 初動の自動化
 
 大会開始後は、`config/environment.example.env`を`.local/environment.env`へコピーしてprovider、SSH、node分類を設定し、次の順で初動を進める。
@@ -68,7 +88,7 @@ isuscope survey-run --hypothesis "..."
   → deployし、通常のisuscope runでbaselineと比較
 ```
 
-採用言語はRustに固定する（`config/application.env`）。先行回収は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は`kickoff-apply`のimportで完了する。`kickoff`は再実行でき、回収済みならimportを飛ばし、worktreeも再利用する。draftの判断は`review.md`を読んだ操作者（人間またはこのセッション）が行い、`make`の中で別のAIを呼んで承認させない。`make`は初動・deploy・検査の入口だけに絞っており、個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
+採用言語はRustに固定する（`config/application.env`）。先行回収は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は`kickoff-apply`のimportで完了する。`kickoff`は再実行でき、回収済みならimportを飛ばし、worktreeも再利用する。draftの判断は`review.md`を読んだ操作者（人間またはこのセッション）が行い、`make`の中で別のAIを呼んで承認させない。`make`は初動・deploy・検査とローカル運用ボード・scout常駐処理の入口に絞っており、個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
 
 - 計測と運用の土台（計測tool、LTSV access log、slow log、時刻同期、journal、自動更新停止）は初動のAnsibleで固定化し、レギュレーションで禁止された項目だけ変数で外す。性能を変える設定（`config/nginx/tare`、networking sysctl、MySQLの性能設定）は初回baselineの後に1つの変更として入れる。
 - `kickoff`、`bootstrap`、`phase1-check`からベンチを起動しない。`isuscope survey-run`は必ず独立した明示操作にする。

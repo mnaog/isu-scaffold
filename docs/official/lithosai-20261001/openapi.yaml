@@ -1,0 +1,539 @@
+openapi: 3.1.0
+
+info:
+  title: LithosAI API
+  version: '2026-09-17'
+  description: |
+    LithosAI provides an OpenAI-compatible inference API. Any OpenAI client library works
+    against it by pointing `base_url` at the LithosAI server.
+
+    This reference documents the currently supported subset of fields. Endpoints not listed
+    here (`/completions`, `/embeddings`, `/responses`, `/batches`, ...) are not implemented
+    and return 404.
+  contact:
+    name: LithosAI Support
+    url: https://console.lithosai.cloud
+
+servers:
+  - url: https://api.lithosai.cloud/v1
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Models
+    description: Model discovery endpoints.
+  - name: Chat
+    description: OpenAI-compatible Chat Completions endpoint.
+
+paths:
+  /models:
+    get:
+      operationId: listModels
+      tags: [Models]
+      summary: List available models
+      description: Lists the models your organization can call.
+      responses:
+        '200':
+          description: The list of available models.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /models/{author}/{slug}:
+    get:
+      operationId: retrieveModel
+      tags: [Models]
+      summary: Retrieve a model
+      description: |
+        Retrieves a single model by author and slug.
+      parameters:
+        - name: author
+          in: path
+          required: true
+          description: The author/organization of the model.
+          schema:
+            type: string
+          example: moonshotai
+        - name: slug
+          in: path
+          required: true
+          description: The model slug.
+          schema:
+            type: string
+          example: Kimi-K3
+      responses:
+        '200':
+          description: The model.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Model'
+              example:
+                id: moonshotai/Kimi-K3
+                object: model
+                created: 1785110400
+                owned_by: Moonshot AI
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /chat/completions:
+    post:
+      operationId: createChatCompletion
+      tags: [Chat]
+      summary: Create a chat completion
+      description: |
+        Generates a completion for the supplied conversation.
+
+        Set `stream: true` to receive Server-Sent Events. Most chunks carry
+        a `usage` object: the opening role delta and the chunk carrying `finish_reason` omit
+        it. The final chunk before `[DONE]` reports the totals with an empty `choices`
+        array.
+
+        Sampling constraints are **per model**. The bounds in this schema are the OpenAI-wire
+        bounds, not the per-model ones.
+
+        Retry 429 and 5xx with exponential backoff and jitter. Prefer the delay we advise,
+        `retry-after-ms` first and then `retry-after`, over an interval of your own. Do not
+        retry 400, 401, 402 or 404, and do not retry anything carrying `x-should-retry: false`:
+        the answer will not change until you do something about it.
+
+        A 429 means one of your three per-minute budgets is empty. See
+        [Rate limits](/rate-limits) for what they are and how to read the headers that
+        report them.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChatCompletionRequest'
+      responses:
+        '200':
+          description: The completion, or an SSE stream when `stream` is true.
+          headers:
+            x-ratelimit-limit-requests:
+              $ref: '#/components/headers/RateLimitLimitRequests'
+            x-ratelimit-remaining-requests:
+              $ref: '#/components/headers/RateLimitRemainingRequests'
+            x-ratelimit-reset-requests:
+              $ref: '#/components/headers/RateLimitResetRequests'
+            x-ratelimit-limit-tokens:
+              $ref: '#/components/headers/RateLimitLimitTokens'
+            x-ratelimit-remaining-tokens:
+              $ref: '#/components/headers/RateLimitRemainingTokens'
+            x-ratelimit-reset-tokens:
+              $ref: '#/components/headers/RateLimitResetTokens'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionResponse'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionChunk'
+        '400':
+          description: |
+            Invalid request. LithosAI returns its own envelope for `invalid_json`,
+            `model_required` and `request_too_large`; per-parameter validation failures are
+            passed through from the inference engine in a different shape.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - $ref: '#/components/schemas/EngineErrorResponse'
+            text/plain:
+              schema:
+                type: string
+              example: 'inference error: BadRequest - invalid chat completions request: must have valid messages field'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          description: The organization is out of credit (`insufficient_quota`).
+          headers:
+            x-should-retry:
+              $ref: '#/components/headers/ShouldRetry'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          description: |
+            A per-minute budget is empty (`rate_limit_exceeded`, with `error.type` naming
+            which of `requests`, `input_tokens` or `output_tokens` refused), or the model is
+            at capacity (`provider_overloaded`).
+          headers:
+            retry-after:
+              $ref: '#/components/headers/RetryAfter'
+            retry-after-ms:
+              $ref: '#/components/headers/RetryAfterMs'
+            x-should-retry:
+              $ref: '#/components/headers/ShouldRetry'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+      description: 'A key created on the API Keys console page, sent as `Authorization: Bearer <key>`.'
+
+  headers:
+    RateLimitLimitRequests:
+      description: The capacity of your request bucket.
+      schema: { type: integer }
+    RateLimitRemainingRequests:
+      description: Requests left in it. A balance, not limit-minus-spend.
+      schema: { type: integer }
+    RateLimitResetRequests:
+      description: How long until that bucket is full again, e.g. `1s`.
+      schema: { type: string }
+    RateLimitLimitTokens:
+      description: The capacity of whichever token bucket is nearer its limit.
+      schema: { type: integer }
+    RateLimitRemainingTokens:
+      description: Tokens left in it.
+      schema: { type: integer }
+    RateLimitResetTokens:
+      description: How long until it is full again, e.g. `0s`.
+      schema: { type: string }
+    RetryAfter:
+      description: Seconds to wait, on a refusal where waiting helps.
+      schema: { type: integer }
+    RetryAfterMs:
+      description: The same advice in milliseconds, and the more precise of the two.
+      schema: { type: integer }
+    ShouldRetry:
+      description: Set to `false` where no amount of waiting will change the answer.
+      schema: { type: boolean }
+
+  responses:
+    Unauthorized:
+      description: The key is missing, malformed, unknown or revoked.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              message: invalid API key
+              type: invalid_request_error
+    NotFound:
+      description: The catalog holds no such model id. The message quotes it back.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              message: 'the model `nope` does not exist'
+              type: invalid_request_error
+              param: null
+              code: model_not_found
+
+  schemas:
+    Model:
+      type: object
+      description: A model offering that can be used with the API.
+      properties:
+        id:
+          type: string
+          description: The model identifier, referenced in the `model` request field.
+        object:
+          type: string
+          const: model
+        created:
+          type: integer
+          format: unixtime
+          description: Unix timestamp (seconds) when the model was created.
+        owned_by:
+          type: string
+          description: The organization that owns the model.
+      required: [id, object, created, owned_by]
+
+    ModelListResponse:
+      type: object
+      properties:
+        object:
+          type: string
+          const: list
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Model'
+      required: [object, data]
+
+    ErrorObject:
+      type: object
+      properties:
+        message:
+          type: string
+        type:
+          type: string
+          description: |
+            `invalid_request_error` in general. On a 429 this instead names the exhausted
+            budget: `requests`, `input_tokens` or `output_tokens`.
+        param:
+          type: [string, 'null']
+        code:
+          type: [string, 'null']
+          description: |
+            Disambiguates the error. Absent entirely on 401.
+          examples:
+            - invalid_json
+            - model_required
+            - request_too_large
+            - insufficient_quota
+            - model_not_found
+            - rate_limit_exceeded
+            - provider_overloaded
+      required: [message, type]
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorObject'
+      required: [error]
+
+    EngineErrorResponse:
+      type: object
+      description: |
+        Raw inference-engine validation error, passed through without being wrapped in the
+        LithosAI envelope. Note the flat shape and the integer `code`.
+      properties:
+        object:
+          type: string
+          const: error
+        message:
+          type: string
+        type:
+          type: string
+          examples: ['Bad Request', BadRequestError]
+        param:
+          type: [string, 'null']
+        code:
+          type: integer
+      required: [object, message, type, code]
+
+    ChatCompletionRequestMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [system, user, assistant, tool, function, developer]
+        content:
+          type: [string, array, 'null']
+        name:
+          type: string
+        tool_calls:
+          type: array
+          items: { type: object }
+        tool_call_id:
+          type: string
+      required: [role]
+
+    CreateChatCompletionRequest:
+      type: object
+      properties:
+        model:
+          type: string
+          description: The model id, e.g. `moonshotai/Kimi-K3`.
+          example: moonshotai/Kimi-K3
+        messages:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ChatCompletionRequestMessage'
+        max_tokens:
+          type: [integer, 'null']
+          minimum: 1
+        max_completion_tokens:
+          type: [integer, 'null']
+          minimum: 1
+        temperature:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 2
+          default: 1
+        top_p:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 1
+          default: 1
+          description: Prod-flagged Kimi-K3 engines require a value in `[0.95, 1.0]`.
+        top_k:
+          type: [integer, 'null']
+          description: Non-standard sampling parameter; accepted by LithosAI.
+        n:
+          type: [integer, 'null']
+          default: 1
+          description: Kimi-K3 requires `1`.
+        stop:
+          type: [string, array, 'null']
+          items: { type: string }
+        stream:
+          type: [boolean, 'null']
+          default: false
+        stream_options:
+          type: [object, 'null']
+          properties:
+            include_usage: { type: boolean }
+        presence_penalty:
+          type: [number, 'null']
+          minimum: -2
+          maximum: 2
+          default: 0
+          description: Kimi-K3 requires `0.0`.
+        frequency_penalty:
+          type: [number, 'null']
+          minimum: -2
+          maximum: 2
+          default: 0
+          description: Kimi-K3 requires `0.0`.
+        seed:
+          type: [integer, 'null']
+        logprobs:
+          type: [boolean, 'null']
+        top_logprobs:
+          type: [integer, 'null']
+        logit_bias:
+          type: [object, 'null']
+          additionalProperties: { type: number }
+        response_format:
+          type: [object, 'null']
+        reasoning_effort:
+          type: [string, 'null']
+        tools:
+          type: array
+          items: { type: object }
+        tool_choice:
+          type: [string, object, 'null']
+        user:
+          type: string
+      required: [model, messages]
+
+    CompletionTokensDetails:
+      type: [object, 'null']
+      properties:
+        reasoning_tokens: { type: integer }
+
+    ChatCompletionUsage:
+      type: object
+      properties:
+        prompt_tokens: { type: integer }
+        completion_tokens: { type: integer }
+        total_tokens: { type: integer }
+        prompt_tokens_details:
+          type: [object, 'null']
+        completion_tokens_details:
+          $ref: '#/components/schemas/CompletionTokensDetails'
+      required: [prompt_tokens, completion_tokens, total_tokens]
+
+    ChatCompletionResponseMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          const: assistant
+        content:
+          type: [string, 'null']
+        reasoning_content:
+          type: [string, 'null']
+          description: Reasoning trace, on models that emit one. Separate from `content`.
+        tool_calls:
+          type: [array, 'null']
+          items: { type: object }
+      required: [role]
+
+    ChatCompletionChoice:
+      type: object
+      properties:
+        index: { type: integer }
+        message:
+          $ref: '#/components/schemas/ChatCompletionResponseMessage'
+        logprobs:
+          type: [object, 'null']
+        finish_reason:
+          type: [string, 'null']
+          enum: [stop, length, tool_calls, content_filter, null]
+      required: [index, message, finish_reason]
+
+    ChatCompletionResponse:
+      type: object
+      properties:
+        id: { type: string }
+        object:
+          type: string
+          const: chat.completion
+        created:
+          type: integer
+          format: unixtime
+        model: { type: string }
+        choices:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatCompletionChoice'
+        usage:
+          $ref: '#/components/schemas/ChatCompletionUsage'
+      required: [id, object, created, model, choices]
+
+    ChatCompletionChunkDelta:
+      type: object
+      properties:
+        role:
+          type: [string, 'null']
+        content:
+          type: [string, 'null']
+        reasoning_content:
+          type: [string, 'null']
+        tool_calls:
+          type: [array, 'null']
+          items: { type: object }
+
+    ChatCompletionChunkChoice:
+      type: object
+      properties:
+        index: { type: integer }
+        delta:
+          $ref: '#/components/schemas/ChatCompletionChunkDelta'
+        logprobs:
+          type: [object, 'null']
+        finish_reason:
+          type: [string, 'null']
+          enum: [stop, length, tool_calls, content_filter, null]
+      required: [index, delta]
+
+    ChatCompletionChunk:
+      type: object
+      description: |
+        One SSE `data:` frame. The stream terminates with a literal `data: [DONE]`, which is
+        not JSON. The final JSON chunk carries totals in `usage` with an empty `choices`.
+      properties:
+        id: { type: string }
+        object:
+          type: string
+          const: chat.completion.chunk
+        created:
+          type: integer
+          format: unixtime
+        model: { type: string }
+        choices:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatCompletionChunkChoice'
+        usage:
+          oneOf:
+            - $ref: '#/components/schemas/ChatCompletionUsage'
+            - type: 'null'
+      required: [id, object, created, model, choices]

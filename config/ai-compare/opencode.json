@@ -1,0 +1,45 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "lithosai/deepseek-ai/DeepSeek-V4.1-Flash",
+  "small_model": "lithosai/deepseek-ai/DeepSeek-V4.1-Flash",
+  "provider": {
+    "lithosai": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LithosAI",
+      "options": {
+        "baseURL": "https://api.lithosai.cloud/v1",
+        "apiKey": "{env:LITHOS_API_KEY}"
+      },
+      "models": {
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          "name": "DeepSeek V4.1 Flash (Lithos Base)",
+          "reasoning": true,
+          "tool_call": true,
+          "interleaved": {
+            "field": "reasoning_content"
+          },
+          "limit": {
+            "context": 131072,
+            "output": 8192
+          },
+          "options": {
+            "reasoningEffort": "max"
+          }
+        }
+      }
+    }
+  },
+  "share": "disabled",
+  "autoupdate": false,
+  "lsp": false,
+  "formatter": false,
+  "permission": {
+    "*": "allow",
+    "external_directory": "deny",
+    "task": "deny",
+    "webfetch": "deny",
+    "websearch": "deny",
+    "codesearch": "deny",
+    "skill": "deny"
+  }
+}

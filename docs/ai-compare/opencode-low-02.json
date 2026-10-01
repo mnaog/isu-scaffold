@@ -1,0 +1,48 @@
+{
+  "trial": "opencode-low-02",
+  "status": "passed",
+  "agent": "opencode",
+  "model": "lithosai/deepseek-ai/DeepSeek-V4.1-Flash",
+  "endpoint": "https://api.lithosai.cloud/v1",
+  "reasoning": "max",
+  "harness": "OpenCode 1.18.34; build agent; agent-history enabled; LSP/formatter disabled; config permissions",
+  "session_id": "ses_f08f3cf47ffebhR8eiCYgCqw9K",
+  "elapsed_seconds": 48.12289879200398,
+  "timing_scope": "CLI startup through CLI exit, includes tools and agent-history; excludes setup and independent audit",
+  "tool_union_seconds": 12.647000074386597,
+  "tool_calls": 19,
+  "agent_validation_seconds": 11.302624125004513,
+  "validation_exit_codes": [
+    101,
+    0,
+    0
+  ],
+  "audit": {
+    "changed_files": [
+      "webapp/rust/src/admin.rs"
+    ],
+    "forbidden_changes": [],
+    "validation": {
+      "check": 0,
+      "test": 0
+    },
+    "head": "d3b85be5dc6ba646bb4eac36754016de948f77ba",
+    "dirty": false,
+    "note": "Review diff for preserved behavior and unmodified existing tests; compile success alone is insufficient."
+  },
+  "tests": {
+    "passed": 15,
+    "failed": 0,
+    "ignored": 1
+  },
+  "review": "Only two handler visibilities change from pub to pub(crate); existing tests and dependencies unchanged. Same source diff as known fix 7fb8410.",
+  "excluded_attempt": {
+    "trial": "opencode-low-01",
+    "reason": "Launcher supplied cwd but inherited scaffold PWD; stopped. New trial uses explicit --dir and corrected PWD; not a model failure."
+  },
+  "settings_sha256": {
+    "/Users/nao/project/isucon/isu-scaffold/config/ai-compare/opencode.json": "1be2a8c4a1e02ab85d9851b5a5a4b10fdb4deab97be38f4e7ca16055c29145ca",
+    "/Users/nao/.config/opencode/opencode.jsonc": "a3d627d8c95cd453059b4360c5ac951be25834271d9518b6749d49103070bd75",
+    "/Users/nao/project/agent-history/opencode-plugin.mjs": "faba137a11499a86337b0f1c550caa2ab5ea88831474a3af6cac90a3c559cf29"
+  }
+}

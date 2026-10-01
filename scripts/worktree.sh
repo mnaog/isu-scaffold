@@ -49,12 +49,16 @@ lanes() {
 }
 
 write_brief() {
+  if ! git config --get "branch.${branch}.scaffold-base" >/dev/null; then
+    git config "branch.${branch}.scaffold-base" "$(git merge-base "${base}" "${branch}")"
+  fi
   mkdir -p "${worktree}/.local"
   {
     printf '# lane: %s\n\n- worktree: %s\n- branch: %s\n- base: %s\n- 目的: %s\n\n' \
       "${branch}" "${worktree}" "${branch}" "${base}" "${purpose}"
     printf '## このlaneでやること\n\n目的だけを小さいcommitで進める。各commitに、直した問題（file:line）、変更、期待する観測値を1行で書く。\n\n'
     printf '## 触ってよい範囲\n\n- webapp/のコードとschema、ローカルのテストだけ\n- deploy、ベンチ、remote操作、.local/operation.lockを使う操作はmain側が行う\n- 初回baselineの分析が終わるまで、変更をremoteへ反映しない\n\n'
+    printf '## workerの記録\n\n役割: worker。docs/roles/worker.mdを読み、開始・見込みと開発完了を共通SQLiteへ記録する。開発完了後は待機し、統合とworktree削除はoperatorが行う。\n\n'
     printf '## mainへ渡すとき\n\n目的に対する結果を1行で報告し、mainへマージする前にローカルのbuildとテストを通す。\n\n'
     local others
     others=$(lanes)

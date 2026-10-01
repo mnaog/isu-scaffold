@@ -1,0 +1,47 @@
+{
+  "source_commit": "3c551cb",
+  "reference_commit": "2ce2355",
+  "subject": "Keep new users inventory cached through registration and present receipt; reduce redundant SELECTs",
+  "diff": {
+    "rust_added": 228,
+    "rust_deleted": 38,
+    "rust_changed": 266,
+    "documentation_added": 3,
+    "documentation_deleted": 3,
+    "total_changed": 272,
+    "rust_net_added": 190
+  },
+  "files": [
+    {
+      "path": "webapp/rust/src/main.rs",
+      "added": 77,
+      "deleted": 27
+    },
+    {
+      "path": "webapp/rust/src/new_user_cache.rs",
+      "added": 147,
+      "deleted": 9
+    },
+    {
+      "path": "webapp/rust/src/new_user_cache_integration.rs",
+      "added": 4,
+      "deleted": 2
+    }
+  ],
+  "assessment": "Suitable for roughly 300 lines of diff including tests; not 300 lines of new production implementation. Medium difficulty is a candidate judgment, not measured model performance.",
+  "scope": [
+    "Populate complete inventory after successful registration including login bonuses without changing response payload",
+    "Maintain cards and existing/new items after successful receipt and skip known-inventory SELECTs",
+    "Keep MySQL authoritative and preserve transaction, failure invalidation, fallback and initialize semantics",
+    "Add focused tests and adapt the old integration expectation that inventory is unknown after registration"
+  ],
+  "exclude_from_task": [
+    "Cache capacity increase from 4096 to 16384; separate tuning change"
+  ],
+  "validation_needed": [
+    "Local disposable MySQL integration test",
+    "Compare API/DB outcomes including duplicate/concurrent receipts",
+    "Confirm target SELECT reduction using participant-side application/DB observations, not benchmark internals"
+  ],
+  "not_yet_done": "Medium environment and acceptance tests have not been prepared or executed."
+}

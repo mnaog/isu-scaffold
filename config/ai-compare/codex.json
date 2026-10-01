@@ -1,0 +1,14 @@
+{
+  "model": "gpt-6-astra",
+  "reasoning": "medium",
+  "session": "new independent CLI session; no conversation history inherited",
+  "overrides": {
+    "model_reasoning_effort": "medium",
+    "web_search": "disabled",
+    "features.multi_agent": false,
+    "mcp_servers.playwright.enabled": false,
+    "mcp_servers.serena.enabled": false
+  },
+  "sandbox": "danger-full-access",
+  "approval_policy": "never"
+}

@@ -129,3 +129,7 @@
 - フロントエンドが正しく表示される
 - 最終構成のGitコミットとisuscope runを特定できる
 - 公式の提出と終了手順が完了している
+
+## scoutの停止
+
+最終構成の確認に入る際は`make scout-stop`で定期探索を止め、`make scout-status`で停止を確認する。最新の`docs/scout-board.md`を通常のコミットへ含める。

@@ -1,0 +1,449 @@
+{
+  "measured_date": "2026-10-01",
+  "condition": "Same Rust task and max reasoning as original; warmed OpenCode server, direct upstream, fresh session each trial. Ordinary read-only shell commands allowed to remove permission-rejection confound. Four tiers interleaved in rotated order.",
+  "rows": [
+    {
+      "provider": "base",
+      "trial": 1,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "wall_s": 13.753387291013496,
+      "api_requests": 5,
+      "tool_count": 6,
+      "tool_s": 3.438,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        3.676,
+        3.161,
+        2.341,
+        3.206,
+        1.333
+      ],
+      "reasoning_chars": 1562,
+      "tool_errors": 0,
+      "input_tokens_min": 5330,
+      "input_tokens_max": 8168,
+      "test_commands": [
+        "cargo test --offline",
+        "cargo test --offline"
+      ],
+      "started_utc": "2026-10-01T10:06:12.173000+00:00"
+    },
+    {
+      "provider": "base",
+      "trial": 2,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "wall_s": 11.134334208007203,
+      "api_requests": 6,
+      "tool_count": 6,
+      "tool_s": 3.835,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        1.261,
+        3.051,
+        0.988,
+        1.993,
+        2.864,
+        0.963
+      ],
+      "reasoning_chars": 1940,
+      "tool_errors": 0,
+      "input_tokens_min": 5330,
+      "input_tokens_max": 8373,
+      "test_commands": [
+        "cargo test --offline",
+        "cargo test --offline"
+      ],
+      "started_utc": "2026-10-01T10:07:39.409000+00:00"
+    },
+    {
+      "provider": "base",
+      "trial": 3,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "wall_s": 11.35249124999973,
+      "api_requests": 6,
+      "tool_count": 6,
+      "tool_s": 3.757,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        0.891,
+        2.766,
+        1.157,
+        2.817,
+        2.788,
+        0.911
+      ],
+      "reasoning_chars": 2647,
+      "tool_errors": 0,
+      "input_tokens_min": 5330,
+      "input_tokens_max": 8540,
+      "test_commands": [
+        "cargo test --offline",
+        "cargo test --offline"
+      ],
+      "started_utc": "2026-10-01T10:08:20.251000+00:00"
+    },
+    {
+      "provider": "fast",
+      "trial": 1,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-fast",
+      "wall_s": 17.04470187498373,
+      "api_requests": 6,
+      "tool_count": 7,
+      "tool_s": 4.185,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        4.558,
+        3.398,
+        1.069,
+        3.175,
+        3.217,
+        1.613
+      ],
+      "reasoning_chars": 2211,
+      "tool_errors": 0,
+      "input_tokens_min": 5332,
+      "input_tokens_max": 9131,
+      "test_commands": [
+        "ls -R . | head -50",
+        "cargo test --offline 2>&1 | tail -60",
+        "cargo test --offline 2>&1 | tail -25"
+      ],
+      "started_utc": "2026-10-01T10:06:40.189000+00:00"
+    },
+    {
+      "provider": "fast",
+      "trial": 2,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-fast",
+      "wall_s": 12.222998707991792,
+      "api_requests": 6,
+      "tool_count": 6,
+      "tool_s": 3.762,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        1.324,
+        2.611,
+        1.049,
+        1.794,
+        4.31,
+        1.119
+      ],
+      "reasoning_chars": 1775,
+      "tool_errors": 0,
+      "input_tokens_min": 5332,
+      "input_tokens_max": 8172,
+      "test_commands": [
+        "cargo test --offline",
+        "cargo test --offline"
+      ],
+      "started_utc": "2026-10-01T10:07:17.693000+00:00"
+    },
+    {
+      "provider": "fast",
+      "trial": 3,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-fast",
+      "wall_s": 19.16135775001021,
+      "api_requests": 6,
+      "tool_count": 7,
+      "tool_s": 3.948,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        8.674,
+        2.892,
+        0.879,
+        2.558,
+        2.876,
+        1.27
+      ],
+      "reasoning_chars": 2781,
+      "tool_errors": 0,
+      "input_tokens_min": 5332,
+      "input_tokens_max": 8752,
+      "test_commands": [
+        "cargo test --offline",
+        "cargo test --offline"
+      ],
+      "started_utc": "2026-10-01T10:07:51.548000+00:00"
+    },
+    {
+      "provider": "ultra",
+      "trial": 1,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-ultra",
+      "wall_s": 11.412110542005394,
+      "api_requests": 7,
+      "tool_count": 9,
+      "tool_s": 4.038,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        0.927,
+        1.006,
+        0.898,
+        2.657,
+        1.912,
+        3.017,
+        0.965
+      ],
+      "reasoning_chars": 1893,
+      "tool_errors": 0,
+      "input_tokens_min": 5338,
+      "input_tokens_max": 9031,
+      "test_commands": [
+        "ls -la && ls tests 2>/dev/null",
+        "cargo test --offline 2>&1",
+        "cargo test --offline 2>&1"
+      ],
+      "started_utc": "2026-10-01T10:06:27.392000+00:00"
+    },
+    {
+      "provider": "ultra",
+      "trial": 2,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-ultra",
+      "wall_s": 9.786289375013439,
+      "api_requests": 5,
+      "tool_count": 6,
+      "tool_s": 3.996,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        3.039,
+        1.327,
+        1.385,
+        3.057,
+        0.967
+      ],
+      "reasoning_chars": 1570,
+      "tool_errors": 0,
+      "input_tokens_min": 5338,
+      "input_tokens_max": 8152,
+      "test_commands": [
+        "cargo test --offline",
+        "cargo test --offline"
+      ],
+      "started_utc": "2026-10-01T10:07:06.832000+00:00"
+    },
+    {
+      "provider": "ultra",
+      "trial": 3,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-ultra",
+      "wall_s": 10.925946040981216,
+      "api_requests": 6,
+      "tool_count": 7,
+      "tool_s": 3.848,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        0.949,
+        2.708,
+        0.879,
+        2.669,
+        2.796,
+        0.91
+      ],
+      "reasoning_chars": 3419,
+      "tool_errors": 0,
+      "input_tokens_min": 5338,
+      "input_tokens_max": 9117,
+      "test_commands": [
+        "ls -la",
+        "ls tests && cargo test --offline 2>&1",
+        "cargo test --offline 2>&1"
+      ],
+      "started_utc": "2026-10-01T10:08:32.672000+00:00"
+    },
+    {
+      "provider": "ultra-chat",
+      "trial": 1,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-ultra-chat",
+      "wall_s": 7.387237291986821,
+      "api_requests": 5,
+      "tool_count": 8,
+      "tool_s": 3.84,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        0.601,
+        2.274,
+        1.67,
+        2.304,
+        0.524
+      ],
+      "reasoning_chars": 2453,
+      "tool_errors": 0,
+      "input_tokens_min": 5344,
+      "input_tokens_max": 8794,
+      "test_commands": [
+        "ls -la",
+        "ls tests && cat tests/*.rs",
+        "cargo test --offline 2>&1",
+        "cargo test --offline 2>&1"
+      ],
+      "started_utc": "2026-10-01T10:06:58.388000+00:00"
+    },
+    {
+      "provider": "ultra-chat",
+      "trial": 2,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-ultra-chat",
+      "wall_s": 7.3670220829953905,
+      "api_requests": 6,
+      "tool_count": 7,
+      "tool_s": 3.941,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        0.503,
+        2.296,
+        0.503,
+        1.05,
+        2.497,
+        0.503
+      ],
+      "reasoning_chars": 1085,
+      "tool_errors": 0,
+      "input_tokens_min": 5344,
+      "input_tokens_max": 8279,
+      "test_commands": [
+        "cargo test --offline",
+        "cargo test --offline"
+      ],
+      "started_utc": "2026-10-01T10:07:30.976000+00:00"
+    },
+    {
+      "provider": "ultra-chat",
+      "trial": 3,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-ultra-chat",
+      "wall_s": 7.426854249992175,
+      "api_requests": 6,
+      "tool_count": 6,
+      "tool_s": 3.678,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        0.514,
+        2.174,
+        0.503,
+        1.37,
+        2.331,
+        0.508
+      ],
+      "reasoning_chars": 1927,
+      "tool_errors": 0,
+      "input_tokens_min": 5344,
+      "input_tokens_max": 8419,
+      "test_commands": [
+        "cargo test --offline",
+        "cargo test --offline"
+      ],
+      "started_utc": "2026-10-01T10:08:11.778000+00:00"
+    }
+  ],
+  "summary": {
+    "base": {
+      "n": 3,
+      "wall_median_s": 11.35249124999973,
+      "wall_min_s": 11.134334208007203,
+      "wall_max_s": 13.753387291013496,
+      "trials_s": [
+        13.753387291013496,
+        11.134334208007203,
+        11.35249124999973
+      ],
+      "step_counts": [
+        5,
+        6,
+        6
+      ]
+    },
+    "fast": {
+      "n": 3,
+      "wall_median_s": 17.04470187498373,
+      "wall_min_s": 12.222998707991792,
+      "wall_max_s": 19.16135775001021,
+      "trials_s": [
+        17.04470187498373,
+        12.222998707991792,
+        19.16135775001021
+      ],
+      "step_counts": [
+        6,
+        6,
+        6
+      ]
+    },
+    "ultra": {
+      "n": 3,
+      "wall_median_s": 10.925946040981216,
+      "wall_min_s": 9.786289375013439,
+      "wall_max_s": 11.412110542005394,
+      "trials_s": [
+        11.412110542005394,
+        9.786289375013439,
+        10.925946040981216
+      ],
+      "step_counts": [
+        7,
+        5,
+        6
+      ]
+    },
+    "ultra-chat": {
+      "n": 3,
+      "wall_median_s": 7.387237291986821,
+      "wall_min_s": 7.3670220829953905,
+      "wall_max_s": 7.426854249992175,
+      "trials_s": [
+        7.387237291986821,
+        7.3670220829953905,
+        7.426854249992175
+      ],
+      "step_counts": [
+        5,
+        6,
+        6
+      ]
+    }
+  },
+  "excluded_batch": "task-results-tiers included permission-denied tools; retained locally but not used for primary comparison.",
+  "harness_sha256": "75e389f198b71c8f9509f6ecbdc29fcc5444736d088a28b92de790182b1d7a0f"
+}

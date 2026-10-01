@@ -1,0 +1,50 @@
+{
+  "trial": "claude-low-01",
+  "status": "passed",
+  "agent": "claude",
+  "model": "claude-opus-5-5",
+  "observed_model": "claude-opus-5-5",
+  "reasoning": "medium",
+  "endpoint": "Anthropic first party via existing Claude subscription login",
+  "harness": "2.1.284 (Claude Code); independent CLI session; existing agent-history hooks; no web/subagents/MCP/LSP/auto-memory; fast mode off; bypassPermissions",
+  "session_id": "2db4aee0-722e-48fe-b128-c6eeaf2de589",
+  "elapsed_seconds": 43.563983333995566,
+  "timing_scope": "CLI startup through CLI exit; includes tools and agent-history; excludes setup and independent audit",
+  "agent_validation_seconds": 14.176754916959908,
+  "validation_exit_codes": [
+    101,
+    101,
+    0,
+    0
+  ],
+  "audit": {
+    "changed_files": [
+      "webapp/rust/src/admin.rs"
+    ],
+    "forbidden_changes": [],
+    "validation": {
+      "check": 0,
+      "test": 0
+    },
+    "head": "ac6281282e933158fab9eb0b081bb3c6ac36234d",
+    "dirty": false,
+    "note": "Review diff for preserved behavior and unmodified existing tests; compile success alone is insufficient."
+  },
+  "tests": {
+    "passed": 15,
+    "failed": 0,
+    "ignored": 1
+  },
+  "permission_denials": [],
+  "review": "Same two visibility changes as opencode-low-02, codex-low-01 and known fix. Existing tests and dependencies unchanged.",
+  "initial_commit": "f42133e22f57448ed6ffaeb8e981d6ebe6b58a46",
+  "all_input_file_hashes_equal": true,
+  "sample_count": 1,
+  "parallel_operator_work": "Read-only git diff inspection of medium candidate; no other task build or model comparison ran concurrently.",
+  "settings_sha256": {
+    "/Users/nao/project/isucon/isu-scaffold/config/ai-compare/claude.json": "d0c24fb339dafa1c97b5863dcc67036b0db3b78a3bf9642cf9f39428eff8f266",
+    "/Users/nao/.claude/settings.json": "4d647f196f96ed485c1cc609c99eba8798f53687cc694d6510056853dbdef458",
+    "/Users/nao/.claude/settings.local.json": "c105e020fd7344ec514f28220f4056af46ebc314606737e2e93fa6ff2a6bf803",
+    "/Users/nao/project/agent-history/agent_history.py": "2218b59b4df9e2afc39cbe3e29917d903232c3117793ca734d7d57db78f264e6"
+  }
+}

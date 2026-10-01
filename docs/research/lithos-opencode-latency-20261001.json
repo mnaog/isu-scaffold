@@ -1,0 +1,331 @@
+{
+  "measured_date": "2026-10-01",
+  "opencode_version": "1.18.34",
+  "condition": "Warmed OpenCode server; direct upstream; fresh session and identical Rust fixture each trial; reasoningEffort=max; 3 sequential trials per provider in rotated order",
+  "rows": [
+    {
+      "provider": "ultra",
+      "trial": 1,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-ultra",
+      "wall_s": 10.068704832985532,
+      "api_requests": 5,
+      "tool_count": 6,
+      "tool_s": 3.333,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        3.61,
+        0.928,
+        1.855,
+        2.706,
+        0.933
+      ],
+      "reasoning_chars": 1934,
+      "tool_union_s": 3.333,
+      "outside_tools_s": 6.735704832985531,
+      "reported_reasoning_tokens": 624,
+      "test_commands": [
+        "cargo test --offline",
+        "cargo test --offline"
+      ]
+    },
+    {
+      "provider": "ultra",
+      "trial": 2,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-ultra",
+      "wall_s": 10.09923016699031,
+      "api_requests": 6,
+      "tool_count": 6,
+      "tool_s": 3.643,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        1.036,
+        2.615,
+        0.937,
+        1.804,
+        2.782,
+        0.912
+      ],
+      "reasoning_chars": 2041,
+      "tool_union_s": 3.643,
+      "outside_tools_s": 6.45623016699031,
+      "reported_reasoning_tokens": 611,
+      "test_commands": [
+        "cargo test --offline",
+        "cargo test --offline"
+      ]
+    },
+    {
+      "provider": "ultra",
+      "trial": 3,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-ultra",
+      "wall_s": 12.524538583005778,
+      "api_requests": 8,
+      "tool_count": 10,
+      "tool_s": 3.757,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        1.277,
+        1.051,
+        0.789,
+        0.842,
+        2.506,
+        2.467,
+        2.65,
+        0.926
+      ],
+      "reasoning_chars": 3014,
+      "tool_union_s": 3.755,
+      "outside_tools_s": 8.76953858300578,
+      "reported_reasoning_tokens": 1025,
+      "test_commands": [
+        "ls -la",
+        "ls tests && cat tests/*.rs",
+        "ls tests",
+        "cargo test --offline",
+        "cargo test --offline"
+      ]
+    },
+    {
+      "provider": "ultra-chat",
+      "trial": 1,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-ultra-chat",
+      "wall_s": 7.411772292020032,
+      "api_requests": 6,
+      "tool_count": 6,
+      "tool_s": 3.896,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        0.568,
+        2.294,
+        0.524,
+        1.023,
+        2.451,
+        0.527
+      ],
+      "reasoning_chars": 1313,
+      "tool_union_s": 3.896,
+      "outside_tools_s": 3.5157722920200323,
+      "reported_reasoning_tokens": null,
+      "test_commands": [
+        "cargo test --offline",
+        "cargo test --offline"
+      ]
+    },
+    {
+      "provider": "ultra-chat",
+      "trial": 2,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-ultra-chat",
+      "wall_s": 7.133007833996089,
+      "api_requests": 5,
+      "tool_count": 6,
+      "tool_s": 3.617,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        2.293,
+        0.564,
+        1.43,
+        2.309,
+        0.525
+      ],
+      "reasoning_chars": 2122,
+      "tool_union_s": 3.617,
+      "outside_tools_s": 3.516007833996089,
+      "reported_reasoning_tokens": null,
+      "test_commands": [
+        "cargo test --offline",
+        "cargo test --offline"
+      ]
+    },
+    {
+      "provider": "ultra-chat",
+      "trial": 3,
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash-ultra-chat",
+      "wall_s": 7.544222582975635,
+      "api_requests": 6,
+      "tool_count": 7,
+      "tool_s": 3.699,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        0.54,
+        2.196,
+        0.516,
+        1.418,
+        2.335,
+        0.525
+      ],
+      "reasoning_chars": 2085,
+      "tool_union_s": 3.687,
+      "outside_tools_s": 3.8572225829756355,
+      "reported_reasoning_tokens": null,
+      "test_commands": [
+        "cargo test --offline",
+        "cargo test --offline"
+      ]
+    },
+    {
+      "provider": "zen",
+      "trial": 1,
+      "model": "deepseek-v4.1-flash",
+      "wall_s": 22.802513750008075,
+      "api_requests": 5,
+      "tool_count": 6,
+      "tool_s": 3.677,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        4.723,
+        1.936,
+        10.691,
+        3.657,
+        1.777
+      ],
+      "reasoning_chars": 2198,
+      "tool_union_s": 3.677,
+      "outside_tools_s": 19.125513750008075,
+      "reported_reasoning_tokens": 657,
+      "test_commands": [
+        "cargo test --offline",
+        "cargo test --offline"
+      ]
+    },
+    {
+      "provider": "zen",
+      "trial": 2,
+      "model": "deepseek-v4.1-flash",
+      "wall_s": 34.840071916987654,
+      "api_requests": 7,
+      "tool_count": 8,
+      "tool_s": 3.765,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        2.857,
+        8.131,
+        3.155,
+        4.31,
+        8.86,
+        4.28,
+        3.232
+      ],
+      "reasoning_chars": 3138,
+      "tool_union_s": 3.765,
+      "outside_tools_s": 31.075071916987653,
+      "reported_reasoning_tokens": 858,
+      "test_commands": [
+        "ls -R .",
+        "cargo test --offline 2>&1",
+        "cargo test --offline 2>&1"
+      ]
+    },
+    {
+      "provider": "zen",
+      "trial": 3,
+      "model": "deepseek-v4.1-flash",
+      "wall_s": 61.5103436250065,
+      "api_requests": 6,
+      "tool_count": 7,
+      "tool_s": 3.705,
+      "pass": true,
+      "original_tests_unchanged": true,
+      "manifest_unchanged": true,
+      "independent_tests_pass": true,
+      "finish": "stop",
+      "assistant_steps_s": [
+        11.214,
+        10.79,
+        6.839,
+        14.909,
+        8.376,
+        9.37
+      ],
+      "reasoning_chars": 2054,
+      "tool_union_s": 3.694,
+      "outside_tools_s": 57.816343625006496,
+      "reported_reasoning_tokens": 578,
+      "test_commands": [
+        "cargo test --offline 2>&1",
+        "cargo test --offline 2>&1"
+      ]
+    }
+  ],
+  "summary": {
+    "ultra": {
+      "n": 3,
+      "wall_median_s": 10.09923016699031,
+      "wall_min_s": 10.068704832985532,
+      "wall_max_s": 12.524538583005778,
+      "tool_union_median_s": 3.643,
+      "outside_tools_median_s": 6.735704832985531,
+      "assistant_step_median_s": 1.277,
+      "step_counts": [
+        5,
+        6,
+        8
+      ]
+    },
+    "ultra-chat": {
+      "n": 3,
+      "wall_median_s": 7.411772292020032,
+      "wall_min_s": 7.133007833996089,
+      "wall_max_s": 7.544222582975635,
+      "tool_union_median_s": 3.687,
+      "outside_tools_median_s": 3.516007833996089,
+      "assistant_step_median_s": 1.023,
+      "step_counts": [
+        6,
+        5,
+        6
+      ]
+    },
+    "zen": {
+      "n": 3,
+      "wall_median_s": 34.840071916987654,
+      "wall_min_s": 22.802513750008075,
+      "wall_max_s": 61.5103436250065,
+      "tool_union_median_s": 3.694,
+      "outside_tools_median_s": 31.075071916987653,
+      "assistant_step_median_s": 5.781000000000001,
+      "step_counts": [
+        5,
+        7,
+        6
+      ]
+    }
+  },
+  "limitations": [
+    "Small synthetic Rust repair task, not production ISUCON code",
+    "No direct DeepSeek API measurement",
+    "No 100k context or concurrent load measurement",
+    "Ultra Chat reasoning token accounting differs from Ultra; do not treat OpenCode zero as no reasoning"
+  ]
+}

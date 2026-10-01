@@ -1,0 +1,11 @@
+{
+  "task": "practice12-rust163-compile",
+  "source_commit": "b2705e0c3f5ba3cca2d2ade99d5a71c19a3a64ff",
+  "source_paths": ["webapp/rust", "webapp/sql/3_schema_exclude_user_presents.sql"],
+  "rustup": "1.28.2",
+  "toolchain": "1.63.0",
+  "vendor_toolchain": "1.85.1",
+  "host": "x86_64-apple-darwin",
+  "build_jobs": 4,
+  "expected_initial_error": "E0446"
+}

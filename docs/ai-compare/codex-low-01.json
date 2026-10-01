@@ -1,0 +1,62 @@
+{
+  "trial": "codex-low-01",
+  "status": "passed",
+  "agent": "codex",
+  "model": "gpt-6-astra",
+  "reasoning": "medium",
+  "endpoint": "OpenAI via existing ChatGPT login",
+  "harness": "codex-cli 0.159.3; independent CLI session; existing agent-history hooks; no web/subagents/MCP; full local execution",
+  "session_id": "01a0f710-cd3f-7280-963f-b3228950cadb",
+  "session_mode": "independent fresh Codex CLI process; operator conversation not inherited to avoid solution leakage",
+  "observed_turn_context": {
+    "model": "gpt-6-astra",
+    "effort": "medium",
+    "cwd": "/Users/nao/project/isucon/ai-low-trials/codex-low-01",
+    "model_provider": "openai"
+  },
+  "elapsed_seconds": 76.71207566699013,
+  "timing_scope": "CLI startup through CLI exit; includes tools and agent-history; excludes setup and independent audit",
+  "agent_validation_seconds": 13.853736331977416,
+  "validation_exit_codes": [
+    101,
+    0,
+    0
+  ],
+  "tool_union_seconds": null,
+  "tool_timing_note": "Codex JSON events lack tool timestamps; hook arrival timestamps are not treated as exact execution times.",
+  "audit": {
+    "changed_files": [
+      "webapp/rust/src/admin.rs"
+    ],
+    "forbidden_changes": [],
+    "validation": {
+      "check": 0,
+      "test": 0
+    },
+    "head": "bb9c0753a1cb0c312ecb0b3edac87ad9191ee172",
+    "dirty": false,
+    "note": "Review diff for preserved behavior and unmodified existing tests; compile success alone is insufficient."
+  },
+  "tests": {
+    "passed": 15,
+    "failed": 0,
+    "ignored": 1
+  },
+  "review": "Only the same two handler visibilities changed; no changes to tests or dependencies. Source diff matches opencode-low-02 and known fix 7fb8410.",
+  "comparison": {
+    "reference": "opencode-low-02",
+    "reference_elapsed_seconds": 48.12289879200398,
+    "initial_commit": "f42133e22f57448ed6ffaeb8e981d6ebe6b58a46",
+    "all_input_file_hashes_equal": true,
+    "sample_count_each": 1
+  },
+  "warnings": [
+    "Existing user config execution_timeout_sec is unrecognized and ignored by this Codex version; no command failure or retry caused by it."
+  ],
+  "settings_sha256": {
+    "/Users/nao/project/isucon/isu-scaffold/config/ai-compare/codex.json": "a5b014818c19778fdeca36e78b032bc2867c2906c61cf275c876d56ee633d9a9",
+    "/Users/nao/.codex/config.toml": "348b23230e7d9b07bcb78c6f3f29ff9220ab7d2c0f298fb7b25ba71c5a70d825",
+    "/Users/nao/.codex/hooks.json": "684fbe1afb4de0dda5be641d5871907cb74602bd018f5eafc7b87a64213ff441",
+    "/Users/nao/.codex/hooks/repo_conversation_log.py": "bd418fca66f54e449fba1880c797d77fb723ab4369f9e21632fdb6f06d382b72"
+  }
+}

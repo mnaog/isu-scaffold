@@ -101,3 +101,9 @@ isuscopeで現在の制約を確認する
 終了時刻が近づき、新しい大規模変更よりも最終構成の固定と再現性確認を優先すべき状態になったら、作業中のagent（CodexまたはClaude Code）はPhase 3への移行を提案する。
 
 Phaseの変更は人間が決定する。
+
+## scoutと人間向けボード
+
+人間がこのPhaseへの移行を決めたら、[scout手順](../roles/scout.md)で設定・入力を確認して`make scout-start`を明示実行する。4体が独立して探索し、それぞれの投稿完了から15分後に次回実行する。`make board`でworker、最新scout報告、isuscopeの計測内容・比較を確認する。画面には開始・停止スイッチを置かない。
+
+停止は`make scout-stop`、状態確認は`make scout-status`。必要な気づきは人間がoperatorへ渡す。workerの開発完了後はoperatorが統合を判断し、統合済みの記録・deploy・ベンチ・worktreeの片付けを行う。
