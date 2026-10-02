@@ -67,13 +67,13 @@ class LocalBuildTests(unittest.TestCase):
         (self.repo / "webapp/rust/Cargo.toml").write_text('[package]\nname="app"\nversion="0.1.0"\n')
         (self.repo / "webapp/rust/Cargo.lock").write_text("# locked fixture\n")
         (self.repo / "webapp/rust/src/main.rs").write_text("fn main() {}\n")
-        (self.repo / "config/rust-builder/Dockerfile").write_text("FROM rust:1.63.0\n")
+        (self.repo / "config/rust-builder/Dockerfile").write_text("FROM rust:fixture-toolchain\n")
         self.manifest = {"source_node": "app1", "pre_deploy_command": "",
                          "items": [{"name": "app", "type": "directory", "node_group": "application",
                                     "local": "webapp/rust", "remote": "/home/isucon/webapp/rust",
                                     "owner": "isucon", "owner_group": "isucon"}],
                          "local_builds": [{"item": "app", "dockerfile": "config/rust-builder/Dockerfile",
-                                           "base_image": "rust:1.63.0", "target": "x86_64-unknown-linux-gnu",
+                                           "base_image": "rust:fixture-toolchain", "target": "x86_64-unknown-linux-gnu",
                                            "binary": "app"}],
                          "build_commands": [], "post_deploy_commands": [], "status_commands": []}
         self.write_manifest()
@@ -156,6 +156,12 @@ class LocalBuildTests(unittest.TestCase):
         Path(self.record()["artifact"]).write_bytes(b"tampered")
         self.command("bash", "scripts/deploy.sh", ok=False)
         self.assertEqual(self.calls("ssh"), [])
+
+    def test_unconfigured_toolchain_stops_before_docker(self):
+        self.manifest["local_builds"][0]["base_image"] = "rust:replace-with-toolchain"
+        self.write_manifest()
+        self.build(ok=False)
+        self.assertEqual(self.calls("docker"), [])
 
     def test_wrong_architecture_is_rejected(self):
         self.build(ok=False, WRONG_ARCH="1")

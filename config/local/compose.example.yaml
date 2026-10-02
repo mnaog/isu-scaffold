@@ -2,7 +2,7 @@
 # Never use container_name, external volumes/networks, or host networking here.
 services:
   db:
-    image: mysql:8.0.33
+    image: ${LOCAL_DB_IMAGE:?Phase 1 - set the database image after inspecting the app}
     environment:
       MYSQL_ROOT_PASSWORD: local-only-root
       MYSQL_DATABASE: isucon
@@ -21,7 +21,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        RUST_IMAGE: ${LOCAL_RUST_IMAGE:-rust:1.63.0-bullseye}
+        RUST_IMAGE: ${LOCAL_RUST_IMAGE:?Phase 1 - set the Rust image after inspecting the app}
     init: true
     working_dir: /webapp/rust
     command: [sh, /local-start.sh]

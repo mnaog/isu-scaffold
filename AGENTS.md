@@ -59,6 +59,10 @@ workerの作業開始・開発完了・統合済みとCLIプロセスの起動�
 scoutは人間がPhase 2開始を決めてから`make scout-start`で起動し、`make scout-stop`で止める。ボードは`make board`で開く読み取り専用画面。最新報告の`docs/scout-board.md`は通常のコミットに含める。
 
 
+## Phase 0とPhase 1の境界
+
+Phase 0は本番開始前に利用できる情報だけで行える準備をすべて扱う。汎用tool、認証、権限、操作・検証の仕組み、問題に依存しない動作確認はここで済ませる。事前公開された条件はPhase 0で反映する。開始後に初めて分かる配布AMI・台数・構成・コード・schema・依存版の選定と実環境への適用はPhase 1で行う。練習運営側が事前に用意した配布物も、参加者へ渡すのは開始宣言後とする。ファイルをPhase 1と名付けるだけで、開始前の参加者repoへ問題固有情報を入れてはいけない。
+
 ## 初動の自動化
 
 大会開始後は、`config/environment.example.env`を`.local/environment.env`へコピーしてprovider、SSH、node分類を設定し、次の順で初動を進める。

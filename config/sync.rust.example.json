@@ -41,7 +41,7 @@
     {
       "item": "rust-app",
       "dockerfile": "config/rust-builder/Dockerfile",
-      "base_image": "rust:1.63.0-bullseye",
+      "base_image": "rust:replace-with-toolchain",
       "target": "x86_64-unknown-linux-gnu",
       "binary": "replace-with-binary-name"
     }

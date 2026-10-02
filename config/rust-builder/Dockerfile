@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=rust:1.63.0-bullseye
+ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 ARG TARGET=x86_64-unknown-linux-gnu
 # Compile on the Docker host's native CPU; only the output target is crossed.

@@ -86,6 +86,8 @@ def verified(record):
 
 
 def build_one(build, item, cache, strict):
+    if "replace-with" in build["base_image"] or "replace-with" in build["binary"]:
+        raise ValueError("Phase 1: configure the Rust image and binary from the imported app before building")
     source = item["local"]
     clean(source)
     if strict:

@@ -1,4 +1,4 @@
-ARG RUST_IMAGE=rust:1.63.0-bullseye
+ARG RUST_IMAGE
 FROM ${RUST_IMAGE}
 ARG EXTRA_PACKAGES=""
 RUN if [ -n "$EXTRA_PACKAGES" ]; then apt-get update \
