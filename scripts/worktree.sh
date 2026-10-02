@@ -3,12 +3,13 @@ set -euo pipefail
 
 # Creates one lane: a worktree, its branch, and the purpose recorded on the branch itself
 # (git config branch.<name>.description), so nothing has to be updated or cleaned up later.
-# Usage: worktree.sh BRANCH PURPOSE [BASE]
+# Usage: worktree.sh BRANCH PURPOSE [BASE] [task|phase1]
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "${script_dir}/.." && pwd)
 branch=${1:-}
 purpose=${2:-}
 base=${3:-${WORKTREE_BASE:-main}}
+mode=${4:-}
 
 test -n "${branch}" || { echo "BRANCH=<name> is required" >&2; exit 2; }
 test -n "${purpose}" || { echo "PURPOSE=\"何をするlaneか\" is required" >&2; exit 2; }
@@ -18,6 +19,8 @@ test -n "${purpose}" || { echo "PURPOSE=\"何をするlaneか\" is required" >&2
 }
 
 cd "${repo_dir}"
+mode=${mode:-$(git config --get "branch.${branch}.scaffold-mode" || echo task)}
+[[ "${mode}" == task || "${mode}" == phase1 ]] || { echo "unknown lane mode: ${mode}" >&2; exit 2; }
 git rev-parse --verify HEAD >/dev/null
 git rev-parse --verify "${base}^{commit}" >/dev/null 2>&1 || {
   echo "base branch not found: ${base}" >&2
@@ -49,6 +52,7 @@ lanes() {
 }
 
 write_brief() {
+  git config "branch.${branch}.scaffold-mode" "${mode}"
   if ! git config --get "branch.${branch}.scaffold-base" >/dev/null; then
     git config "branch.${branch}.scaffold-base" "$(git merge-base "${base}" "${branch}")"
   fi
@@ -58,7 +62,11 @@ write_brief() {
       "${branch}" "${worktree}" "${branch}" "${base}" "${purpose}"
     printf '## このlaneでやること\n\n目的だけを小さいcommitで進める。各commitに、直した問題（file:line）、変更、期待する観測値を1行で書く。\n\n'
     printf '## 触ってよい範囲\n\n- webapp/のコードとschema、ローカルのテストだけ\n- deploy、ベンチ、remote操作、.local/operation.lockを使う操作はmain側が行う\n- 初回baselineの分析が終わるまで、変更をremoteへ反映しない\n\n'
-    printf '## workerの記録\n\n役割: worker。docs/roles/worker.mdを読み、開始・見込みと開発完了を共通SQLiteへ記録する。開発完了後は待機し、統合とworktree削除はoperatorが行う。\n\n'
+    if [[ "${mode}" == phase1 ]]; then
+      printf '## Phase 1の初期改善\n\n役割: worker、運用: Phase 1の初期改善。Codex／GPT-6-Astra mediumを使い、SCAFFOLD_ROLE=workerを設定する。docs/phases/Phase1.mdとdocs/roles/worker.mdを読む。同じworktree・同じセッションで自明な改善の探索・実装・ローカル検証を継続する。個々の修正依頼を待たず、変更目的ごとにcommitを分ける。operatorからrun ID・評価対象commit付きの観測結果を受け取り、優先順位と修正を見直す。\n\n検証済みcommitの範囲・根拠・検証結果・注意点を途中で渡し、探索・修正を続ける。受け渡し済みcommitは書き換えず、後続commitを積む。operatorは明示したcommitを統合・評価し、作業中のworktreeを変更・削除しない。自分で未commit変更を整理した区切りでmainを取り込む。\n\nSQLiteでは初期改善全体を一つの継続タスクとする。途中の受け渡しはworkingのままnotesへ残し、全体をdeveloped/integratedにしない。人間によるPhase 2移行時に残件を引き継いで作業終了を記録し、operatorが最終成果の統合・見送りを確認する。\n\n'
+    else
+      printf '## workerの記録\n\n役割: worker。docs/roles/worker.mdを読み、開始・見込みと開発完了を共通SQLiteへ記録する。開発完了後は待機し、統合とworktree削除はoperatorが行う。\n\n'
+    fi
     printf '## mainへ渡すとき\n\n目的に対する結果を1行で報告し、mainへマージする前にローカルのbuildとテストを通す。\n\n'
     local others
     others=$(lanes)

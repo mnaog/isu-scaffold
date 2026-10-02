@@ -18,16 +18,27 @@ main: bootstrap、全node調査、完全import、role・deploy・benchmark adapt
   → 未変更のbaselineをsurvey-run
   → スコア、シナリオ、HTTP、SQL、ホスト負荷を分析
 
-別worktree: 採用言語とschemaを読む
-  → インデックス不足、N+1、直列化、重複SQL、過大なtransactionを抽出
-  → 安全な修正を小さいcommitに分ける
-  → localのformat・build・testだけ実行
+初期改善用の一つのworktree・同じセッション:
+  採用言語とschemaを読み、改善候補を見つけた順に実装
+  → 変更目的ごとにcommitし、localのformat・build・test
+  → 検証済みcommitをoperatorへ渡し、残りの探索・修正を継続
+  ← operatorから初回・以後の計測結果を受け取り、優先順位を更新
 
-baseline分析後: mainを並行worktreeへ取り込む
+baseline分析後、受け渡しごと: mainを初期改善worktreeへ取り込む
   → 実測と変更根拠を照合
   → mainへ統合・deploy
   → 通常のisuscope runでbaselineと比較・採否
 ```
+
+`kickoff`の途中でworktreeが表示された時点で初期改善セッションを起動する。`kickoff`終了や完全import、初回計測を待たない。operatorはセットアップを継続する。CLIの起動自体は自動ではない。
+
+このセッションは、通常workerへ1目的ずつ依頼する運用とは異なる。Phase 1全体で同じworktreeとコード読解の文脈を維持し、許可された範囲の自明な改善を自律的に見つけて修正する。個々の修正開始にoperatorの承認は挟まない。新しい常設ロールは増やさず、起動・記録上は`役割: worker`、`SCAFFOLD_ROLE=worker`に加えて「Phase 1の初期改善」を明示する。通常workerの1目的・完了後待機のルールは、この継続作業の途中の受け渡しには適用しない。
+
+operatorは初回および以後の計測について、run ID、評価したcommit、上位SQL・HTTP・競合、エラー、判断と不明点を渡す。初期改善セッションはコード上の推測と実測を照合し、次の修正や既存修正の見直しに使う。キャッシュ・メモリ正本化・非同期化・サーバー分割などはPhase 2で扱う。
+
+全候補の完成を待たず、検証済みcommitの範囲、変更根拠、検証結果、注意点をoperatorへ渡す。operatorは初回baseline分析後に受け取ったcommitを確認し、統合・deploy・ベンチ・採否を担当する。受け渡し済みcommitはamend/rebaseせず、後続の修正を新しいcommitとして積む。統合対象は動くbranch先端ではなく明示したcommitとし、operatorは作業中のworktreeを変更・削除しない。初期改善セッション自身が未commit変更を整理した区切りでmainを取り込む。
+
+SQLiteでは「Phase 1の初期改善」を一つの継続タスクとして開始・見込みを記録する。途中の受け渡しは`working`のまま`notes`へcommit範囲・検証結果とともに残し、operatorも統合した範囲を追記する。部分的な統合でタスク全体を`integrated`にしない。人間がPhase 2移行を決める際に残件を引き継ぎ、継続作業を終了して`developed`を記録する。operatorは最終成果の統合または見送りを確認してタスクを閉じ、その後は通常の1目的workerへ切り替える。
 
 先行importはコード読解開始用の暫定snapshotである。mainの完全importで全配布先のdigest一致と設定を改めて確認する。並行worktreeは`webapp/`のコード・schemaとそのテストを所有する。mainは`config/`、`ansible/`、`scripts/`、`.isuscope/`、remote操作を所有する。競合を避けられない変更は、先に小さいcommitへ分離する。
 
@@ -106,9 +117,9 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 ## ベンチマークシナリオを分析する
 
-`AGENTS.md`の練習ルールに従い、ベンチマーカー内部は閲覧せず、ログも追加しない。参加者向けの公式文書、アプリケーションコード・schema、参加者向けベンチ出力、アプリ側の計測結果から、次を分かる範囲で整理する。運営向け出力は使わない。
+`AGENTS.md`とそこから指定された追加指示、公式レギュレーション・当日マニュアルに従い、利用が認められた資料と計測結果から次を分かる範囲で整理する。
 
-各項目に根拠を残し、確認済みの事実と観測からの推測を区別する。資料から確認できない並列数・繰り返し条件・内部の整合性チェックなどは不明と記録し、内部閲覧で補完しない。モデル比較実験でもこの制限を共通に適用し、閲覧可能な資料と開始時に渡す情報を揃える。
+各項目に根拠を残し、確認済みの事実と観測からの推測を区別する。許可された資料から確認できない並列数・繰り返し条件・整合性チェックなどは不明と記録する。
 
 - どのシナリオがあるか
 - 各シナリオがどのAPIをどの順番で呼ぶか
@@ -173,5 +184,5 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 ## 3役の準備
 
-operatorのClaude CodeとCodexの実セッションIDを`./scripts/scout operator <agent> <session-id>`で登録する。workerは[worker手順](../roles/worker.md)に従って開始・開発完了を共通SQLiteへ記録する。シナリオの整理先は`docs/benchmark-scenario.md`。利用資料はその時点の練習・大会ルールに従う。
+operatorのClaude CodeとCodexの実セッションIDを`./scripts/scout operator <agent> <session-id>`で登録する。workerは[worker手順](../roles/worker.md)に従って開始・開発完了を共通SQLiteへ記録する。シナリオの整理先は`docs/benchmark-scenario.md`。利用資料は適用される公式ルールとAGENTS.mdの指示に従う。
 Phase 1中にscoutは自動起動しない。人間がPhase 2への移行を決めた後に開始する。

@@ -16,7 +16,11 @@ operatorはコード編集を担当せず、観測、ボトルネック調査と
 
 scout入力はagent-historyのAgentとSessionの両headerが一致したファイルだけを読む。未登録・未発見の場合は欠落を表示し、最近のworkerログで代替しない。直近操作の監視は実装しない。
 
-## workerを渡す・受け取る
+## Phase 1の初期改善セッション
+
+`kickoff`の途中でworktreeが表示されたら、終了を待たずにCodex／GPT-6-Astra mediumの初期改善セッションを起動する。起動・記録上はworkerだが、1目的ずつ依頼せず、同じworktreeで自明な改善を継続する。operatorは環境準備・初回計測を進め、run ID・対象commit付きの観測結果を渡す。検証済みcommitを途中で受け取り、baseline分析後に統合・評価する。部分統合でタスク全体を統合済みにせず、作業中のworktreeを片付けない。詳しくは[Phase 1](../phases/Phase1.md)に従う。
+
+## 通常workerを渡す・受け取る
 
 workerはCodex（`gpt-6-astra`、`model_reasoning_effort="medium"`）で起動する。調査と改善案の判断はoperatorが担い、必要に応じてscoutの短報を読む。
 

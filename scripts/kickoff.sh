@@ -45,9 +45,9 @@ fi
 
 echo "== code lane: worktree"
 worktree_output=$("${script_dir}/worktree.sh" "${PHASE1_WORKTREE_BRANCH:-optimize/phase1-obvious}" \
-  "${language}のコードとschemaを読み、index不足・N+1・逐次write・重複queryなど自明な改善を入れる" "HEAD")
+  "Phase 1の初期改善: ${language}のコードとschemaを読み、自明な改善を継続し、観測結果を取り込みながら検証済みcommitを渡す" "HEAD" phase1)
 printf '%s\n' "${worktree_output}"
-echo ">> start the code-reading session in the worktree above now; setup continues here"
+echo ">> start the Phase 1 improvement session in the worktree above NOW; do not wait for kickoff to finish; setup continues here"
 
 echo "== setup: bootstrap, inspection and configuration draft"
 "${script_dir}/bootstrap.sh"

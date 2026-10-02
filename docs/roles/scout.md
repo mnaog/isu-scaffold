@@ -31,7 +31,7 @@ make scout-stop
 
 argvはshell文字列でなく配列。`{model}`、`{session}`（各回のUUID）、`{output}`（最終回答ファイル）を置換し、共通プロンプトはstdinに渡す。resume/continue指定は使わない。adapterは`file`、`claude-json`、`codex-json`、`opencode-json`、`text`を持つ。別CLIがstdin非対応なら、stdinを読み取ってそのCLIへ渡す小さなadapterを設定する。
 
-未導入CLI・認証不足・model ID未確認は利用不可として表示し、代替モデルへ切り替えない。Kimi Code/Kimi K3は実機確認後に`unavailable`を除き、正確なargv/modelを設定する。OpenCodeはLithos無印の`lithosai/deepseek-ai/DeepSeek-V4.1-Flash`を設定済みで、[Lithos接続手順](opencode-lithos.md)に従って接続する。未利用のscoutがあっても他は動く。
+未導入CLI・認証不足・model ID未確認は利用不可として表示し、代替モデルへ切り替えない。Kimi Code/Kimi K3は実機確認後に`unavailable`を除き、正確なargv/modelを設定する。OpenCodeはLithos無印の`lithosai/deepseek-ai/DeepSeek-V4.1-Flash`を設定済みで、[Lithos接続手順](opencode-lithos.md)に従って接続する。Kimiは任意で、利用可能なら動かし、未導入・未設定なら利用不可のまま他を動かす。採用・除外の判断待ちやPhase 0の完了待ちは設けない。未利用のscoutがあっても他は動く。
 
 ```bash
 ./scripts/scout once claude --smoke
@@ -46,7 +46,7 @@ Codexの非対話実行は[公式ドキュメント](https://developers.openai.c
 
 ## 入力と保存先
 
-- シナリオ: Phase 1の`docs/benchmark-scenario.md`。練習・大会ルールに従う資料だけで整理する。
+- シナリオ: Phase 1の`docs/benchmark-scenario.md`。公式ルールとAGENTS.mdの指示に従う資料だけで整理する。
 - 計測: `isuscope list`の最新の終了run（失敗・中断も明示）、`brief --limit 5`、HTTP・SQL load・ホストload・benchmarkの`query --limit 8`。比較元は設定の`base_run`を明示使用し、未指定なら比較なし。採用runを推測しない。
 - 作業: 共通SQLiteの作業中・詰まり・開発完了／統合待ちworker。
 - 会話: 登録したoperator 2セッションだけ。各直近6000文字、元ファイルとIDを添える。

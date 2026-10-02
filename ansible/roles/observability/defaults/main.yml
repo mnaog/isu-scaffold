@@ -8,7 +8,7 @@ observability_release_tools:
   - {name: alp, version: v1.0.21}
   - {name: slp, version: v0.2.1}
 observability_go_arch: {x86_64: amd64, aarch64: arm64}
-observability_flamegraph_version: master
+observability_flamegraph_version: 41fee1f99f9276008b7cd112fca19dc3ea84ac32
 observability_probe_commands: []
 observability_required_commands: []
 observability_local_tools: []

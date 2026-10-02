@@ -4,11 +4,8 @@
 
 この`AGENTS.md`をAI向け指示の正本とする。Codexは直接、Claude Codeは`.claude/rules/agents.md`のsymlink経由で同じ内容を読み込む。
 
-## 練習用記述
-現在は練習中です(注意：この記述は10月30日頃に除去する)。ベンチマーカー内部の閲覧、ベンチマーカーへのログ追加、現在練習中の開催回の攻略法の検索は禁止する（他の開催回の攻略法は確認可）。この制限は全ロール・全AIとモデル比較実験にも適用する。
-
-シナリオや得点構造の分析には、参加者向けの公式文書、アプリケーションコード・schema、参加者向けベンチ出力、アプリ側の計測結果を使う。運営向け出力は使わない。資料から確認できない内部条件は不明とし、観測からの推測と確認済みの事実を区別する。モデル比較実験では、閲覧可能な資料と開始時に渡す情報を共通にする。
-
+## 練習時のみ
+現在は練習中です。全ロール・全AIは作業前に[practice.md](practice.md)を読み、その追加指示に従ってください。本番ではこの見出しと案内の2行、およびpractice.mdを削除してください。
 
 ## ディレクトリ
 
@@ -57,7 +54,7 @@
 | [scout](docs/roles/scout.md) | 生成された最新入力から自由に探索し、発見・疑問・仮説を300字以内で報告する。角度は割り当てず、発見なしでもよい。変更やベンチを実行しない。 |
 
 operatorはClaude CodeとCodexの2セッションを常時開き、積極的に動かすのは基本的に片方。担当調整・実験所有権・leaseは追加せず、既存の操作排他を維持する。operatorの実セッションIDを明示登録し、scout入力へworkerの会話を混ぜない。
-workerはCodex（GPT-6-Astra、推論medium）を使う。調査と採否判断はoperatorが担い、scoutの短報を必要に応じて使う。
+workerはCodex（GPT-6-Astra、推論medium）を使う。通常の調査と採否判断はoperatorが担い、scoutの短報を必要に応じて使う。Phase 1は例外として、一つのworktree・同じ初期改善セッションが自明な改善の探索・実装を継続し、operatorの観測結果を取り込む。起動・記録上の役割はworkerとし、個々の修正依頼や途中の受け渡し後の待機は不要。詳細は`docs/phases/Phase1.md`に従う。
 workerの作業開始・開発完了・統合済みとCLIプロセスの起動・終了は別に記録する。作業記録の共通SQLiteへの書き込みはworkerにも許可するが、remote変更・deploy・共有ベンチ・worktree削除は許可しない。
 scoutは人間がPhase 2開始を決めてから`make scout-start`で起動し、`make scout-stop`で止める。ボードは`make board`で開く読み取り専用画面。最新報告の`docs/scout-board.md`は通常のコミットに含める。
 
@@ -90,7 +87,7 @@ isuscope survey-run --hypothesis "..."
 
 - 計測と運用の土台（計測tool、LTSV access log、slow log、時刻同期、journal、自動更新停止）は初動のAnsibleで固定化し、レギュレーションで禁止された項目だけ変数で外す。性能を変える設定（`config/nginx/tare`、networking sysctl、MySQLの性能設定）は初回baselineの後に1つの変更として入れる。
 - `kickoff`、`bootstrap`、`phase1-check`からベンチを起動しない。`isuscope survey-run`は必ず独立した明示操作にする。
-- 1 worktree＝1 branch＝1目的とし、`make worktree BRANCH=<name> PURPOSE="..."`で作る。目的はbranchへ記録され、他のlaneの一覧は引き継ぎ文に出る。
+- 通常は1 worktree＝1 branch＝1目的とする。Phase 1の初期改善は一つのworktree・branchで継続し、変更目的ごとにcommitを分ける。worktreeは`make worktree BRANCH=<name> PURPOSE="..."`で作る。目的はbranchへ記録され、他のlaneの一覧は引き継ぎ文に出る。
 - 並行worktreeは`webapp/`のコード・schemaとローカルテストだけを扱い、remote変更、deploy、ベンチ、`.local/operation.lock`を使う操作はmain側だけが行う。
 - 自明な修正は初回baselineを取るまでremoteへ反映しない。baselineの分析後にmainの最新設定を取り込み、変更根拠を照合してから統合する。
 - `config/sync.json`のitemとcommandには対象node groupを明示し、役割を持たないnodeへ設定や再起動を配らない。
@@ -125,7 +122,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 
 変更を残すか戻すかを決めたら、分析と同時に`--change <変更ID> --decision <accepted|provisional|rejected|deferred>`で記録する（`provisional`は`--revisit`必須）。仮説の判定と変更の採否は別に扱い、本文に「採用」と書くだけで済ませない。
 
-FAILしたrunの理由とエラーの実例は、`.isuscope/parse-benchmark.sh`がベンチの出力から`message`として残し、`isuscope list`の`failure`と`brief`の`benchmark_messages`で読む。benchmarkerが運営向けに出す行（ISUCON12の`[ADMIN]`など）はルール側の情報なので、判断材料にもmessageの入力にも使わない。
+FAILしたrunの理由とエラーの実例は、`.isuscope/parse-benchmark.sh`がベンチの出力から`message`として残し、`isuscope list`の`failure`と`brief`の`benchmark_messages`で読む。判断材料とmessageには、適用されるルールで参加者の利用が認められた出力だけを使う。
 
 `survey-run`はPhase 1の初回調査だけに使い、その後は構成やroutingを大きく変えた場合も`run`を使う。時間が最大の制約なので、同じ変更の比較のためにベンチを重ねない。終了前はprofilerや重いログを外した構成へ切り替え、確認のベンチは通常の`run`で一度だけ行う。
 
