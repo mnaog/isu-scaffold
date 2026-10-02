@@ -16,10 +16,8 @@ from store import config, connect, local, root, rows, worker_sql
 
 
 def status(repo):
-    from research import snapshot
-    research = snapshot(repo)
     with connect(repo) as db:
-        return {'research': research, 'daemon_running': active(repo), 'workers': rows(db, 'SELECT * FROM workers ORDER BY started_at DESC'),
+        return {'daemon_running': active(repo), 'workers': rows(db, 'SELECT * FROM workers ORDER BY started_at DESC'),
                 'scouts': rows(db, 'SELECT * FROM scouts ORDER BY name'),
                 'operators': rows(db, 'SELECT * FROM operators'),
                 'processes': rows(db, 'SELECT * FROM worker_processes ORDER BY started_at DESC LIMIT 100')}

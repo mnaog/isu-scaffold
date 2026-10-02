@@ -62,6 +62,23 @@ class TrialGuards(unittest.TestCase):
                 manage.audit(argparse.Namespace(destination=self.dest))
             run.assert_not_called()
 
+    def test_medium_acceptance_change_is_rejected_before_execution(self):
+        source = self.dest / 'webapp/rust/src'
+        source.mkdir(parents=True)
+        acceptance = source / 'medium_acceptance.rs'
+        acceptance.write_text('original')
+        protected = 'webapp/rust/src/medium_acceptance.rs'
+        self.manifest['files'] = {protected: manage.digest(acceptance)}
+        self.manifest['protected_source'] = [protected]
+        self.save_manifest()
+        (source / 'new_user_cache_integration.rs').write_text('include!("medium_acceptance.rs");')
+        acceptance.write_text('modified')
+        with patch.object(manage, 'output', return_value=''), \
+             patch.object(manage.subprocess, 'run') as run:
+            with self.assertRaisesRegex(SystemExit, 'Protected'):
+                manage.audit(argparse.Namespace(destination=self.dest))
+            run.assert_not_called()
+
     def test_failed_child_records_failure_and_cannot_be_reused(self):
         code = 'import os; assert os.getcwd() == os.environ["PWD"]; assert "OLDPWD" not in os.environ; raise SystemExit(7)'
         args = argparse.Namespace(destination=self.dest, argv=[sys.executable, '-c', code],

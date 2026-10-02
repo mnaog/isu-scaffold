@@ -87,6 +87,29 @@ class OperationsTests(unittest.TestCase):
         row = self.sql("UPDATE workers SET state='integrated',integration_commit=(SELECT head_commit FROM worker_context),integrated_at=strftime('%s','now');")[0]
         self.assertEqual(row['state'], 'integrated')
 
+    def test_new_workers_require_codex_but_operator_can_integrate(self):
+        self.env['SCAFFOLD_AGENT'] = 'claude'
+        with self.assertRaisesRegex(sqlite3.IntegrityError, 'worker must use Codex'):
+            self.begin()
+        self.assertEqual(self.query('SELECT * FROM workers'), [])
+        self.env['SCAFFOLD_AGENT'] = 'codex'
+        self.begin()
+        self.complete()
+        self.env['SCAFFOLD_AGENT'] = 'claude'
+        row = self.sql("UPDATE workers SET state='integrated',integration_commit=(SELECT head_commit FROM worker_context),integrated_at=strftime('%s','now');")[0]
+        self.assertEqual(row['state'], 'integrated')
+
+    def test_board_ignores_legacy_research_without_deleting_it(self):
+        import main
+        with store.connect(self.repo) as db:
+            db.execute('CREATE TABLE research_proposals(note TEXT)')
+            db.execute("INSERT INTO research_proposals VALUES ('historical evidence')")
+        state = main.status(self.repo)
+        self.assertNotIn('research', state)
+        runner.export_board(self.repo)
+        self.assertEqual(self.query('SELECT note FROM research_proposals')[0]['note'], 'historical evidence')
+        self.assertNotIn('Researcher', (self.repo / 'docs/scout-board.md').read_text())
+
     def test_worktrees_share_database(self):
         branch = self.repo.parent / 'worker'
         self.git('worktree', 'add', '-b', 'worker', str(branch))

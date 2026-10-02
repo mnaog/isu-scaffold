@@ -65,47 +65,7 @@ CREATE TRIGGER IF NOT EXISTS worker_integrate_guard BEFORE UPDATE OF state ON wo
  WHEN NEW.state='integrated' AND OLD.state NOT IN ('developed','integrated')
  BEGIN SELECT RAISE(ABORT,'development must complete before integration'); END;
 
--- Research publication is durable before any external process starts.
-CREATE TABLE IF NOT EXISTS research_proposals (
- proposal_id TEXT NOT NULL,
- revision INTEGER NOT NULL CHECK(revision>0),
- digest TEXT NOT NULL,
- body TEXT NOT NULL,
- published_at REAL NOT NULL,
- PRIMARY KEY(proposal_id,revision)
-);
-CREATE TABLE IF NOT EXISTS research_jobs (
- job_id TEXT PRIMARY KEY,
- kind TEXT NOT NULL CHECK(kind IN ('researcher','codex','claude')),
- proposal_id TEXT,
- revision INTEGER,
- input TEXT NOT NULL,
- state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','running','complete','failed')),
- attempt_id TEXT,
- owner_pid INTEGER,
- owner_birth TEXT,
- error TEXT,
- result TEXT,
- created_at REAL NOT NULL,
- FOREIGN KEY(proposal_id,revision) REFERENCES research_proposals(proposal_id,revision),
- UNIQUE(proposal_id,revision,kind)
-);
-CREATE TABLE IF NOT EXISTS research_attempts (
- attempt_id TEXT PRIMARY KEY,
- job_id TEXT NOT NULL REFERENCES research_jobs(job_id),
- started_at REAL NOT NULL,
- finished_at REAL,
- state TEXT NOT NULL,
- error TEXT,
- result TEXT,
- artifact_ref TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS research_service (
- singleton INTEGER PRIMARY KEY CHECK(singleton=1),
- enabled INTEGER NOT NULL DEFAULT 1,
- pid INTEGER,
- birth TEXT
-);
-INSERT OR IGNORE INTO research_service(singleton) VALUES(1);
-CREATE TRIGGER IF NOT EXISTS proposal_immutable BEFORE UPDATE ON research_proposals
- BEGIN SELECT RAISE(ABORT,'published proposals are immutable; use a new revision'); END;
+-- Enforce the current worker policy for new tasks, preserving historical rows.
+CREATE TRIGGER IF NOT EXISTS worker_codex_only BEFORE INSERT ON workers
+ WHEN NEW.agent!='codex'
+ BEGIN SELECT RAISE(ABORT,'worker must use Codex'); END;

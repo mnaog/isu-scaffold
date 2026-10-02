@@ -19,7 +19,7 @@
 | `infra/` | CloudFormationなど、AWS環境を再現するための構成定義。認証情報や実行ごとに変わる出力は含めない。 |
 | `ansible/` | 全nodeの初期access、toolchain、observability前提を冪等に揃えるplaybookと変数。 |
 | `scripts/` | `import`、`deploy`、`restart`、`status`、`rollback`など、ローカルから環境を操作する処理。通常操作はMakefileから呼び出す。 |
-| `docs/` | `official/`へ一次情報、`phases/`へ進行手順、`agent-history/`へCodex・Claude Codeの会話履歴（自動生成）を保存する。調査やシナリオ分析もここへ残す。 |
+| `docs/` | `official/`へ一次情報、`phases/`へ進行手順、`agent-history/`へCodex・Claude Code・OpenCodeの会話・操作履歴（自動生成）を保存する。調査やシナリオ分析もここへ残す。 |
 | `.claude/` | Claude Codeがこの`AGENTS.md`を起動時に読み込むためのrule symlink。`CLAUDE.md`は作成しない。 |
 | `.isuscope/` | node、collector、route正規化、ベンチ実行方法など、isuscopeの計測設定。 |
 | `isuscope-data/` | スコア、仮説、分析、Git状態など、isuscopeのrun。生ログは既定で除外し、重要なrunだけpinする。 |
@@ -29,7 +29,7 @@
 
 | 記録 | 場所 | 内容 |
 | --- | --- | --- |
-| 会話履歴 | `docs/agent-history/` | Codex・Claude Codeとの会話の縮約版（人間の入力、AIの最終回答、commit）。1ファイルが1セッションで、headerの`- Agent:`と`- Session:`で識別する。共通hook `~/.agent-history/agent_history.py`が自動生成するため、手で編集しない。形式は同ディレクトリの`Readme.md`を参照。 |
+| 会話履歴 | `docs/agent-history/` | Codex・Claude Code・OpenCodeの会話・commit・操作の時系列をMarkdown、受信した入出力と計測メタデータを同名の`.events.jsonl`へ保存する。1組が1セッションで、headerの`- Agent:`と`- Session:`で識別する。共通処理 `~/.agent-history/agent_history.py`がhook／pluginから自動生成するため、手で編集しない。形式は同ディレクトリの`Readme.md`を参照。 |
 | ベンチ記録 | `isuscope-data/` | score、仮説、分析、採否。`isuscope list`、`isuscope brief <run>`で読む。runの`agent_context`から、そのベンチを実行した会話の位置が分かる。 |
 | Codexの生ログ | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | 縮約版にない推論・ツール操作を含む。ローカルのみ。 |
 | Claude Codeの生ログ | `~/.claude/projects/<作業ディレクトリのパスの/を-にした名前>/<Session>.jsonl` | 同上。 |
@@ -46,23 +46,21 @@
 - isuscopeの軽量なrun履歴は通常のコミットへ含める。重要なrunの生ログを残す場合は`isuscope pin <run-id>`を使う。
 - `.local/operation.lock`を変更系操作の共通排他とする。実行中のlockは基本的に手作業で消さず、別セッションの終了を待つ。status・checkなどのread-only操作は並行してよい。
 
-## 運用時の役割
+## 運用時の3役
 
-人間が主導し、起動プロンプトで`役割: operator / worker / scout / researcher / reviewer`を明示し、対応する`docs/roles/`を読む。起動側は`SCAFFOLD_ROLE`にも同じ値を渡す。既存セッションの役割を更新時刻やagentの種類から推測しない。以下はISUCON運用時の責任分担であり、scaffold自体の開発では必要なコード・設定・文書を編集してよい。
+人間が主導し、起動プロンプトで`役割: operator / worker / scout`を明示し、対応する`docs/roles/`を読む。起動側は`SCAFFOLD_ROLE`にも同じ値を渡す。既存セッションの役割を更新時刻やagentの種類から推測しない。以下はISUCON運用時の責任分担であり、scaffold自体の開発では必要なコード・設定・文書を編集してよい。
 
 | 役割 | 責任 |
 | --- | --- |
 | [operator](docs/roles/operator.md) | コード編集は担当せず、観測、ボトルネック調査・計測、人間との対話、worker起動、変更の統合、deploy、ベンチ、worktreeの後片付けを担う。 |
 | [worker](docs/roles/worker.md) | 開始・分単位の見込みを共通SQLiteへ記録し、自分のworktreeで1目的の実装とローカル検証を行う。結果commit・検証結果・注意点とともに開発完了を記録して待機する。統合済みの記録と後片付けはoperatorが行う。 |
 | [scout](docs/roles/scout.md) | 生成された最新入力から自由に探索し、発見・疑問・仮説を300字以内で報告する。角度は割り当てず、発見なしでもよい。変更やベンチを実行しない。 |
-| [researcher](docs/roles/researcher.md) | operatorの問いから自由に調査を深め、事実・仮説・根拠・成立条件・未確認点を伴う提案を速報公開する。実装・remote変更・deploy・ベンチは行わない。 |
-| [reviewer](docs/roles/reviewer.md) | 正式公開された全提案の固定版をCodex／Claude Codeの独立セッションで非同期レビューする。根拠と照合し、判断に影響する情報を先頭に示す。 |
 
 operatorはClaude CodeとCodexの2セッションを常時開き、積極的に動かすのは基本的に片方。担当調整・実験所有権・leaseは追加せず、既存の操作排他を維持する。operatorの実セッションIDを明示登録し、scout入力へworkerの会話を混ぜない。
+workerはCodex（GPT-6-Astra、推論medium）を使う。調査と採否判断はoperatorが担い、scoutの短報を必要に応じて使う。
 workerの作業開始・開発完了・統合済みとCLIプロセスの起動・終了は別に記録する。作業記録の共通SQLiteへの書き込みはworkerにも許可するが、remote変更・deploy・共有ベンチ・worktree削除は許可しない。
 scoutは人間がPhase 2開始を決めてから`make scout-start`で起動し、`make scout-stop`で止める。ボードは`make board`で開く読み取り専用画面。最新報告の`docs/scout-board.md`は通常のコミットに含める。
 
-researcherの正式提案だけを全件レビュー対象にする。提案はレビュー起動・完了を待たず利用でき、採否・追加調査・worker依頼はoperatorが判断する。researcher/reviewerは自分の成果物・状態だけを保存できる。`scripts/researcher`の起動・停止・再試行は[運用手順](docs/roles/researcher.md)に従う。外部応答待ちに共通操作lockを保持せず、担当調整・実験leaseは追加しない。提案とレビューは`docs/research/proposals/`、状態概要は`docs/scout-board.md`へ出力し通常のコミットに含める。練習ルールは両役割にも適用する。
 
 ## 初動の自動化
 

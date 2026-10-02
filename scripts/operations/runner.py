@@ -37,8 +37,6 @@ def export_board(repo):
             # Quote model output as plain text, not executable HTML/Markdown.
             import html
             parts.extend('> ' + html.escape(line) + '\n' for line in r['report'].splitlines())
-        from research import export_research
-        parts.append(export_research(repo))
         target = repo / 'docs' / 'scout-board.md'
         tmp = target.with_suffix('.md.tmp')
         tmp.write_text(''.join(parts))

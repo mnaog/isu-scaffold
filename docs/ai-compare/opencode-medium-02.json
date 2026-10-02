@@ -1,0 +1,722 @@
+{
+  "trial": "opencode-medium-02",
+  "agent": "opencode",
+  "model": "lithosai/deepseek-ai/DeepSeek-V4.1-Flash",
+  "endpoint": "https://api.lithosai.cloud/v1",
+  "reasoning": "max",
+  "harness": "OpenCode 1.18.34; build agent; agent-history enabled; LSP/formatter disabled; config permissions",
+  "elapsed_seconds": 185.18568583301385,
+  "exit_code": 0,
+  "head": "418084d041259d019db263901deddd10d48e941c",
+  "dirty": false,
+  "initial_commit": "15c18c7bf48070f11a28a6c03a91cfa1e5a6a070",
+  "sessions": [
+    "ses_f08cbad57ffe74kbwXFO1l8CWP"
+  ],
+  "tool_counts": {
+    "bash": 18,
+    "read": 20,
+    "grep": 2,
+    "todowrite": 3,
+    "edit": 17
+  },
+  "finish_reasons": [
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "stop"
+  ],
+  "usage": [
+    {
+      "total": 6783,
+      "input": 4885,
+      "output": 91,
+      "reasoning": 15,
+      "cache": {
+        "write": 0,
+        "read": 1792
+      }
+    },
+    {
+      "total": 7733,
+      "input": 916,
+      "output": 148,
+      "reasoning": 13,
+      "cache": {
+        "write": 0,
+        "read": 6656
+      }
+    },
+    {
+      "total": 9279,
+      "input": 1723,
+      "output": 122,
+      "reasoning": 10,
+      "cache": {
+        "write": 0,
+        "read": 7424
+      }
+    },
+    {
+      "total": 30397,
+      "input": 21239,
+      "output": 152,
+      "reasoning": 46,
+      "cache": {
+        "write": 0,
+        "read": 8960
+      }
+    },
+    {
+      "total": 31625,
+      "input": 1505,
+      "output": 98,
+      "reasoning": 70,
+      "cache": {
+        "write": 0,
+        "read": 29952
+      }
+    },
+    {
+      "total": 38923,
+      "input": 7558,
+      "output": 98,
+      "reasoning": 35,
+      "cache": {
+        "write": 0,
+        "read": 31232
+      }
+    },
+    {
+      "total": 48250,
+      "input": 9484,
+      "output": 98,
+      "reasoning": 12,
+      "cache": {
+        "write": 0,
+        "read": 38656
+      }
+    },
+    {
+      "total": 55242,
+      "input": 6989,
+      "output": 98,
+      "reasoning": 27,
+      "cache": {
+        "write": 0,
+        "read": 48128
+      }
+    },
+    {
+      "total": 61384,
+      "input": 6201,
+      "output": 129,
+      "reasoning": 14,
+      "cache": {
+        "write": 0,
+        "read": 55040
+      }
+    },
+    {
+      "total": 76197,
+      "input": 5899,
+      "output": 165,
+      "reasoning": 8949,
+      "cache": {
+        "write": 0,
+        "read": 61184
+      }
+    },
+    {
+      "total": 82132,
+      "input": 14636,
+      "output": 219,
+      "reasoning": 205,
+      "cache": {
+        "write": 0,
+        "read": 67072
+      }
+    },
+    {
+      "total": 82407,
+      "input": 683,
+      "output": 59,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 81664
+      }
+    },
+    {
+      "total": 82739,
+      "input": 481,
+      "output": 59,
+      "reasoning": 23,
+      "cache": {
+        "write": 0,
+        "read": 82176
+      }
+    },
+    {
+      "total": 83562,
+      "input": 1025,
+      "output": 59,
+      "reasoning": 46,
+      "cache": {
+        "write": 0,
+        "read": 82432
+      }
+    },
+    {
+      "total": 83982,
+      "input": 466,
+      "output": 59,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 83456
+      }
+    },
+    {
+      "total": 92618,
+      "input": 754,
+      "output": 120,
+      "reasoning": 8032,
+      "cache": {
+        "write": 0,
+        "read": 83712
+      }
+    },
+    {
+      "total": 93588,
+      "input": 8806,
+      "output": 492,
+      "reasoning": 66,
+      "cache": {
+        "write": 0,
+        "read": 84224
+      }
+    },
+    {
+      "total": 93953,
+      "input": 672,
+      "output": 99,
+      "reasoning": 254,
+      "cache": {
+        "write": 0,
+        "read": 92928
+      }
+    },
+    {
+      "total": 95497,
+      "input": 1778,
+      "output": 99,
+      "reasoning": 180,
+      "cache": {
+        "write": 0,
+        "read": 93440
+      }
+    },
+    {
+      "total": 96966,
+      "input": 1350,
+      "output": 552,
+      "reasoning": 88,
+      "cache": {
+        "write": 0,
+        "read": 94976
+      }
+    },
+    {
+      "total": 97229,
+      "input": 722,
+      "output": 223,
+      "reasoning": 28,
+      "cache": {
+        "write": 0,
+        "read": 96256
+      }
+    },
+    {
+      "total": 97389,
+      "input": 475,
+      "output": 99,
+      "reasoning": 47,
+      "cache": {
+        "write": 0,
+        "read": 96768
+      }
+    },
+    {
+      "total": 99931,
+      "input": 1495,
+      "output": 918,
+      "reasoning": 494,
+      "cache": {
+        "write": 0,
+        "read": 97024
+      }
+    },
+    {
+      "total": 101104,
+      "input": 1639,
+      "output": 353,
+      "reasoning": 808,
+      "cache": {
+        "write": 0,
+        "read": 98304
+      }
+    },
+    {
+      "total": 101518,
+      "input": 1278,
+      "output": 399,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 99840
+      }
+    },
+    {
+      "total": 102435,
+      "input": 668,
+      "output": 902,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 100864
+      }
+    },
+    {
+      "total": 102861,
+      "input": 1071,
+      "output": 252,
+      "reasoning": 162,
+      "cache": {
+        "write": 0,
+        "read": 101376
+      }
+    },
+    {
+      "total": 103182,
+      "input": 473,
+      "output": 308,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 102400
+      }
+    },
+    {
+      "total": 103335,
+      "input": 538,
+      "output": 118,
+      "reasoning": 23,
+      "cache": {
+        "write": 0,
+        "read": 102656
+      }
+    },
+    {
+      "total": 103906,
+      "input": 181,
+      "output": 265,
+      "reasoning": 292,
+      "cache": {
+        "write": 0,
+        "read": 103168
+      }
+    },
+    {
+      "total": 104231,
+      "input": 750,
+      "output": 312,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 103168
+      }
+    },
+    {
+      "total": 104370,
+      "input": 565,
+      "output": 98,
+      "reasoning": 27,
+      "cache": {
+        "write": 0,
+        "read": 103680
+      }
+    },
+    {
+      "total": 105184,
+      "input": 893,
+      "output": 98,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 104192
+      }
+    },
+    {
+      "total": 105705,
+      "input": 401,
+      "output": 343,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 104960
+      }
+    },
+    {
+      "total": 105838,
+      "input": 501,
+      "output": 98,
+      "reasoning": 23,
+      "cache": {
+        "write": 0,
+        "read": 105216
+      }
+    },
+    {
+      "total": 107952,
+      "input": 1801,
+      "output": 279,
+      "reasoning": 400,
+      "cache": {
+        "write": 0,
+        "read": 105472
+      }
+    },
+    {
+      "total": 108248,
+      "input": 702,
+      "output": 281,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 107264
+      }
+    },
+    {
+      "total": 109140,
+      "input": 486,
+      "output": 248,
+      "reasoning": 630,
+      "cache": {
+        "write": 0,
+        "read": 107776
+      }
+    },
+    {
+      "total": 109212,
+      "input": 1120,
+      "output": 59,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 108032
+      }
+    },
+    {
+      "total": 109642,
+      "input": 319,
+      "output": 98,
+      "reasoning": 169,
+      "cache": {
+        "write": 0,
+        "read": 109056
+      }
+    },
+    {
+      "total": 110288,
+      "input": 702,
+      "output": 273,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 109312
+      }
+    },
+    {
+      "total": 110362,
+      "input": 478,
+      "output": 59,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 109824
+      }
+    },
+    {
+      "total": 110723,
+      "input": 570,
+      "output": 59,
+      "reasoning": 14,
+      "cache": {
+        "write": 0,
+        "read": 110080
+      }
+    },
+    {
+      "total": 111599,
+      "input": 936,
+      "output": 59,
+      "reasoning": 12,
+      "cache": {
+        "write": 0,
+        "read": 110592
+      }
+    },
+    {
+      "total": 112019,
+      "input": 599,
+      "output": 59,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 111360
+      }
+    },
+    {
+      "total": 114666,
+      "input": 566,
+      "output": 52,
+      "reasoning": 2176,
+      "cache": {
+        "write": 0,
+        "read": 111872
+      }
+    },
+    {
+      "total": 120883,
+      "input": 6697,
+      "output": 214,
+      "reasoning": 1588,
+      "cache": {
+        "write": 0,
+        "read": 112384
+      }
+    },
+    {
+      "total": 121177,
+      "input": 2058,
+      "output": 78,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 119040
+      }
+    },
+    {
+      "total": 123072,
+      "input": 1851,
+      "output": 53,
+      "reasoning": 80,
+      "cache": {
+        "write": 0,
+        "read": 121088
+      }
+    },
+    {
+      "total": 123270,
+      "input": 304,
+      "output": 85,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 122880
+      }
+    },
+    {
+      "total": 123383,
+      "input": 180,
+      "output": 48,
+      "reasoning": 19,
+      "cache": {
+        "write": 0,
+        "read": 123136
+      }
+    },
+    {
+      "total": 123620,
+      "input": 284,
+      "output": 199,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 123136
+      }
+    },
+    {
+      "total": 125032,
+      "input": 441,
+      "output": 627,
+      "reasoning": 572,
+      "cache": {
+        "write": 0,
+        "read": 123392
+      }
+    }
+  ],
+  "validation": [
+    {
+      "phase": "build",
+      "exit_code": 0,
+      "elapsed_seconds": 0.43154658301500604,
+      "queue_seconds": 0.0002498626708984375
+    },
+    {
+      "phase": "test",
+      "exit_code": 0,
+      "elapsed_seconds": 0.23417841701302677,
+      "queue_seconds": 0.00024819374084472656
+    },
+    {
+      "phase": "mysql",
+      "exit_code": 0,
+      "elapsed_seconds": 0.5191671249922365,
+      "queue_seconds": 0.0002467632293701172
+    },
+    {
+      "phase": "acceptance",
+      "exit_code": 101,
+      "elapsed_seconds": 0.3045564589847345,
+      "queue_seconds": 0.0002338886260986328
+    },
+    {
+      "phase": "build",
+      "exit_code": 101,
+      "elapsed_seconds": 2.392010166979162,
+      "queue_seconds": 0.00026106834411621094
+    },
+    {
+      "phase": "build",
+      "exit_code": 0,
+      "elapsed_seconds": 1.5039009999891277,
+      "queue_seconds": 0.00024318695068359375
+    },
+    {
+      "phase": "test",
+      "exit_code": 0,
+      "elapsed_seconds": 7.503968665987486,
+      "queue_seconds": 0.0002579689025878906
+    },
+    {
+      "phase": "mysql",
+      "exit_code": 0,
+      "elapsed_seconds": 0.5352517499995884,
+      "queue_seconds": 0.0002372264862060547
+    },
+    {
+      "phase": "acceptance",
+      "exit_code": 0,
+      "elapsed_seconds": 0.3400534999964293,
+      "queue_seconds": 0.0002758502960205078
+    },
+    {
+      "phase": "build",
+      "exit_code": 0,
+      "elapsed_seconds": 0.2105532500136178,
+      "queue_seconds": 0.00023317337036132812
+    },
+    {
+      "phase": "test",
+      "exit_code": 0,
+      "elapsed_seconds": 0.19116341701010242,
+      "queue_seconds": 0.00021505355834960938
+    },
+    {
+      "phase": "mysql",
+      "exit_code": 0,
+      "elapsed_seconds": 0.49602108300314285,
+      "queue_seconds": 0.0002167224884033203
+    },
+    {
+      "phase": "acceptance",
+      "exit_code": 0,
+      "elapsed_seconds": 0.3324197919864673,
+      "queue_seconds": 0.00022101402282714844
+    }
+  ],
+  "validation_seconds": 14.994791208970128,
+  "diff_numstat": "94\t31\twebapp/rust/src/main.rs\n152\t0\twebapp/rust/src/new_user_cache.rs\n9\t3\twebapp/rust/src/new_user_cache_integration.rs\n",
+  "audit": {
+    "changed_files": [
+      "webapp/rust/src/main.rs",
+      "webapp/rust/src/new_user_cache.rs",
+      "webapp/rust/src/new_user_cache_integration.rs"
+    ],
+    "forbidden_changes": [],
+    "validation": {
+      "check": 0,
+      "test": 0,
+      "mysql": 0,
+      "acceptance": 0
+    },
+    "head": "418084d041259d019db263901deddd10d48e941c",
+    "dirty": false,
+    "note": "Review diff for behavior, test preservation (only task-authorized expectation updates), and active acceptance inclusion; compilation alone is insufficient."
+  },
+  "evidence_directory": "/Users/nao/project/isucon/ai-medium-trials/opencode-medium-02/.local",
+  "timing_note": "CLI start to exit. Validation time excludes preparation and operator audit; residual is not model-only time.",
+  "ordering_audit": {
+    "trial": "opencode-medium-02",
+    "head": "418084d041259d019db263901deddd10d48e941c",
+    "exit_code": 101,
+    "test_sha256": "afd5e8baaa641aca65c0f4474d8b7bc6cd8d969309d5c30c234cbd38085a9274",
+    "elapsed_seconds": 14.52708101272583,
+    "log": "/Users/nao/project/isucon/isu-scaffold/.local/ai-compare/order-audit/opencode-medium-02/.local/result.log",
+    "note": "Post-hoc audit; not part of the original task score. SQL has no explicit ORDER BY; this checks observed response equality on pinned MySQL."
+  },
+  "outcome": "original acceptance passed; post-hoc array ordering regression observed",
+  "configuration_correction": "Removed operator-added limit block; no replacement token limit configured. OpenCode standard defaults apply."
+}

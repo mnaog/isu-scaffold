@@ -18,10 +18,6 @@
           "interleaved": {
             "field": "reasoning_content"
           },
-          "limit": {
-            "context": 131072,
-            "output": 8192
-          },
           "options": {
             "reasoningEffort": "max"
           }

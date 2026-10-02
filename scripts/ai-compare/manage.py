@@ -236,17 +236,25 @@ def audit(args):
     dest = args.destination.resolve()
     manifest = trial_manifest(dest)
     changed = [p for p, sha in manifest['files'].items() if not (dest / p).exists() or digest(dest / p) != sha]
-    forbidden = [p for p in changed if not p.startswith('webapp/rust/src/')]
+    forbidden = [p for p in changed if not p.startswith('webapp/rust/src/') or p in manifest.get('protected_source', [])]
+    if manifest.get('protected_source'):
+        integration = dest / 'webapp/rust/src/new_user_cache_integration.rs'
+        if integration.read_text().count('include!("medium_acceptance.rs");') != 1:
+            forbidden.append('acceptance include changed')
     tracked = set(output(['git', '-C', dest, 'ls-files']).splitlines())
     extra = list(tracked - set(manifest['files']))
     extra += output(['git', '-C', dest, 'ls-files', '--others', '--exclude-standard']).splitlines()
-    forbidden.extend(extra)
+    forbidden.extend(p for p in extra if not (manifest.get('protected_source') and p.startswith('webapp/rust/src/') and p.endswith('.rs')))
     if forbidden:
         raise SystemExit('Protected/untracked files changed: ' + ', '.join(forbidden))
     if fingerprint(build_environment(manifest['environment']['build_env'])) != manifest['environment']['fingerprint']:
         raise SystemExit('Host/toolchain changed since preparation')
     results = {}
-    for mode in ('check', 'test'):
+    if manifest.get('database'):
+        db = ROOT / '.local/ai-compare/mysql'
+        if digest(db / 'my.cnf') != manifest['database']['config_sha256'] or digest(db / manifest['database']['spec']['mysql_archive'] / 'bin/mysqld') != manifest['database']['mysqld_sha256']:
+            raise SystemExit('MySQL changed since preparation')
+    for mode in manifest.get('validation_modes', ['check', 'test']):
         with (dest / f'.local/audit-{mode}.log').open('w') as log:
             # Use the operator's verifier, not code controlled by the trial agent.
             code = 'import sys; from pathlib import Path; from verify import validate; sys.exit(validate(Path(sys.argv[1]), sys.argv[2]))'
@@ -255,7 +263,7 @@ def audit(args):
     report = {'changed_files': changed, 'forbidden_changes': forbidden, 'validation': results,
               'head': output(['git', '-C', dest, 'rev-parse', 'HEAD']),
               'dirty': bool(output(['git', '-C', dest, 'status', '--porcelain'])),
-              'note': 'Review diff for preserved behavior and unmodified existing tests; compile success alone is insufficient.'}
+              'note': 'Review diff for behavior, test preservation (only task-authorized expectation updates), and active acceptance inclusion; compilation alone is insufficient.'}
     write_json(dest / '.local/audit.json', report)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     if forbidden or any(results.values()) or report['dirty'] or report['head'] == manifest['task_commit']:

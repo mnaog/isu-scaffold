@@ -1,0 +1,150 @@
+{
+  "trial": "claude-medium-01",
+  "agent": "claude",
+  "model": "claude-opus-5-5",
+  "endpoint": "Anthropic first party via existing Claude subscription login",
+  "reasoning": "medium",
+  "harness": "2.1.284 (Claude Code); independent CLI session; existing agent-history hooks; no web/subagents/MCP/LSP/auto-memory; fast mode off; bypassPermissions",
+  "elapsed_seconds": 164.66588341697934,
+  "exit_code": 0,
+  "head": "bc22c63f2a1ddf3fe7a883ef2681b8ba1ab967d1",
+  "dirty": false,
+  "initial_commit": "15c18c7bf48070f11a28a6c03a91cfa1e5a6a070",
+  "sessions": [
+    "60206042-4ecd-4ab3-a00c-78adc7f96c9d"
+  ],
+  "tool_counts": {
+    "Bash": 17
+  },
+  "finish_reasons": [
+    "success"
+  ],
+  "usage": [
+    {
+      "input_tokens": 34,
+      "cache_creation_input_tokens": 57982,
+      "cache_read_input_tokens": 656018,
+      "output_tokens": 13054,
+      "output_tokens_details": {
+        "thinking_tokens": 3449
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 57982,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "not_available",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 1526,
+          "cache_read_input_tokens": 56871,
+          "cache_creation_input_tokens": 1111,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 1111
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard"
+    }
+  ],
+  "validation": [
+    {
+      "phase": "build",
+      "exit_code": 101,
+      "elapsed_seconds": 2.1651175410079304,
+      "queue_seconds": 0.00022292137145996094
+    },
+    {
+      "phase": "build",
+      "exit_code": 0,
+      "elapsed_seconds": 1.5234729159856215,
+      "queue_seconds": 0.00021982192993164062
+    },
+    {
+      "phase": "build",
+      "exit_code": 0,
+      "elapsed_seconds": 1.4702491670032032,
+      "queue_seconds": 0.00023508071899414062
+    },
+    {
+      "phase": "test",
+      "exit_code": 0,
+      "elapsed_seconds": 7.601802542019868,
+      "queue_seconds": 0.000225067138671875
+    },
+    {
+      "phase": "mysql",
+      "exit_code": 0,
+      "elapsed_seconds": 0.5319333329971414,
+      "queue_seconds": 0.0002281665802001953
+    },
+    {
+      "phase": "acceptance",
+      "exit_code": 0,
+      "elapsed_seconds": 0.3303477909939829,
+      "queue_seconds": 0.00023174285888671875
+    },
+    {
+      "phase": "build",
+      "exit_code": 0,
+      "elapsed_seconds": 1.4415389170171693,
+      "queue_seconds": 0.00022220611572265625
+    },
+    {
+      "phase": "test",
+      "exit_code": 0,
+      "elapsed_seconds": 6.529103957989719,
+      "queue_seconds": 0.00022721290588378906
+    },
+    {
+      "phase": "mysql",
+      "exit_code": 0,
+      "elapsed_seconds": 0.505043040990131,
+      "queue_seconds": 0.0002391338348388672
+    },
+    {
+      "phase": "acceptance",
+      "exit_code": 0,
+      "elapsed_seconds": 0.35806750002666377,
+      "queue_seconds": 0.00022101402282714844
+    }
+  ],
+  "validation_seconds": 22.45667670603143,
+  "diff_numstat": "54\t13\twebapp/rust/src/main.rs\n176\t2\twebapp/rust/src/new_user_cache.rs\n3\t4\twebapp/rust/src/new_user_cache_integration.rs\n",
+  "audit": {
+    "changed_files": [
+      "webapp/rust/src/main.rs",
+      "webapp/rust/src/new_user_cache.rs",
+      "webapp/rust/src/new_user_cache_integration.rs"
+    ],
+    "forbidden_changes": [],
+    "validation": {
+      "check": 0,
+      "test": 0,
+      "mysql": 0,
+      "acceptance": 0
+    },
+    "head": "bc22c63f2a1ddf3fe7a883ef2681b8ba1ab967d1",
+    "dirty": false,
+    "note": "Review diff for behavior, test preservation (only task-authorized expectation updates), and active acceptance inclusion; compilation alone is insufficient."
+  },
+  "evidence_directory": "/Users/nao/project/isucon/ai-medium-trials/claude-medium-01/.local",
+  "timing_note": "CLI start to exit. Validation time excludes preparation and operator audit; residual is not model-only time.",
+  "ordering_audit": {
+    "trial": "claude-medium-01",
+    "head": "bc22c63f2a1ddf3fe7a883ef2681b8ba1ab967d1",
+    "exit_code": 0,
+    "test_sha256": "afd5e8baaa641aca65c0f4474d8b7bc6cd8d969309d5c30c234cbd38085a9274",
+    "elapsed_seconds": 14.901223182678223,
+    "log": "/Users/nao/project/isucon/isu-scaffold/.local/ai-compare/order-audit/claude-medium-01/.local/result.log",
+    "note": "Post-hoc audit; not part of the original task score. SQL has no explicit ORDER BY; this checks observed response equality on pinned MySQL."
+  },
+  "outcome": "original acceptance and post-hoc ordering audit passed"
+}

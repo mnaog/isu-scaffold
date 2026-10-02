@@ -66,59 +66,5 @@
       ],
       "output": "opencode-json"
     }
-  },
-  "research": {
-    "timeout_seconds": 900,
-    "researcher": {
-      "label": "OpenCode + DeepSeek V4.1 Flash (Lithos Base)",
-      "model": "lithosai/deepseek-ai/DeepSeek-V4.1-Flash",
-      "argv": [
-        "opencode",
-        "run",
-        "--model",
-        "{model}",
-        "--format",
-        "json",
-        "--title",
-        "researcher-{session}"
-      ],
-      "output": "opencode-json"
-    },
-    "reviewers": {
-      "codex": {
-        "label": "Codex",
-        "model": "gpt-6-astra",
-        "argv": [
-          "codex",
-          "exec",
-          "--json",
-          "--model",
-          "{model}",
-          "--color",
-          "never",
-          "--output-last-message",
-          "{output}",
-          "-"
-        ],
-        "output": "codex-json"
-      },
-      "claude": {
-        "label": "Claude Code",
-        "model": "claude-opus-5-5",
-        "argv": [
-          "claude",
-          "-p",
-          "--model",
-          "{model}",
-          "--output-format",
-          "json",
-          "--session-id",
-          "{session}",
-          "--permission-prompts",
-          "none"
-        ],
-        "output": "claude-json"
-      }
-    }
   }
 }

@@ -1,0 +1,86 @@
+{
+  "trial": "codex-medium-01",
+  "agent": "codex",
+  "model": "gpt-6-astra",
+  "endpoint": "OpenAI via existing ChatGPT login",
+  "reasoning": "medium",
+  "harness": "codex-cli 0.159.3; independent CLI session; existing agent-history hooks; no web/subagents/MCP; full local execution",
+  "elapsed_seconds": 184.13595100000384,
+  "exit_code": 0,
+  "head": "da19e8da19c3c426cc784c3208b27d377a0af734",
+  "dirty": false,
+  "initial_commit": "15c18c7bf48070f11a28a6c03a91cfa1e5a6a070",
+  "sessions": [
+    "01a0f726-5805-7f63-8571-f3dfab1874c4"
+  ],
+  "tool_counts": {
+    "command_execution": 14
+  },
+  "finish_reasons": [],
+  "usage": [
+    {
+      "input_tokens": 477380,
+      "cached_input_tokens": 441472,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 4462,
+      "reasoning_output_tokens": 399
+    }
+  ],
+  "validation": [
+    {
+      "phase": "build",
+      "exit_code": 0,
+      "elapsed_seconds": 1.8867657500086352,
+      "queue_seconds": 0.0002460479736328125
+    },
+    {
+      "phase": "test",
+      "exit_code": 0,
+      "elapsed_seconds": 7.510064749978483,
+      "queue_seconds": 0.00029587745666503906
+    },
+    {
+      "phase": "mysql",
+      "exit_code": 0,
+      "elapsed_seconds": 6.582105958019383,
+      "queue_seconds": 0.0002586841583251953
+    },
+    {
+      "phase": "acceptance",
+      "exit_code": 0,
+      "elapsed_seconds": 0.33337058301549405,
+      "queue_seconds": 0.00022077560424804688
+    }
+  ],
+  "validation_seconds": 16.312307041021995,
+  "diff_numstat": "70\t27\twebapp/rust/src/main.rs\n44\t0\twebapp/rust/src/new_user_cache.rs\n60\t5\twebapp/rust/src/new_user_cache_integration.rs\n",
+  "audit": {
+    "changed_files": [
+      "webapp/rust/src/main.rs",
+      "webapp/rust/src/new_user_cache.rs",
+      "webapp/rust/src/new_user_cache_integration.rs"
+    ],
+    "forbidden_changes": [],
+    "validation": {
+      "check": 0,
+      "test": 0,
+      "mysql": 0,
+      "acceptance": 0
+    },
+    "head": "da19e8da19c3c426cc784c3208b27d377a0af734",
+    "dirty": false,
+    "note": "Review diff for behavior, test preservation (only task-authorized expectation updates), and active acceptance inclusion; compilation alone is insufficient."
+  },
+  "evidence_directory": "/Users/nao/project/isucon/ai-medium-trials/codex-medium-01/.local",
+  "timing_note": "CLI start to exit. Validation time excludes preparation and operator audit; residual is not model-only time.",
+  "ordering_audit": {
+    "trial": "codex-medium-01",
+    "head": "da19e8da19c3c426cc784c3208b27d377a0af734",
+    "exit_code": 101,
+    "test_sha256": "afd5e8baaa641aca65c0f4474d8b7bc6cd8d969309d5c30c234cbd38085a9274",
+    "elapsed_seconds": 14.743980169296265,
+    "log": "/Users/nao/project/isucon/isu-scaffold/.local/ai-compare/order-audit/codex-medium-01/.local/result.log",
+    "note": "Post-hoc audit; not part of the original task score. SQL has no explicit ORDER BY; this checks observed response equality on pinned MySQL."
+  },
+  "outcome": "original acceptance passed; post-hoc array ordering regression observed"
+}

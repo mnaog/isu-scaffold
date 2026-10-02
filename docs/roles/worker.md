@@ -1,6 +1,6 @@
 # worker
 
-起動時に役割をworkerと明示し、この文書を読む。`SCAFFOLD_ROLE=worker`も設定する。
+workerはCodex（GPT-6-Astra、推論medium）に固定する。起動時に役割をworkerと明示し、この文書を読む。`SCAFFOLD_ROLE=worker`も設定する。
 目的・変更範囲・完了条件が明確で、独立して統合・評価できる1つの改善仮説または修正を担当する。同じ仮説の実現と整合性保証に必要な複数ファイルの変更はまとめる。独立した改善を混ぜない。所要時間だけを理由に分割しない。
 
 自分のworktreeで、作業開始を記録してから実装とローカル検証を行う。見込みは分単位の概算でよく、予測精度の保証は不要。大きく変わったら残り時間を更新し、詰まったら理由を残す。範囲が大きく広がる場合はoperatorへ判断を戻す。
@@ -9,15 +9,17 @@
 
 `./scripts/worker-db`は標準入力のSQLを共通SQLiteへ実行する薄い入口。Pythonは内部実装であり、操作ごとの独自コマンドは設けない。作業情報はINSERT / UPDATEで記録する。SQL全体は1 transactionで実行し、エラー時は戻す。
 
-fork起動側が以下を環境へ渡す。Claude Codeの子セッションIDはCLIやhookで判明した実際のIDを渡す。Codexの子IDは`CODEX_THREAD_ID`からも取得できる。親IDは推測せず、起動側から渡す。
+fork起動側はモデル`gpt-6-astra`と`model_reasoning_effort="medium"`を指定し、以下を環境へ渡す。Codexの子IDは`CODEX_THREAD_ID`からも取得できる。親IDは推測せず、起動側から渡す。
 
 ```bash
 export SCAFFOLD_ROLE=worker
-export SCAFFOLD_AGENT=codex  # または claude
+export SCAFFOLD_AGENT=codex
 export SCAFFOLD_PARENT_SESSION_ID='<親operatorの実セッションID>'
 export SCAFFOLD_SESSION_ID='<子workerの実セッションID>'
 # 任意: SCAFFOLD_BASE_COMMIT, SCAFFOLD_TASK_ID
 ```
+
+新規worker記録はagentが`codex`のものだけを受け付ける。既存の履歴は保持する。
 
 開始時のtask ID、時刻、worktree、branch、分岐元commitは自動取得する。`make worktree`で作ったbranchは作成時のbase commitを使用し、それ以外は`SCAFFOLD_BASE_COMMIT`、未指定なら`merge-base HEAD main`を使う。既に変更したbranchを後付け登録する場合は正確な分岐元を指定する。
 

@@ -28,7 +28,7 @@ for path in [Path.home() / '.config/opencode/opencode.jsonc',
     if path.exists():
         args.extend(['--settings', str(path)])
 args.extend(['--', 'opencode', 'run', '--dir', str(dest), '--model', model, '--agent', 'build', '--format', 'json',
-             '--title', 'low-task-' + dest.name, (dest / 'TASK.txt').read_text()])
+             '--title', 'task-' + dest.name, (dest / 'TASK.txt').read_text()])
 # Exclusive creation protects the evidence of an earlier attempt.
 with (dest / '.local/opencode.stdout.jsonl').open('x') as out, \
      (dest / '.local/opencode.stderr.log').open('x') as err:

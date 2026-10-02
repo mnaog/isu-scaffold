@@ -1,0 +1,45 @@
+{
+  "trial": "opencode-medium-02",
+  "elapsed_seconds": 185.18568583301385,
+  "tool_interval_union_seconds": 18.986998796463013,
+  "tool_interval_sum_seconds": 19.016998529434204,
+  "outside_recorded_tool_intervals_seconds": 166.19868703655084,
+  "response_steps": 53,
+  "first_edit_seconds": 71.7623279094696,
+  "reported_reasoning_tokens": 25665,
+  "reported_output_tokens": 10632,
+  "reported_uncached_input_tokens": 128794,
+  "reported_cached_input_tokens": 4700672,
+  "last_response_input_tokens": 123833,
+  "large_reasoning_steps": [
+    {
+      "step": 10,
+      "from_seconds": 20.256327867507935,
+      "to_seconds": 39.49732804298401,
+      "wall_seconds": 19.241000175476074,
+      "reported_reasoning_tokens": 8949
+    },
+    {
+      "step": 16,
+      "from_seconds": 51.20632791519165,
+      "to_seconds": 69.41032791137695,
+      "wall_seconds": 18.203999996185303,
+      "reported_reasoning_tokens": 8032
+    },
+    {
+      "step": 46,
+      "from_seconds": 155.09932804107666,
+      "to_seconds": 161.5433280467987,
+      "wall_seconds": 6.444000005722046,
+      "reported_reasoning_tokens": 2176
+    },
+    {
+      "step": 47,
+      "from_seconds": 161.5433280467987,
+      "to_seconds": 167.39332795143127,
+      "wall_seconds": 5.849999904632568,
+      "reported_reasoning_tokens": 1588
+    }
+  ],
+  "note": "Step intervals include tool and harness activity. Outside tool spans includes model, network, hooks, CLI and uninstrumented overhead; it is not measured inference time."
+}

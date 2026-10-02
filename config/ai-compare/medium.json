@@ -1,0 +1,9 @@
+{
+  "task": "practice12-new-user-inventory-cache",
+  "source_commit": "3c551cb6a560e93c3dbdeecc7c5a33731fb83d26",
+  "source_paths": ["webapp/rust", "webapp/sql/3_schema_exclude_user_presents.sql"],
+  "mysql_archive": "mysql-8.0.33-macos13-arm64",
+  "mysql_url": "https://cdn.mysql.com/archives/mysql-8.0/mysql-8.0.33-macos13-arm64.tar.gz",
+  "mysql_sha256": "2ceac77f8fd3aa55aea6ea728e301a7f3e8a9a3949d8fec3def93baa859c4634",
+  "mysql_port": 23316
+}

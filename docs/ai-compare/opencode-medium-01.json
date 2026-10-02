@@ -1,0 +1,319 @@
+{
+  "trial": "opencode-medium-01",
+  "agent": "opencode",
+  "model": "lithosai/deepseek-ai/DeepSeek-V4.1-Flash",
+  "endpoint": "https://api.lithosai.cloud/v1",
+  "reasoning": "max",
+  "harness": "OpenCode 1.18.34; build agent; agent-history enabled; LSP/formatter disabled; config permissions",
+  "elapsed_seconds": 80.2431529579917,
+  "exit_code": 0,
+  "head": "15c18c7bf48070f11a28a6c03a91cfa1e5a6a070",
+  "dirty": false,
+  "initial_commit": "15c18c7bf48070f11a28a6c03a91cfa1e5a6a070",
+  "sessions": [
+    "ses_f08db553fffe22Hme2L1NXF5Qd"
+  ],
+  "tool_counts": {
+    "read": 16,
+    "bash": 14
+  },
+  "finish_reasons": [
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "length"
+  ],
+  "usage": [
+    {
+      "total": 6799,
+      "input": 4885,
+      "output": 100,
+      "reasoning": 22,
+      "cache": {
+        "write": 0,
+        "read": 1792
+      }
+    },
+    {
+      "total": 7426,
+      "input": 657,
+      "output": 99,
+      "reasoning": 14,
+      "cache": {
+        "write": 0,
+        "read": 6656
+      }
+    },
+    {
+      "total": 8061,
+      "input": 757,
+      "output": 126,
+      "reasoning": 10,
+      "cache": {
+        "write": 0,
+        "read": 7168
+      }
+    },
+    {
+      "total": 13633,
+      "input": 5815,
+      "output": 113,
+      "reasoning": 25,
+      "cache": {
+        "write": 0,
+        "read": 7680
+      }
+    },
+    {
+      "total": 18469,
+      "input": 4833,
+      "output": 61,
+      "reasoning": 263,
+      "cache": {
+        "write": 0,
+        "read": 13312
+      }
+    },
+    {
+      "total": 20400,
+      "input": 2323,
+      "output": 98,
+      "reasoning": 59,
+      "cache": {
+        "write": 0,
+        "read": 17920
+      }
+    },
+    {
+      "total": 26205,
+      "input": 5864,
+      "output": 98,
+      "reasoning": 19,
+      "cache": {
+        "write": 0,
+        "read": 20224
+      }
+    },
+    {
+      "total": 31395,
+      "input": 5408,
+      "output": 85,
+      "reasoning": 46,
+      "cache": {
+        "write": 0,
+        "read": 25856
+      }
+    },
+    {
+      "total": 31650,
+      "input": 231,
+      "output": 186,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 31232
+      }
+    },
+    {
+      "total": 35985,
+      "input": 4630,
+      "output": 98,
+      "reasoning": 25,
+      "cache": {
+        "write": 0,
+        "read": 31232
+      }
+    },
+    {
+      "total": 43003,
+      "input": 1031,
+      "output": 123,
+      "reasoning": 6009,
+      "cache": {
+        "write": 0,
+        "read": 35840
+      }
+    },
+    {
+      "total": 43709,
+      "input": 6603,
+      "output": 186,
+      "reasoning": 56,
+      "cache": {
+        "write": 0,
+        "read": 36864
+      }
+    },
+    {
+      "total": 47691,
+      "input": 4322,
+      "output": 61,
+      "reasoning": 44,
+      "cache": {
+        "write": 0,
+        "read": 43264
+      }
+    },
+    {
+      "total": 48650,
+      "input": 1189,
+      "output": 67,
+      "reasoning": 34,
+      "cache": {
+        "write": 0,
+        "read": 47360
+      }
+    },
+    {
+      "total": 48945,
+      "input": 476,
+      "output": 67,
+      "reasoning": 18,
+      "cache": {
+        "write": 0,
+        "read": 48384
+      }
+    },
+    {
+      "total": 49437,
+      "input": 729,
+      "output": 67,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 48640
+      }
+    },
+    {
+      "total": 49732,
+      "input": 512,
+      "output": 67,
+      "reasoning": 1,
+      "cache": {
+        "write": 0,
+        "read": 49152
+      }
+    },
+    {
+      "total": 55673,
+      "input": 522,
+      "output": 101,
+      "reasoning": 5386,
+      "cache": {
+        "write": 0,
+        "read": 49664
+      }
+    },
+    {
+      "total": 56672,
+      "input": 6361,
+      "output": 98,
+      "reasoning": 37,
+      "cache": {
+        "write": 0,
+        "read": 50176
+      }
+    },
+    {
+      "total": 60104,
+      "input": 3492,
+      "output": 150,
+      "reasoning": 142,
+      "cache": {
+        "write": 0,
+        "read": 56320
+      }
+    },
+    {
+      "total": 62998,
+      "input": 3041,
+      "output": 98,
+      "reasoning": 211,
+      "cache": {
+        "write": 0,
+        "read": 59648
+      }
+    },
+    {
+      "total": 72130,
+      "input": 1474,
+      "output": 0,
+      "reasoning": 8193,
+      "cache": {
+        "write": 0,
+        "read": 62464
+      }
+    }
+  ],
+  "validation": [
+    {
+      "phase": "build",
+      "exit_code": 0,
+      "elapsed_seconds": 0.28240204200847074,
+      "queue_seconds": 0.0002627372741699219
+    },
+    {
+      "phase": "test",
+      "exit_code": 0,
+      "elapsed_seconds": 0.24390091700479388,
+      "queue_seconds": 0.0002732276916503906
+    },
+    {
+      "phase": "mysql",
+      "exit_code": 0,
+      "elapsed_seconds": 0.5155466670112219,
+      "queue_seconds": 0.00023508071899414062
+    },
+    {
+      "phase": "acceptance",
+      "exit_code": 101,
+      "elapsed_seconds": 0.30518870800733566,
+      "queue_seconds": 0.0002570152282714844
+    }
+  ],
+  "validation_seconds": 1.3470383340318222,
+  "diff_numstat": "",
+  "audit": {
+    "changed_files": [],
+    "forbidden_changes": [],
+    "validation": {
+      "check": 0,
+      "test": 0,
+      "mysql": 0,
+      "acceptance": 101
+    },
+    "head": "15c18c7bf48070f11a28a6c03a91cfa1e5a6a070",
+    "dirty": false,
+    "note": "Review diff for behavior, test preservation (only task-authorized expectation updates), and active acceptance inclusion; compilation alone is insufficient."
+  },
+  "evidence_directory": "/Users/nao/project/isucon/ai-medium-trials/opencode-medium-01/.local",
+  "timing_note": "CLI start to exit. Validation time excludes preparation and operator audit; residual is not model-only time.",
+  "ordering_audit": {
+    "trial": "opencode-medium-01",
+    "head": "15c18c7bf48070f11a28a6c03a91cfa1e5a6a070",
+    "exit_code": 0,
+    "test_sha256": "afd5e8baaa641aca65c0f4474d8b7bc6cd8d969309d5c30c234cbd38085a9274",
+    "elapsed_seconds": 15.145483016967773,
+    "log": "/Users/nao/project/isucon/isu-scaffold/.local/ai-compare/order-audit/opencode-medium-01/.local/result.log",
+    "note": "Post-hoc audit; not part of the original task score. SQL has no explicit ORDER BY; this checks observed response equality on pinned MySQL."
+  },
+  "outcome": "incomplete: output limit reached before editing"
+}

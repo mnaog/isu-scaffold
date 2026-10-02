@@ -43,5 +43,5 @@
     "Compare API/DB outcomes including duplicate/concurrent receipts",
     "Confirm target SELECT reduction using participant-side application/DB observations, not benchmark internals"
   ],
-  "not_yet_done": "Medium environment and acceptance tests have not been prepared or executed."
+  "execution_report": "medium-process-analysis.md"
 }
