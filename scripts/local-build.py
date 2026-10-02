@@ -207,7 +207,8 @@ def main():
     parser.add_argument("--commit", default="HEAD")
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("paths", nargs="*")
-    args = parser.parse_args()
+    # Python 3.12's parse_args rejects trailing paths after options when nargs='*'.
+    args = parser.parse_intermixed_args()
     if args.action == "archive":
         archive_with_artifacts(args.index, args.paths, args.commit)
         return
