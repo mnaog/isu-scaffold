@@ -56,3 +56,9 @@ jobs:
           export PATH="$HOME/.cargo/bin:$PATH"
           isuscope --version
           ./tests/initial-automation.sh
+
+      - name: Run local tooling tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Check isolated local runtime lifecycle
+        run: python3 tests/local-runtime-docker.py

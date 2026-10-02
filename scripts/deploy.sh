@@ -91,6 +91,7 @@ timing_file=${transaction_dir}/${release}.timing.tsv
 commit_file=${transaction_dir}/${release}.commit
 previous_release_file=${transaction_dir}/${release}.previous-release
 previous_commit_file=${transaction_dir}/${release}.previous-commit
+artifact_file=${transaction_dir}/${release}.artifacts.json
 mkdir -p "${transaction_dir}"
 if [[ -e "${state_file}" ]]; then
   # 同じrelease名を再利用すると、前回の退避（*.isuscope-backup.<release>）を
@@ -99,6 +100,8 @@ if [[ -e "${state_file}" ]]; then
   echo "unset RELEASE, or choose a name that has not been deployed" >&2
   exit 1
 fi
+# Complete the local build once, before contacting or mutating any node.
+python3 "${script_dir}/local-build.py" build --strict --manifest "${sync_manifest}" --index "${artifact_file}"
 : >"${plan_file}"
 : >"${build_plan_file}"
 : >"${post_plan_file}"
@@ -119,6 +122,8 @@ fi
 
 while IFS=$'\t' read -r name type node_group local_path remote_path owner owner_group <&3; do
   size_bytes=$(git ls-tree -r -l HEAD -- "${local_path}" | awk '{total += $4} END {print total + 0}')
+  artifact_bytes=$(jq --arg item "${name}" '[.[] | select(.item == $item) | .size] | add // 0' "${artifact_file}")
+  size_bytes=$((size_bytes + artifact_bytes))
   size_kb=$(((size_bytes + 1023) / 1024))
   while IFS= read -r node <&4; do
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
@@ -230,7 +235,7 @@ cancel_active_jobs() {
 
 preflight_node() {
   local target_node=$1 name type node local_path remote_path owner owner_group size_kb
-  local staging backup remote_parent required_kb node_size_kb command
+  local staging backup remote_parent required_kb node_size_kb command target
   node_size_kb=$(awk -F '\t' -v target="${target_node}" '$3 == target {total += $8} END {print total + 0}' "${plan_file}")
   required_kb=$((node_size_kb + minimum_free_mb * 1024))
   command="set -eu; sudo -n true"
@@ -240,6 +245,11 @@ preflight_node() {
     backup=${remote_path}.isuscope-backup.${release}
     remote_parent=$(dirname -- "${remote_path}")
     command+="; sudo test -d '${remote_parent}'; getent passwd '${owner}' >/dev/null; getent group '${owner_group}' >/dev/null; sudo test ! -e '${staging}'; sudo test ! -e '${staging}.dir'; sudo test ! -e '${backup}'; sudo test ! -e '${backup}.absent'; available=\$(df -Pk '${remote_parent}' | awk 'NR==2 {print \$4}'); test \"\$available\" -ge '${required_kb}'"
+    target=$(jq -r --arg item "${name}" '.[] | select(.item == $item) | .target' "${artifact_file}")
+    case "${target}" in
+      x86_64-unknown-linux-gnu) command+="; test \"\$(uname -m)\" = x86_64" ;;
+      aarch64-unknown-linux-gnu) command+="; test \"\$(uname -m)\" = aarch64" ;;
+    esac
   done 3<"${plan_file}"
   command+="; sudo test ! -e '/tmp/isucon-deploy-${release}'"
   printf 'preflight on %s\n' "${target_node}"
@@ -248,7 +258,7 @@ preflight_node() {
 
 staging_node() {
   local target_node=$1 name type node local_path remote_path owner owner_group size_kb
-  local staging bundle command
+  local staging bundle command artifact_destination artifact_sha
   local -a local_paths=()
   bundle=/tmp/isucon-deploy-${release}
   command="set -eu; sudo install -d -m 0755 '${bundle}'; sudo tar -C '${bundle}' -xf -"
@@ -257,10 +267,13 @@ staging_node() {
     staging=${remote_path}.isuscope-staging.${release}
     local_paths+=("${local_path}")
     command+="; sudo test -e '${bundle}/${local_path}'; sudo mv '${bundle}/${local_path}' '${staging}'; sudo chown -R '${owner}:${owner_group}' '${staging}'"
+    while IFS=$'\t' read -r artifact_destination artifact_sha; do
+      command+="; printf '%s  %s\\n' '${artifact_sha}' '${staging}/${artifact_destination}' | sudo sha256sum -c -; sudo test -x '${staging}/${artifact_destination}'; dependencies=\$(sudo ldd '${staging}/${artifact_destination}'); printf '%s\\n' \"\$dependencies\"; if printf '%s\\n' \"\$dependencies\" | grep -q 'not found'; then exit 1; fi"
+    done < <(jq -r --arg item "${name}" '.[] | select(.item == $item) | [.destination, .sha256] | @tsv' "${artifact_file}")
   done 3<"${plan_file}"
   command+="; sudo rm -rf '${bundle}'"
   printf 'staging %s committed paths on %s\n' "${#local_paths[@]}" "${target_node}"
-  git archive --format=tar HEAD -- "${local_paths[@]}" | \
+  python3 "${script_dir}/local-build.py" archive --index "${artifact_file}" --commit "${head_commit}" -- "${local_paths[@]}" | \
     "${script_dir}/ssh-node.sh" "${target_node}" "${command}"
 }
 

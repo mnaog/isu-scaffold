@@ -23,6 +23,7 @@ observability_mysql_slow_log: true
 observability_mysql_slow_log_path: /var/log/mysql/isuscope-slow.log
 observability_log_max_size: 512M
 observability_rust_user: isucon
+observability_remote_rust_build: false
 observability_rust_cache_dir: /home/isucon/.cache/isucon-cargo-target
 isuscope_fingerprint_paths: []
 isuscope_tree_digest_source: "{{ playbook_dir }}/../../scripts/tree-digest.py"

@@ -1,5 +1,5 @@
 ---
-# config/sync.rust.example.json builds with CARGO_TARGET_DIR in this directory.
+# Optional legacy remote builds may use CARGO_TARGET_DIR in this directory.
 - name: Create the persistent Rust build cache
   ansible.builtin.file:
     path: "{{ observability_rust_cache_dir }}"

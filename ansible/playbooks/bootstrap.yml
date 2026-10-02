@@ -7,6 +7,13 @@
   vars_files:
     - "{{ playbook_dir }}/../../config/ansible-vars.json"
 
+  pre_tasks:
+    - name: Wait for initial provisioning before changing packages or services
+      ansible.builtin.command:
+        argv: [timeout, "{{ bootstrap_provision_timeout_seconds | default(1800) | int }}", bash, -s]
+        stdin: "{{ lookup('ansible.builtin.file', playbook_dir + '/wait-provision.sh') }}"
+      changed_when: false
+
   roles:
     - role: bootstrap
 

@@ -7,8 +7,13 @@ if [[ "${ISUSCOPE_LOCK_HELD:-}" != 1 ]]; then
   exec isuscope lock --path "${script_dir}/../.local/operation.lock" -- "$0" "$@"
 fi
 
-language=${1:-}
-application_path=${2:-webapp/${language}}
+source "${script_dir}/application-policy.sh"
+language=${1:-${APPLICATION_LANGUAGE}}
+application_path=${2:-${APPLICATION_PATH}}
+if [[ "${language}" != "${APPLICATION_LANGUAGE}" || "${application_path}" != "${APPLICATION_PATH}" ]]; then
+  echo "early import must match config/application.env: ${APPLICATION_LANGUAGE} ${APPLICATION_PATH}" >&2
+  exit 2
+fi
 application_remote=${CODE_REMOTE_PATH:-/home/isucon/webapp/${language}}
 schema_path=${CODE_SCHEMA_PATH:-webapp/sql}
 schema_remote=${CODE_SCHEMA_REMOTE_PATH-/home/isucon/webapp/sql}

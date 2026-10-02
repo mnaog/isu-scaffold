@@ -10,13 +10,17 @@
 
 初回baselineの比較可能性を守るため、並行worktreeの変更はbaseline取得後までremoteに反映しない。
 
-## コード先行import後は2レーンで進める
+## コード先行import後は並行して進める
 
 ```text
 main: bootstrap、全node調査、完全import、role・deploy・benchmark adapter・isuscopeを準備
   → phase1-check
   → 未変更のbaselineをsurvey-run
   → スコア、シナリオ、HTTP、SQL、ホスト負荷を分析
+
+ローカル実行環境: 回収済みコードに合わせてDB・依存service・初期化を構成
+  → make local-up / local-check
+  → workerが初期改善の動作確認・SQL調査に使う（baselineの開始を待たせない）
 
 初期改善用の一つのworktree・同じセッション:
   採用言語とschemaを読み、改善候補を見つけた順に実装
@@ -41,6 +45,14 @@ operatorは初回および以後の計測について、run ID、評価したcom
 SQLiteでは「Phase 1の初期改善」を一つの継続タスクとして開始・見込みを記録する。途中の受け渡しは`working`のまま`notes`へcommit範囲・検証結果とともに残し、operatorも統合した範囲を追記する。部分的な統合でタスク全体を`integrated`にしない。人間がPhase 2移行を決める際に残件を引き継ぎ、継続作業を終了して`developed`を記録する。operatorは最終成果の統合または見送りを確認してタスクを閉じ、その後は通常の1目的workerへ切り替える。
 
 先行importはコード読解開始用の暫定snapshotである。mainの完全importで全配布先のdigest一致と設定を改めて確認する。並行worktreeは`webapp/`のコード・schemaとそのテストを所有する。mainは`config/`、`ansible/`、`scripts/`、`.isuscope/`、remote操作を所有する。競合を避けられない変更は、先に小さいcommitへ分離する。
+
+## ローカル実行環境を構築する
+
+Phase 0ではDockerと汎用の起動・検証コマンドだけを準備する。Phase 1のコード先行回収後、operatorが`config/local/compose.example.yaml`から`config/local/compose.yaml`を作り、採用Rust版・DB・追加service・schema・初期化・health endpointを実アプリに合わせる。手順は[ローカル実行環境](../local-development.md)を参照する。
+
+構成をcommitして初期改善worktreeへ取り込んだら、worker自身が`make local-up`、`make local-check`、`make local-down`を実行してよい。新しい常設ロールは増やさない。DB・network・portはworktree単位で分離し、remote変更用lockを取らない。構築は初動と並行し、完成を初回baselineのgateにはしない。
+
+ローカルで初期化、代表API、SQLの実行計画、修正前後の挙動を確認する。schemaのみ・縮小データ・フルデータのどれか、欠けているserviceや検証範囲を記録し、health成功だけをシナリオ検証済みと扱わない。初期データは許可された取得元だけを使い、未回収ならその制限を明示する。性能変更の最終採否は配布サーバーの共有ベンチで決める。
 
 ## 公式情報を保存する
 
@@ -163,6 +175,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - `docs/benchmark-scenario.md`
 - isuscopeによる初回ベンチ結果
 - 初期状態のコードと設定
+- ローカル実行環境の構成・データ範囲・動作検証結果
 - ローカルから実行できるデプロイコマンド
 - 初期状態へ戻せるGitコミット
 
@@ -170,6 +183,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 - 公式から提供された一次情報が`docs/official/`に揃っている
 - コードと設定ファイルがローカルリポジトリで管理されている
+- ローカル環境で実施した検証と未対応範囲が記録され、初期改善から利用できる（構築不能なら理由と代替の検証手段を記録）
 - ローカルからコマンドでデプロイできる
 - サーバーを直接編集せずに構成を再現できる
 - 初期状態へ戻せる

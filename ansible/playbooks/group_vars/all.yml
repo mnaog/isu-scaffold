@@ -46,7 +46,8 @@ observability_mysql_slow_log: true
 observability_mysql_slow_log_path: /var/log/mysql/isuscope-slow.log
 observability_log_max_size: 512M
 
-# config/sync.rust.example.jsonのbuildが使う永続Cargo cache。
+# ローカルbuildが既定。明示的にremote buildを使う場合だけ有効にする。
+observability_remote_rust_build: false
 observability_rust_user: isucon
 observability_rust_cache_dir: /home/isucon/.cache/isucon-cargo-target
 

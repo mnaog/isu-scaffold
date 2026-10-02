@@ -67,6 +67,7 @@ write_brief() {
     else
       printf '## workerの記録\n\n役割: worker。docs/roles/worker.mdを読み、開始・見込みと開発完了を共通SQLiteへ記録する。開発完了後は待機し、統合とworktree削除はoperatorが行う。\n\n'
     fi
+    printf '## ローカル実行環境\n\nconfig/local/compose.yamlが準備済みなら、このworktreeでmake local-up / local-check / local-downを使用できる。DB・network・portはworktree専用。docs/local-development.mdを参照。\n\n'
     printf '## mainへ渡すとき\n\n目的に対する結果を1行で報告し、mainへマージする前にローカルのbuildとテストを通す。\n\n'
     local others
     others=$(lanes)

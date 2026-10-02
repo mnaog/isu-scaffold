@@ -1,0 +1,50 @@
+# Copy to compose.yaml after code import, then adapt services, SQL and app settings.
+# Never use container_name, external volumes/networks, or host networking here.
+services:
+  db:
+    image: mysql:8.0.33
+    environment:
+      MYSQL_ROOT_PASSWORD: local-only-root
+      MYSQL_DATABASE: isucon
+      MYSQL_USER: isucon
+      MYSQL_PASSWORD: isucon
+    volumes:
+      - db:/var/lib/mysql
+      - ${LOCAL_INIT_DIR}:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD=isucon mysql -h 127.0.0.1 -uisucon isucon -e "SELECT 1"']
+      interval: 2s
+      timeout: 3s
+      retries: 90
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        RUST_IMAGE: ${LOCAL_RUST_IMAGE:-rust:1.63.0-bullseye}
+    init: true
+    working_dir: /webapp/rust
+    command: [sh, /local-start.sh]
+    environment:
+      CARGO_TARGET_DIR: /target
+      CARGO_HOME: /cargo
+      LOCAL_USE_VENDOR: ${LOCAL_USE_VENDOR:-0}
+      ISUCON_DB_HOST: db
+      ISUCON_DB_PORT: '3306'
+      ISUCON_DB_USER: isucon
+      ISUCON_DB_PASSWORD: isucon
+      ISUCON_DB_NAME: isucon
+    volumes:
+      - ../../webapp:/webapp:ro
+      - ${LOCAL_VENDOR_DIR}:/vendor:ro
+      - target:/target
+      - cargo:/cargo
+    ports:
+      - '127.0.0.1::8080'
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  db:
+  target:
+  cargo:

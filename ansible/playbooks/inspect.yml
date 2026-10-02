@@ -67,8 +67,11 @@
 
     - name: Find systemd service fragment paths
       ansible.builtin.shell: |
-        systemctl list-units --type=service --state=running --no-legend --no-pager 2>/dev/null |
-        awk '{print $1}' | while IFS= read -r unit; do
+        {
+          systemctl list-unit-files --type=service --no-legend --no-pager 2>/dev/null
+          systemctl list-units --type=service --all --no-legend --no-pager 2>/dev/null
+        } |
+        awk '$1 ~ /\.service$/ {print $1}' | sort -u | while IFS= read -r unit; do
           fragment=$(systemctl show "$unit" -p FragmentPath --value 2>/dev/null || true)
           test -n "$fragment" && printf '%s\t%s\n' "$unit" "$fragment"
         done

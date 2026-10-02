@@ -15,10 +15,12 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/discover-aws.sh \
   "${source_repo}"/scripts/apply-node-overrides.sh \
   "${source_repo}"/scripts/render-environment.sh \
+  "${source_repo}"/scripts/isuscope-policy.py \
   "${source_repo}"/scripts/ssh-node.sh \
   "${source_repo}"/scripts/timeout-command.py \
   "${source_repo}"/scripts/benchmark-http.sh \
   "${source_repo}"/scripts/sync-lib.sh \
+  "${source_repo}"/scripts/local-build.py \
   "${source_repo}"/scripts/sync-check.sh \
   "${source_repo}"/scripts/deploy.sh \
   "${source_repo}"/scripts/rollback.sh \
@@ -32,6 +34,7 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/configure-draft.sh \
   "${source_repo}"/scripts/configure-apply.sh \
   "${source_repo}"/scripts/quick-import-code.sh \
+  "${source_repo}"/scripts/application-policy.sh \
   "${source_repo}"/scripts/worktree.sh \
   "${fixture_repo}/scripts/"
 # collectorの正本はisuscopeが配るので、fixtureにはbenchmark adapterだけを置く。
@@ -41,6 +44,7 @@ cp "${source_repo}/config/nodes.example.json" "${fixture_repo}/.local/nodes.json
 cp "${source_repo}/tests/fixtures/sync.json" "${fixture_repo}/config/sync.json"
 cp "${source_repo}/config/sync.rust.example.json" "${fixture_repo}/config/sync.rust.example.json"
 cp "${source_repo}/config/ansible-vars.json" "${fixture_repo}/config/ansible-vars.json"
+cp "${source_repo}/config/isuscope-policy.json" "${fixture_repo}/config/isuscope-policy.json"
 cp "${source_repo}/config/application.env" "${fixture_repo}/config/application.env"
 jq '.[0] as $app1 | . + [$app1 + {name:"app2", host:"192.0.2.11"}]' \
   "${fixture_repo}/.local/nodes.json" >"${fixture_repo}/.local/nodes.json.tmp"
@@ -561,6 +565,13 @@ EOF
 printf '[package]\nname = "isu-app"\nversion = "0.1.0"\n' >"${fixture_repo}/webapp/rust/Cargo.toml"
 mkdir -p "${fixture_repo}/webapp/rust/src"
 printf 'let cookie = Cookie::build("app_session", id);\nlet owner = jar.cookie("owner_session");\nconst SESSION_EXPIRES_KEY: &str = "EXPIRES";\n' >"${fixture_repo}/webapp/rust/src/session.rs"
+mv "${fixture_repo}/webapp/rust/Cargo.toml" "${fixture_repo}/.local/Cargo.toml.saved"
+if (cd "${fixture_repo}" && ./scripts/configure-draft.sh >.local/missing-rust.log 2>&1); then
+  echo "draft silently accepted missing Rust sources" >&2
+  exit 1
+fi
+grep -q 'complete early import' "${fixture_repo}/.local/missing-rust.log"
+mv "${fixture_repo}/.local/Cargo.toml.saved" "${fixture_repo}/webapp/rust/Cargo.toml"
 (cd "${fixture_repo}" && ./scripts/configure-draft.sh)
 jq -e '.items | any(.node_group == "role_mysql" and .source_node == "app1")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
@@ -572,7 +583,7 @@ jq -e '.items | any(.name == "rust-service" and .remote == "/etc/systemd/system/
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
 jq -e '.items | any(.name == "sql-schema.sql" and .remote == "/home/isucon/webapp/sql/schema.sql")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
-jq -e '.build_commands[0].item == "rust-app" and (.build_commands[0].command | contains("release/isu-app")) and (.build_commands[0].command | contains("replace-with") | not)' \
+jq -e '.build_commands == [] and .local_builds[0].item == "rust-app" and .local_builds[0].binary == "isu-app"' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
 jq -e '.post_deploy_commands | any(.command == "sudo systemctl restart isu-rust")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null

@@ -1,4 +1,4 @@
-.PHONY: help discover kickoff kickoff-apply deploy rollback status phase1-check
+.PHONY: help discover kickoff kickoff-apply build deploy rollback status phase1-check
 
 help:
 	@printf '%s\n' \
@@ -6,6 +6,8 @@ help:
 		'make kickoff                          コード先行回収・worktree作成からdraft生成と検査まで進める' \
 		'make worktree BRANCH=<name> PURPOSE="..."  目的つきで並行laneのworktreeを作る' \
 		'CONFIRM_DRAFT=true make kickoff-apply  検査済みdraftを反映して完全importする' \
+		'make local-up / local-check / local-down  worktree専用のローカル実行環境を操作する' \
+		'make build                            ローカルでLinux向けRust成果物を準備する' \
 		'make deploy                           commit済みのlocal状態を全nodeへ反映する' \
 		'make rollback RELEASE=<id>            deploy前のremote状態へ戻す' \
 		'make status                           全application nodeを検査する' \
@@ -29,6 +31,9 @@ worktree:
 
 kickoff-apply:
 	@./scripts/kickoff-apply.sh
+
+build:
+	@python3 scripts/local-build.py build --manifest "$(or $(SYNC_MANIFEST),config/sync.json)"
 
 deploy:
 	@./scripts/deploy.sh
@@ -61,3 +66,15 @@ board:
 
 operations-test:
 	@python3 -m unittest discover -s tests -p 'test_*.py' -v
+
+.PHONY: local-up local-check local-down local-logs local-reset
+local-up:
+	@python3 scripts/local-runtime.py up
+local-check:
+	@python3 scripts/local-runtime.py check
+local-down:
+	@python3 scripts/local-runtime.py down
+local-logs:
+	@python3 scripts/local-runtime.py logs
+local-reset:
+	@python3 scripts/local-runtime.py reset

@@ -23,6 +23,7 @@
 
 - name: Prepare the persistent Rust build cache
   ansible.builtin.import_tasks: rust_cache.yml
+  when: observability_remote_rust_build | bool
   tags: [observability_rust_cache]
 
 - name: Install the isuscope node helpers

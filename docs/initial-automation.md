@@ -120,7 +120,7 @@ make discover
 ./scripts/sync-check.sh
 ```
 
-Git commitが存在する場合、`sync-check`はmanifest検証に加えて、Git管理中の配布byte数とnode複製後の合計byte数を表示します。local・remoteの配置先が重なるitemやbuild commandの名前の重複、改行を含むcommandは拒否します。ignored artifactはこの値にも実際のdeploy archiveにも含まれません。
+Git commitが存在する場合、`sync-check`はmanifest検証に加えて、Git管理中の配布byte数とnode複製後の合計byte数を表示します。local・remoteの配置先が重なるitemやbuild commandの名前の重複、改行を含むcommandは拒否します。ignored artifactはこの値にも実際のdeploy archiveにも含まれません。例外は`local_builds`が生成・検証した実行ファイルだけで、deployの空き容量検査にはそのサイズも加算します。
 
 反映前の設定は`.local/draft-backup/`へ退避されます。node roleを反映した後の`discover`は`role_nginx`、`role_mysql`などのAnsible groupも生成します。
 
@@ -130,7 +130,8 @@ Git commitが存在する場合、`sync-check`はmanifest検証に加えて、Gi
 
 - `source_node`: 初期状態を回収するnode
 - `items`: local/remote path、file/directory、配布先group、owner
-- `pre_deploy_command`: local buildなど、配布前に一度実行する処理
+- `pre_deploy_command`: 配布前に一度実行する処理（同期対象を変更してはいけない）
+- `local_builds`: ローカルDockerでRustをbuildし、対象itemの`target/release/<binary>`へ追加する設定
 - `build_commands`: 配布済みstaging itemをnode上でbuild・検証する、切替前の処理
 - `post_deploy_commands`: config test、daemon-reload、restart、health check
 - `rollback_commands`: 旧ファイル復元後に行うconfig test、daemon-reload、restart、health check
@@ -146,8 +147,24 @@ commandは単なる文字列なら全application node、`{"node_group":"role_ngi
 
 build成果物は`ISUCON_DEPLOY_STAGING_PATH`配下へ配置し、実行ファイルなど必要なartifactを最後に検証します。失敗した場合はlive pathを切り替えず、transactionを中断してstagingを除去します。node上の永続build cacheはtransaction外に残るため、cacheには再生成可能なartifactだけを置き、秘密情報やruntime dataを保存しません。
 
-Rustでは永続的な`CARGO_TARGET_DIR`を使い、完成したbinaryだけをstaging item内の従来pathへコピーします。設定例は`config/sync.rust.example.json`です。`replace-with-binary-name`と`replace-with-service-name`、directory構成、実行userを当日のアプリに合わせて変更してください。初回importが`webapp/rust/target`を回収した場合は、内容を確認してlocalから除去してから初期commitします。例の`pre_deploy_command`はlocal targetが残ったdeployを拒否します。cacheが空なら現在のlive targetから一度だけseedし、以後はCargoのfingerprintで依存crateを再利用します。
+Rustは`local_builds`を既定とし、配布サーバーではコンパイルしません。`config/sync.rust.example.json`の`binary`・service名・配置先に加えて、`base_image`（Rust版とLinuxディストリビューション）、`target`、`dockerfile`を配布環境に合わせて確認します。現在の`rust:1.63.0-bullseye`は今回のアプリで検証した設定であり、他の問題でも適切とは限りません。厳密に固定する場合は`base_image`をdigest指定にします。追加のCライブラリなどが必要なら、Git管理するDockerfileへ明示します。
 
+```bash
+make build                   # SSH/inventory不要。先行回収のcommit後から準備可能
+make deploy                  # 必要ならbuildし、同じ成果物を全対象nodeへ配る
+# draft作成後、適用前にbuildを先行させる場合:
+make build SYNC_MANIFEST=.local/draft/sync.json
+```
+
+ローカルにはPython 3と起動済みのDockerが必要です。Linux Docker hostのARM64/AMD64でネイティブにcompilerを動かし、`x86_64-unknown-linux-gnu`または`aarch64-unknown-linux-gnu`を出力します。Docker DesktopのMac共有ディレクトリにtargetを置かず、Linux named volumeへCargo targetと依存取得cacheを保存します。初回だけimage・依存の取得が必要です。既存vendorを使うオフライン検証では`RUST_BUILD_VENDOR_DIR=/absolute/vendor make build`を使えます（imageは事前準備が必要）。vendorは今回のlockfileに対応したものを使います。
+
+入力はcommit済みのitem全体と`Cargo.lock`です。workspaceのpath依存も同じitemに含めてください。ソースが未commitなら停止します。`make build`はDockerfile・manifestの調整中にも使えますが、deploy時はmanifest・Dockerfile・builder scriptもcommit済みであることが必要です。成果物は`.local/rust-build/`、直近の索引は`.local/local-build.json`に置き、Gitには追加しません。
+
+worktreeからもルートリポジトリのcacheを共用します。専用build lockで同時書込みを直列化し、通常の初動setupは止めません。ソースtree・build設定・image ID・builder scriptが同じならSHA-256検証後に完成済みbinaryを再利用します。ソースやCargo.lockが変わればCargoを再実行し、image・target等が同じなら依存crateのcacheを再利用します。imageやtargetが変われば別cacheになります。Docker image/volumeと`.local/rust-build`は明示的に削除するまで残ります。壊れたartifactは自動配布せず停止するため、該当input IDの成果物ディレクトリを除いて再buildしてください。
+
+deployはローカルbuildを完了してから全nodeのpreflightに進みます。source archiveへ生成binaryだけを追加し、nodeのCPUを検査します。stagingでSHA-256・実行権限・`ldd`による共有ライブラリ解決を確認し、全台成功してからliveへ切り替えます。transactionごとの索引は`.local/deploy-transactions/<release>.artifacts.json`です。切替失敗時は従来どおりsourceとbinaryを一緒にrollbackします。`ldd`は実アプリの動作保証ではないので、当日の環境でhealth checkとベンチも必要です。
+
+既存の`build_commands`契約は他用途向けに残します。同じitemへ`local_builds`とremote buildを同時指定することは禁止します。Ansibleのremote Rust cache準備も既定では無効です。明示的に旧方式を使う場合だけ`observability_remote_rust_build: true`にします。
 ```bash
 ./scripts/sync-check.sh
 ./scripts/import.sh
@@ -212,3 +229,23 @@ isuscope survey-run --hypothesis "初期状態の負荷構造とベンチシナ�
 ```
 
 `phase1-check`はAnsibleの構文と全nodeのverify（SSH、disk、role別の必須service、必須command）、sync manifest、benchmark adapterのcheckとprobe、`isuscope doctor`を実行しますが、ベンチは起動しません。shell構文と空白の検査はCIが担当します。`isuscope doctor`は、保存したbenchmark sampleに`initialize_start_marker`・`initialize_finish_marker`の文言が含まれるかを確認し（含まれなければinitializeと負荷の区間分けができないのでWARN）、各collectorの`preflight`（全nodeで`/proc/stat`の1秒sampling、nginx access logの読取、`sudo -n`でのslow log読取など）を対象nodeで実行し、`config/benchmark-sample.log`へ全parserを適用し、最新runに動的IDを含むrouteが残っていないかも確認します。
+
+### Phase 1の構築完了待ちと計測設定の再生成
+
+SSH接続だけでは初期DB投入の完了とみなさない。bootstrapは全対象nodeで
+`cloud-init status --wait`を確認してからpackage・サービス設定を変更する。
+待機上限は`bootstrap_provision_timeout_seconds`（既定1800秒）。失敗・timeout時は
+設定変更前に停止し、構築ログを確認する。練習の復旧scriptは完了markerを消して
+開始し、bootstrapは復旧processの終了とmarkerの再作成も確認する。
+復旧成功のmarkerがある場合だけ、中断したcloud-initの終了コードを許容する。
+先行コード回収・worktree作成はこの待機より前に行える。
+
+会話紐付けと運営向け出力の除外は`config/isuscope-policy.json`を正本とする。
+`make discover`によるisuscope設定の再生成時に自動反映し、`make phase1-check`でも
+一致を検査する。当日の除外ルール変更はこの宣言を変更してから再生成する。
+練習では`[ADMIN]`を含む行を除外する。生成済みTOMLだけを編集しない。
+
+systemdの調査は稼働中だけでなく、インストール済み・停止中のunitも対象にする。
+Rust unitのfragmentは`/etc/systemd/system`、`/lib/systemd/system`、
+`/usr/lib/systemd/system`からdraft候補にできる。unitが見つかったことと稼働確認は
+別に扱い、draft reviewとdeployの起動検査は引き続き必要とする。

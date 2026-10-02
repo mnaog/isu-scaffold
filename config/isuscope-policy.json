@@ -1,0 +1,4 @@
+{
+  "history_dir": "docs/agent-history",
+  "operator_line_pattern": "\\[ADMIN\\]"
+}

@@ -115,7 +115,7 @@ def rust_binary_name(application_dir: Path) -> str | None:
 def rust_service(service_fragments: list[str]) -> tuple[str, str] | None:
     for line in sorted(service_fragments):
         parts = line.split("\t", 1)
-        if len(parts) == 2 and "rust" in parts[0] and parts[1].startswith("/etc/systemd/system/"):
+        if len(parts) == 2 and "rust" in parts[0] and parts[1].startswith(("/etc/systemd/system/", "/lib/systemd/system/", "/usr/lib/systemd/system/")):
             return parts[0].removesuffix(".service"), parts[1]
     return None
 
@@ -229,12 +229,18 @@ def main() -> int:
     for report in reports.values():
         for line in report.get("service_fragments", []):
             parts = line.split("\t", 1)
-            if len(parts) == 2 and parts[1].startswith("/etc/systemd/system/"):
+            if len(parts) == 2 and parts[1].startswith(("/etc/systemd/system/", "/lib/systemd/system/", "/usr/lib/systemd/system/")):
                 service_fragments.append(parts[1])
                 service_fragment_lines.append(line)
     application_env = read_application_env()
     application_language = application_env.get("APPLICATION_LANGUAGE", "")
     application_path = application_env.get("APPLICATION_PATH", "")
+    if application_language != "rust":
+        raise ValueError("config/application.env must select Rust; do not infer the language from running services")
+    if not application_path.startswith("webapp/") or ".." in Path(application_path).parts:
+        raise ValueError("APPLICATION_PATH must be under webapp/")
+    if not (REPO_DIR / application_path / "Cargo.toml").is_file():
+        raise ValueError("adopted Rust Cargo.toml is missing; complete early import before generating a draft")
 
     default_user = inventory["all"]["vars"]["ansible_user"]
     default_source = next(iter(application_hosts))
@@ -244,6 +250,7 @@ def main() -> int:
 
     items = []
     build_commands = []
+    local_builds = []
     language_commands = []
     language_status = []
     draft_warnings = []
@@ -292,8 +299,9 @@ def main() -> int:
             return (command.replace("replace-with-binary-name", binary or "replace-with-binary-name")
                     .replace("replace-with-service-name", service_name))
 
-        build_commands = [dict(command, node_group="role_app", command=adapt(command["command"]))
-                          for command in example["build_commands"]]
+        local_builds = [dict(build, binary=adapt(build["binary"]))
+                        for build in example["local_builds"]]
+        draft_warnings.append("Verify local Rust builder base_image, target CPU and runtime libraries before deploy")
         if service:
             language_commands = [{"node_group": "role_app", "command": adapt(command["command"])}
                                  for command in example["post_deploy_commands"]]
@@ -325,18 +333,6 @@ def main() -> int:
                     "owner": app_owner,
                     "owner_group": app_group,
                 })
-    elif root:
-        app_owner, app_group = detected_owner or (default_user, default_user)
-        draft_warnings.append("the adopted Rust code is not imported locally; the draft falls back to deploying all of webapp/")
-        items.append({
-            "name": "webapp",
-            "type": "directory",
-            "node_group": "application",
-            "local": "webapp",
-            "remote": root,
-            "owner": app_owner,
-            "owner_group": app_group,
-        })
     if "/etc/nginx/nginx.conf" in config_paths:
         items.append({
             "name": "nginx-conf",
@@ -379,6 +375,7 @@ def main() -> int:
         "pre_deploy_command": "",
         "items": items,
         "build_commands": build_commands,
+        "local_builds": local_builds,
         "post_deploy_commands": post_commands,
         "rollback_commands": post_commands,
         "status_commands": status_commands,

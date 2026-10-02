@@ -11,7 +11,7 @@ if [[ "${ISUSCOPE_LOCK_HELD:-}" != 1 ]]; then
 fi
 
 # shellcheck disable=SC1091
-source "${repo_dir}/config/application.env"
+source "${script_dir}/application-policy.sh"
 language=${APPLICATION_LANGUAGE:?set APPLICATION_LANGUAGE in config/application.env}
 application_path=${APPLICATION_PATH:?set APPLICATION_PATH in config/application.env}
 schema_path=${CODE_SCHEMA_PATH:-webapp/sql}
@@ -48,6 +48,8 @@ worktree_output=$("${script_dir}/worktree.sh" "${PHASE1_WORKTREE_BRANCH:-optimiz
   "Phase 1の初期改善: ${language}のコードとschemaを読み、自明な改善を継続し、観測結果を取り込みながら検証済みcommitを渡す" "HEAD" phase1)
 printf '%s\n' "${worktree_output}"
 echo ">> start the Phase 1 improvement session in the worktree above NOW; do not wait for kickoff to finish; setup continues here"
+
+echo ">> Phase 1 local environment: adapt config/local/compose.example.yaml; run make local-up in parallel (docs/local-development.md). Baseline does not wait for it."
 
 echo "== setup: bootstrap, inspection and configuration draft"
 "${script_dir}/bootstrap.sh"

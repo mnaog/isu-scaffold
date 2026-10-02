@@ -67,13 +67,17 @@ scoutは人間がPhase 2開始を決めてから`make scout-start`で起動し�
 make kickoff
   → 回収元1台のSSH確立後、webapp/rustとDDLを先行回収し、その範囲だけ自動commit
   → 別worktreeと引き継ぎ文を作成（ここでコード読解セッションを開始）
+  → 並行してローカル実行環境を構成し、make local-up / local-checkで初期改善に使う
   → 全nodeのSSH確立、Ansible導入、初期収束、初期構成の調査
   → node role、同期対象、Ansible変数、log pathの候補を.local/draftへ生成
   → draftを実nodeと照合し、.local/draft/review.mdを出して停止
 review.mdのFAILを直し、WARNをすべて判断してからCONFIRM_DRAFT=true make kickoff-apply
   → draftを再検査して反映し、全配布先のdigest一致を確認して完全import
+make build（先行回収のcommit後、設定確認済みなら初動と並行可能）
+  → ローカルDockerでLinux向けRustをbuildし、ルートrepoのcacheへ保存
 make deploy
-  → 全台preflight・staging後に切り替え、失敗時はtransaction全体を復旧
+  → ローカル成果物を再利用・必要時buildし、同じbinaryを全台stagingへ配布
+  → 全台preflight・staging検査後に切り替え、失敗時はtransaction全体を復旧
 config/benchmark.envを設定して.isuscope/benchmark.sh --check、--probe
 make phase1-check
   → 全node、同期、ベンチadapterと接続先、isuscope doctorをベンチなしで検査
@@ -89,6 +93,7 @@ isuscope survey-run --hypothesis "..."
 - `kickoff`、`bootstrap`、`phase1-check`からベンチを起動しない。`isuscope survey-run`は必ず独立した明示操作にする。
 - 通常は1 worktree＝1 branch＝1目的とする。Phase 1の初期改善は一つのworktree・branchで継続し、変更目的ごとにcommitを分ける。worktreeは`make worktree BRANCH=<name> PURPOSE="..."`で作る。目的はbranchへ記録され、他のlaneの一覧は引き継ぎ文に出る。
 - 並行worktreeは`webapp/`のコード・schemaとローカルテストだけを扱い、remote変更、deploy、ベンチ、`.local/operation.lock`を使う操作はmain側だけが行う。
+- Phase 1でmainが用意したローカル実行環境はworkerも`make local-up / local-check / local-down`で操作してよい。worktree専用のDB・network・port・lockを使う。初回baselineの開始はローカル環境の完成を待たない。詳細は`docs/local-development.md`を参照する。
 - 自明な修正は初回baselineを取るまでremoteへ反映しない。baselineの分析後にmainの最新設定を取り込み、変更根拠を照合してから統合する。
 - `config/sync.json`のitemとcommandには対象node groupを明示し、役割を持たないnodeへ設定や再起動を配らない。
 - `.local/`の接続情報や生成物をGitへ追加しない。固定化すべき構成だけを`ansible/`、`config/`、`scripts/`へ残す。

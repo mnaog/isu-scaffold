@@ -136,6 +136,8 @@ jq -r '
   cat "${nodes_tmp}"
 } >"${config_tmp}"
 
+python3 "${script_dir}/isuscope-policy.py" "${config_tmp}"
+
 mv -- "${inventory_tmp}" "${inventory_file}"
 mv -- "${nodes_tmp}" "${node_toml_file}"
 mv -- "${config_tmp}" "${isuscope_config}"

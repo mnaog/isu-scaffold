@@ -64,3 +64,7 @@ SQL
 CLI起動・終了は起動側が`worker_processes`へ記録する。`task_id`は作業開始までNULLでよく、後で紐付ける。起動側は実際のCLI PIDとセッションIDをINSERTし、終了時に`exited_at`と`exit_code`をUPDATEする。プロセス終了からworkersのstateを更新する処理はない。異常終了しても作業状態は残る。
 
 DBの場所は`./scripts/scout db-path`で取得でき、通常のsqlite3から直接操作することもできる。その場合は`worker_start`と`worker_context`はないため、`workers`の機械項目も明示する。schemaは`scripts/operations/schema.sql`。秘密・接続情報は記録しない。
+
+## ローカル実行環境
+
+Phase 1でoperatorが用意した`config/local/compose.yaml`を使い、自分のworktreeで`make local-up`、`make local-check`、`make local-logs`、`make local-down`を実行してよい。DB・port・networkはworktree単位で分離する。データ削除が必要なら`LOCAL_RESET=yes make local-reset`を明示する。remoteのdeploy・共有ベンチは実行しない。詳細は[ローカル実行環境](../local-development.md)を参照する。

@@ -13,14 +13,7 @@
       "owner_group": "isucon"
     }
   ],
-  "build_commands": [
-    {
-      "name": "rust-release",
-      "node_group": "application",
-      "item": "rust-app",
-      "command": "cache_dir=/home/isucon/.cache/isucon-cargo-target; input_marker=$cache_dir/.replace-with-binary-name-build-input; compiler_marker=$cache_dir/.replace-with-binary-name-rustc-version; sudo install -d -o isucon -g isucon -m 0755 \"$cache_dir\"; if ! sudo test -f \"$cache_dir/.rustc_info.json\" && sudo test -d \"$ISUCON_DEPLOY_REMOTE_PATH/target\"; then sudo -u isucon cp -a \"$ISUCON_DEPLOY_REMOTE_PATH/target/.\" \"$cache_dir/\"; fi; cached_input_id=$(sudo cat \"$input_marker\" 2>/dev/null || true); compiler_id=$(sudo -u isucon rustc -V); cached_compiler_id=$(sudo cat \"$compiler_marker\" 2>/dev/null || true); if test \"$ISUCON_DEPLOY_BUILD_INPUTS_UNCHANGED\" != true || test \"$ISUCON_DEPLOY_BUILD_INPUT_ID\" != \"$cached_input_id\" || ! sudo test -x \"$cache_dir/release/replace-with-binary-name\" || test \"$compiler_id\" != \"$cached_compiler_id\"; then cd \"$ISUCON_DEPLOY_STAGING_PATH\"; sudo -u isucon env CARGO_TARGET_DIR=\"$cache_dir\" cargo build --release --locked; sudo -u isucon sh -c 'printf \"%s\\n\" \"$1\" > \"$2\"; exec rustc -V > \"$3\"' sh \"$ISUCON_DEPLOY_BUILD_INPUT_ID\" \"$input_marker\" \"$compiler_marker\"; fi; sudo -u isucon install -D -m 0755 \"$cache_dir/release/replace-with-binary-name\" \"$ISUCON_DEPLOY_STAGING_PATH/target/release/replace-with-binary-name\"; test -x \"$ISUCON_DEPLOY_STAGING_PATH/target/release/replace-with-binary-name\""
-    }
-  ],
+  "build_commands": [],
   "post_deploy_commands": [
     {
       "node_group": "application",
@@ -43,5 +36,14 @@
   ],
   "status_commands": [
     "systemctl is-active replace-with-service-name"
+  ],
+  "local_builds": [
+    {
+      "item": "rust-app",
+      "dockerfile": "config/rust-builder/Dockerfile",
+      "base_image": "rust:1.63.0-bullseye",
+      "target": "x86_64-unknown-linux-gnu",
+      "binary": "replace-with-binary-name"
+    }
   ]
 }

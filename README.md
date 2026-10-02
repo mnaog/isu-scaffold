@@ -24,3 +24,9 @@ isuscope survey-run --hypothesis "初期状態の負荷構造を記録する"
 ## templateの検査
 
 `scripts/`などを変更してpushすると、GitHub Actionsの`test` workflowがisuscopeをbuildし、shell構文と`tests/initial-automation.sh`を実行します。EC2やSSHは使わず、偽のremoteでdiscover、lock、import、deploy、rollback、draft検査などを検査します。手元で確認する場合は`./tests/initial-automation.sh`を直接実行します。
+
+## Phase 1のローカル実行・ビルド
+
+コード回収後、`config/local/compose.example.yaml`を当日のアプリに合わせて`compose.yaml`へコピーし、`make local-up` / `make local-check` / `make local-down`で検証します。DB・network・portはworktreeごとに分離し、初回baselineの開始を待たせません。[ローカル実行環境](docs/local-development.md)と[Phase 1](docs/phases/Phase1.md)を参照してください。
+
+配布用Rustは`make build`でローカルからLinux向けにbuildし、`make deploy`が同じ成果物を全対象nodeへ配ります。Docker cacheを再利用し、配布サーバーでのコンパイルを既定から外しています。Rust版・target・実行時依存は当日の環境に合わせて設定してください。

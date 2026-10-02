@@ -13,6 +13,8 @@ test -x "${venv_dir}/bin/ansible"
 test -f "${inventory_path}"
 test -z "$(git ls-files -- .local)" || { echo '.local contains tracked files' >&2; exit 1; }
 
+python3 "${script_dir}/isuscope-policy.py" "${repo_dir}/.isuscope/config.toml" --check
+
 export ANSIBLE_CONFIG=${repo_dir}/ansible/ansible.cfg
 "${venv_dir}/bin/ansible-playbook" --inventory "${inventory_path}" ansible/playbooks/bootstrap.yml --syntax-check
 "${venv_dir}/bin/ansible-playbook" --inventory "${inventory_path}" ansible/playbooks/verify.yml --syntax-check
