@@ -39,7 +39,7 @@ def check(root, contract, env, seal=True):
     if contract.get('schema_version') != 1:
         raise ValueError('contract schema_version must be 1')
     if not contract.get('reviewed_by') or not contract.get('reviewed_at'):
-        raise ValueError('record the operator and review time after checking official instructions')
+        raise ValueError('record the reviewer and review time after checking official instructions')
     conditions = contract.get('conditions', {})
     for key in ('mode', 'request_timeout', 'initialize_timeout', 'load_duration', 'target'):
         if not isinstance(conditions.get(key), str) or not conditions[key].strip():
@@ -89,7 +89,7 @@ def check(root, contract, env, seal=True):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parent.parent)
-    parser.add_argument('--seal', action='store_true', help='after operator review, bind the exact effective settings; does not launch a benchmark')
+    parser.add_argument('--seal', action='store_true', help='after review, bind the exact effective settings; does not launch a benchmark')
     args = parser.parse_args()
     root = args.root.resolve()
     path = root / os.environ.get('BENCHMARK_CONTRACT_FILE', 'config/benchmark-contract.json')

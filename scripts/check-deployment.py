@@ -3,15 +3,49 @@
 import argparse
 import json
 from pathlib import Path
-import sqlite3
 import subprocess
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parent / 'operations'))
-from handoffs import ancestor, check_manifest
+def check_requirements(requirements):
+    seen = set()
+    for r in requirements:
+        path = r['path']
+        if not path.startswith('webapp/') or '..' in Path(path).parts or path in seen:
+            raise ValueError('invalid or duplicate deployment requirement path')
+        seen.add(path)
+        if r.get('local_only_reason', '').strip():
+            continue
+        if not r.get('node_group') or not r.get('remote', '').startswith('/') or '..' in Path(r['remote']).parts:
+            raise ValueError('deployment requirement needs node_group and absolute remote path')
+        if 'command' in r and not r['command'].strip():
+            raise ValueError('migration command cannot be empty')
+    return seen
+
+
+def check_manifest(requirements, manifest):
+    check_requirements(requirements)
+    for r in requirements:
+        if r.get('local_only_reason'):
+            continue
+        matches = []
+        for item in manifest['items']:
+            local = item['local'].rstrip('/')
+            if item['type'] == 'file' and r['path'] == local:
+                remote = item['remote']
+            elif item['type'] == 'directory' and r['path'].startswith(local + '/'):
+                remote = item['remote'].rstrip('/') + r['path'][len(local):]
+            else:
+                continue
+            if remote == r['remote'] and item['node_group'] == r['node_group']:
+                matches.append(item)
+        if len(matches) != 1:
+            raise ValueError('missing or wrong deployment mapping: ' + r['path'])
+        if r.get('command') and {'node_group': r['node_group'], 'command': r['command']} not in manifest.get('post_deploy_commands', []):
+            raise ValueError('missing migration post_deploy_command: ' + r['path'])
 
 
 def check(repo, manifest):
+    check_manifest(manifest.get('deployment_requirements', []), manifest)
     items = manifest['items']
     for item in items:
         remote = item['remote'].rstrip('/')
@@ -33,14 +67,6 @@ def check(repo, manifest):
         if name.startswith('webapp/sql/') and Path(name).suffix in ('.sql', '.sh') and 'tests' not in Path(name).parts:
             if not matched and name not in exclusions:
                 raise ValueError('SQL/init file missing from sync manifest: ' + name + '; add mapping or local_only_files reason')
-    common = Path(discovery.stdout.strip()).parent
-    db_path = common / '.local/operations/state.sqlite3'
-    if db_path.exists():
-        with sqlite3.connect('file:' + str(db_path) + '?mode=ro', uri=True) as db:
-            if db.execute("SELECT 1 FROM sqlite_master WHERE name='worker_integrations'").fetchone():
-                for commit, requirements in db.execute('SELECT i.integration_commit,h.deployment_requirements FROM worker_integrations i JOIN worker_handoffs h USING(handoff_id)'):
-                    if ancestor(repo, commit, 'HEAD'):
-                        check_manifest(json.loads(requirements), manifest)
 
 
 def main():

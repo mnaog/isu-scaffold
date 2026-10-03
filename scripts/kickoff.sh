@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# One entry point for the first hour: early code import for the parallel code lane, then
+# One entry point for the first hour: early code import and asynchronous build, then
 # full setup up to a reviewed configuration draft. It stops before anything is applied;
 # `CONFIRM_DRAFT=true make kickoff-apply` continues after the draft review.
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -43,22 +43,9 @@ else
   fi
 fi
 
-echo "== code lane: worktree"
-worktree_output=$("${script_dir}/worktree.sh" "${PHASE1_WORKTREE_BRANCH:-optimize/phase1-obvious}" \
-  "Phase 1の初期改善: ${language}のコードとschemaを読み、自明な改善を継続し、観測結果を取り込みながら検証済みcommitを渡す" "HEAD" phase1)
-printf '%s\n' "${worktree_output}"
-worktree_path=$(printf '%s\n' "${worktree_output}" | sed -n 's/^worktree: //p' | tail -1)
-test -n "${worktree_path}" || { echo "worktree path missing" >&2; exit 2; }
 source_node=${CODE_SOURCE_NODE:-$(jq -r '.all.children.application.hosts | keys[0] // empty' "${inventory}")}
 echo "== parallel build lane: inspect source node and start with reviewed settings"
 python3 "${script_dir}/phase1-build.py" start --node "${source_node}" --application "${application_path}"
-echo "== parallel worker lane: visible interactive iTerm"
-worker_status=0
-python3 "${script_dir}/worker-iterm.py" "${worktree_path}" --ensure --dispatch || worker_status=$?
-if [[ "${worker_status}" -ne 0 ]]; then
-  echo "WORKER START FAILED: retry make worker-start WORKTREE=${worktree_path}; setup continues" >&2
-fi
-
 echo ">> Phase 1 local environment: adapt config/local/compose.example.yaml; run make local-up in parallel (docs/local-development.md). Baseline does not wait for it."
 
 echo "== setup: bootstrap, inspection and configuration draft"
@@ -72,17 +59,9 @@ python3 "${script_dir}/review-draft.py" || review_status=$?
 
 echo
 echo "kickoff stopped before applying the draft"
-if [[ "${worker_status}" -eq 0 ]]; then
-  python3 "${script_dir}/worker-iterm.py" "${worktree_path}" --check-started || worker_status=$?
-fi
 python3 "${script_dir}/phase1-build.py" status || review_status=1
-if [[ "${worker_status}" -ne 0 ]]; then
-  echo "worker startup still requires attention" >&2
-  review_status=1
-fi
-printf '%s\n' "${worktree_output}" | grep -E '^(worktree|引き継ぎ文):' || true
 if [[ "${review_status}" -ne 0 ]]; then
-  echo "kickoff needs attention: check worker startup, build status, and .local/draft/review.md"
+  echo "kickoff needs attention: check build status, and .local/draft/review.md"
   exit "${review_status}"
 fi
 echo "read .local/draft/review.md, decide every WARN, then run: CONFIRM_DRAFT=true make kickoff-apply"

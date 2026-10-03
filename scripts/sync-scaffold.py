@@ -26,9 +26,14 @@ def main():
     commit = git(source, 'rev-parse', '--verify', a.ref + '^{commit}').decode().strip()
     manifest = json.loads(git(source, 'show', commit + ':config/scaffold-export.json'))
     files = {}
-    for name in manifest['files']:
+    removals = manifest.get('remove_files', [])
+    for name in [*manifest['files'], *removals]:
         if Path(name).is_absolute() or '..' in Path(name).parts or name.startswith(('webapp/', '.local/', 'isuscope-data/', 'docs/agent-history/', 'docs/official/')):
             p.error('non-generic export path: ' + name)
+        if name in removals:
+            if name in manifest['files']:
+                p.error('path listed for both export and removal: ' + name)
+            continue
         files[name] = git(source, 'show', commit + ':' + name)
     spec = importlib.util.spec_from_file_location('phase0', source / 'scripts/check-phase0.py')
     phase0 = importlib.util.module_from_spec(spec)
@@ -37,11 +42,14 @@ def main():
     if errors:
         sys.exit('non-generic export rejected:\n' + '\n'.join(errors))
     changes = [name for name, data in files.items() if not (target / name).is_file() or (target / name).read_bytes() != data]
-    if a.apply and changes:
+    deletions = [name for name in removals if (target / name).exists() or (target / name).is_symlink()]
+    if a.apply and (changes or deletions):
         # Never overwrite another task's edits, including an untracked target file.
-        dirty = git(target, 'status', '--porcelain', '--untracked-files=all', '--', *changes).decode().strip()
+        dirty = git(target, 'status', '--porcelain', '--untracked-files=all', '--', *changes, *deletions).decode().strip()
         if dirty:
             sys.exit('export would overwrite local changes:\n' + dirty)
+        for name in deletions:
+            (target / name).unlink()
         for name in changes:
             path = target / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -54,6 +62,7 @@ def main():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + '\n')
     remaining = [n for n, d in files.items() if not (target / n).is_file() or (target / n).read_bytes() != d]
+    remaining += [n for n in removals if (target / n).exists() or (target / n).is_symlink()]
     if remaining:
         print('scaffold drift:\n' + '\n'.join(remaining))
         return 1

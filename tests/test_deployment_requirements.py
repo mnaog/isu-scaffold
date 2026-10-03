@@ -36,3 +36,19 @@ class DeploymentRequirementsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'wholesale'):check.check(repo,manifest)
             manifest['items']=[{'type':'file','local':'config/mysql/secret','remote':'/etc/mysql/debian.cnf'}]
             with self.assertRaisesRegex(ValueError,'debian.cnf'):check.check(repo,manifest)
+
+    def test_explicit_requirements_check_destination_and_migration_without_database(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            requirement = dict(path='webapp/sql/migrate.sql', node_group='role_mysql',
+                               remote='/srv/sql/migrate.sql', command='mysql < /srv/sql/migrate.sql')
+            manifest = dict(items=[dict(type='directory', local='webapp/sql', remote='/srv/sql', node_group='role_mysql')],
+                            deployment_requirements=[requirement])
+            with self.assertRaisesRegex(ValueError, 'missing migration'):
+                check.check(repo, manifest)
+            manifest['post_deploy_commands'] = [dict(node_group='role_mysql', command=requirement['command'])]
+            check.check(repo, manifest)
+            manifest['items'][0]['node_group'] = 'role_app'
+            with self.assertRaisesRegex(ValueError, 'wrong deployment mapping'):
+                check.check(repo, manifest)

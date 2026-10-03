@@ -36,7 +36,7 @@ def trial_manifest(dest):
     matches = [json.loads(p.read_text()) for p in (STATE / 'trials').glob('*.json')]
     matches = [m for m in matches if m['destination'] == str(dest)]
     if len(matches) != 1:
-        raise SystemExit('Expected one operator-side manifest for this destination')
+        raise SystemExit('Expected one controller-side manifest for this destination')
     manifest = matches[0]
     if digest(dest / '.local/environment.json') != manifest['environment_file_sha256']:
         raise SystemExit('Trial environment configuration changed')
@@ -256,7 +256,7 @@ def audit(args):
             raise SystemExit('MySQL changed since preparation')
     for mode in manifest.get('validation_modes', ['check', 'test']):
         with (dest / f'.local/audit-{mode}.log').open('w') as log:
-            # Use the operator's verifier, not code controlled by the trial agent.
+            # Use the controller's verifier, not code controlled by the trial agent.
             code = 'import sys; from pathlib import Path; from verify import validate; sys.exit(validate(Path(sys.argv[1]), sys.argv[2]))'
             results[mode] = subprocess.run([sys.executable, '-c', code, str(dest), mode],
                 cwd=ROOT / 'scripts/ai-compare', stdout=log, stderr=subprocess.STDOUT).returncode

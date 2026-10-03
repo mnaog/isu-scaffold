@@ -1,6 +1,6 @@
 # Phase 1のローカル実行環境
 
-コード回収後、配布サーバーの準備と並行して、回収したアプリをDockerで起動する。初回baselineはローカル環境の完成を待たない。operatorが構成を用意し、workerは自分のworktreeで検証する。Phase 0で準備するのはDocker Composeと汎用コマンドだけで、問題のコードやデータを先読みしない。
+コード回収後、配布サーバーの準備と並行して、回収したアプリをDockerで起動する。初回baselineはローカル環境の完成を待たない。各worktreeで構成を用意し、検証する。Phase 0で準備するのはDocker Composeと汎用コマンドだけで、問題のコードやデータを先読みしない。
 
 ## 構成する
 
@@ -8,7 +8,7 @@
 2. Rust版、DB版、追加service、アプリの環境変数、SQL投入元を実アプリに合わせる。`LOCAL_DB_IMAGE`と`LOCAL_RUST_IMAGE`は未設定なら起動を拒否する。Phase 1で当日の環境を確認して設定する。
 3. 許可されたschema・初期データを設定する。例では`.local/local-runtime/init/`のSQLをMySQLの初回起動時に投入する。`LOCAL_INIT_DIR`で別ディレクトリも指定できる。DB volumeが既存なら自動で再投入しない。
 4. 必要なOS依存はDockerfileへ宣言する。`EXTRA_PACKAGES` build argも使える。初期化scriptが必要とするDB client・ファイル配置・権限も確認する。
-5. 構成をcommitしてworkerへ渡す。秘密情報はtrackedなComposeへ書かず、ローカル専用の値か`.local/`からの注入を使う。
+5. 構成をcommitする。秘密情報はtrackedなComposeへ書かず、ローカル専用の値か`.local/`からの注入を使う。
 
 標準の入口はservice名`app`、container port `8080`、HTTP `GET /health`である。異なるアプリはComposeと`LOCAL_HEALTH_PATH`を合わせる。`local-check`は全serviceのrunning/health状態とHTTP 200を検査する。代表APIや初期化の検証はアプリごとに追加し、health確認だけで完了としない。
 

@@ -3,7 +3,7 @@
 help:
 	@printf '%s\n' \
 		'make discover                         providerからnodeと全設定を再生成する' \
-		'make kickoff                          コード先行回収・worktree作成からdraft生成と検査まで進める' \
+		'make kickoff                          コード先行回収・初期buildからdraft生成と検査まで進める' \
 		'make worktree BRANCH=<name> PURPOSE="..."  目的つきで並行laneのworktreeを作る' \
 		'CONFIRM_DRAFT=true make kickoff-apply  検査済みdraftを反映して完全importする' \
 		'make local-up / local-check / local-down  worktree専用のローカル実行環境を操作する' \
@@ -15,8 +15,7 @@ help:
 		'make operations-init                  共通SQLiteと最新scout boardを初期化する' \
 		'make board                            人間向けボードを開く (127.0.0.1:8765)' \
 		'make scout-start / scout-stop         人間の判断でscout定期実行を開始・停止する' \
-		'make worker-start WORKTREE=<path>     iTermの見えるタブで対話型workerを起動する' \
-		'make scout-status                     worker・scoutの状態を表示する' \
+		'make scout-status                     scoutの状態を表示する' \
 		'make operations-test                  ローカル運用の偽CLIテストを実行する'
 
 discover:
@@ -83,11 +82,6 @@ local-reset:
 .PHONY: phase0-check
 phase0-check:
 	@python3 scripts/check-phase0.py
-
-.PHONY: worker-start
-worker-start:
-	@test -n "$(WORKTREE)" || { echo "WORKTREE=<path>を指定してください" >&2; exit 2; }
-	@python3 scripts/worker-iterm.py "$(WORKTREE)"
 
 .PHONY: practice-check practice-create practice-status practice-delete
 practice-check practice-create practice-status practice-delete:

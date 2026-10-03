@@ -47,7 +47,6 @@ class OperationsTests(unittest.TestCase):
         (self.repo / 'config/operations.json').write_text(json.dumps(self.cfg))
         runner.initialize(self.repo, self.cfg)
         self.bundle = {'metrics': {'current_commit': self.git('rev-parse', 'HEAD'), 'latest': {'id': 'run-12345678'}, 'base': {'id': 'base-87654321'}}}
-        self.env = {'SCAFFOLD_SESSION_ID': 'child', 'SCAFFOLD_PARENT_SESSION_ID': 'parent', 'SCAFFOLD_AGENT': 'codex'}
 
     def tearDown(self):
         if runner.active(self.repo):
@@ -61,125 +60,24 @@ class OperationsTests(unittest.TestCase):
         with store.connect(self.repo) as db:
             return store.rows(db, sql, args)
 
-    def sql(self, sql, cwd=None):
-        with patch.dict(os.environ, self.env):
-            return store.worker_sql(self.repo, cwd or self.repo, sql)
-
-    def begin(self, cwd=None):
-        return self.sql("INSERT INTO worker_start VALUES ('N+1解消',5,'同じ結果','ローカル検証');", cwd)[0]
-
-    def complete(self):
-        return self.sql("UPDATE workers SET state='developed',result_commit=(SELECT head_commit FROM worker_context),validation='test passed',notes='なし',completed_at=strftime('%s','now') WHERE task_id=(SELECT task_id FROM worker_context);")[0]
-
-    def test_worker_lifecycle_and_process_exit_are_separate(self):
-        row = self.begin()
-        self.assertEqual(row['session_id'], 'child')
-        self.assertEqual(row['parent_session_id'], 'parent')
-        self.assertEqual(row['base_commit'], self.git('rev-parse', 'HEAD'))
-        self.assertEqual(len(row['task_id']), 32)
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.sql("UPDATE workers SET state='developed';")
-        self.sql("INSERT INTO worker_processes(session_id,pid,exit_code,exited_at) VALUES ('child',123,0,strftime('%s','now')); UPDATE workers SET remaining_minutes=2,state='blocked',notes='調査中';")
-        self.assertEqual(self.query('SELECT state FROM workers')[0]['state'], 'blocked')
-        row = self.complete()
-        self.assertEqual(row['state'], 'developed')
-        self.assertIsNone(row['integrated_at'])
-        row = self.sql("UPDATE workers SET state='integrated',integration_commit=(SELECT head_commit FROM worker_context),integrated_at=strftime('%s','now');")[0]
-        self.assertEqual(row['state'], 'integrated')
-
-    def test_new_workers_require_codex_but_operator_can_integrate(self):
-        self.env['SCAFFOLD_AGENT'] = 'claude'
-        with self.assertRaisesRegex(sqlite3.IntegrityError, 'worker must use Codex'):
-            self.begin()
-        self.assertEqual(self.query('SELECT * FROM workers'), [])
-        self.env['SCAFFOLD_AGENT'] = 'codex'
-        self.begin()
-        self.complete()
-        self.env['SCAFFOLD_AGENT'] = 'claude'
-        row = self.sql("UPDATE workers SET state='integrated',integration_commit=(SELECT head_commit FROM worker_context),integrated_at=strftime('%s','now');")[0]
-        self.assertEqual(row['state'], 'integrated')
 
     def test_board_ignores_legacy_research_without_deleting_it(self):
         import main
         with store.connect(self.repo) as db:
-            db.execute('CREATE TABLE research_proposals(note TEXT)')
-            db.execute("INSERT INTO research_proposals VALUES ('historical evidence')")
+            db.execute('CREATE TABLE workers(note TEXT)')
+            db.execute("INSERT INTO workers VALUES ('historical evidence')")
         state = main.status(self.repo)
-        self.assertNotIn('research', state)
+        self.assertNotIn('workers', state)
         runner.export_board(self.repo)
-        self.assertEqual(self.query('SELECT note FROM research_proposals')[0]['note'], 'historical evidence')
+        self.assertEqual(self.query('SELECT note FROM workers')[0]['note'], 'historical evidence')
         self.assertNotIn('Researcher', (self.repo / 'docs/scout-board.md').read_text())
 
     def test_worktrees_share_database(self):
-        branch = self.repo.parent / 'worker'
-        self.git('worktree', 'add', '-b', 'worker', str(branch))
+        branch = self.repo.parent / 'parallel'
+        self.git('worktree', 'add', '-b', 'parallel', str(branch))
         self.assertEqual(store.root(branch), self.repo)
-        row = self.begin(branch)
-        self.assertEqual(row['worktree'], str(branch))
-        self.assertEqual(len(self.query('SELECT * FROM workers')), 1)
         self.assertFalse((branch / '.local').exists())
 
-    def test_sql_batch_rolls_back_and_missing_identity_rejected(self):
-        with patch.dict(os.environ, {'SCAFFOLD_SESSION_ID': '', 'CODEX_THREAD_ID': '', 'SCAFFOLD_PARENT_SESSION_ID': ''}):
-            with self.assertRaises(sqlite3.IntegrityError):
-                store.worker_sql(self.repo, self.repo, "INSERT INTO worker_start VALUES ('x',5,'x','x');")
-        with self.assertRaises(sqlite3.OperationalError):
-            self.sql("INSERT INTO worker_start VALUES ('x',5,'x','x'); INSERT INTO nonexistent VALUES(1);")
-        self.assertEqual(self.query('SELECT * FROM workers'), [])
-
-    def launch_fixture(self):
-        branch = self.repo.parent / 'launched-worker'
-        self.git('worktree', 'add', '-b', 'launched-worker', str(branch))
-        self.git('config', 'branch.launched-worker.scaffold-mode', 'phase1')
-        self.git('config', 'branch.launched-worker.description', '先行改善を継続')
-        (branch / '.local').mkdir()
-        record = dict(worktree=str(branch), branch='launched-worker', mode='phase1',
-                      purpose='先行改善を継続', parent_session_id='explicit-parent',
-                      process_id='launch-1', pid=12345, state='running')
-        (branch / '.local/worker-context.json').write_text(json.dumps(record))
-        return branch
-
-    def test_launch_file_recovers_missing_parent_and_links_task_atomically(self):
-        branch = self.launch_fixture()
-        with patch.dict(os.environ, {'SCAFFOLD_PARENT_SESSION_ID':'', 'SCAFFOLD_AGENT':'',
-                                    'SCAFFOLD_SESSION_ID':'', 'CODEX_THREAD_ID':'real-child'}):
-            row = store.worker_sql(self.repo, branch, "INSERT INTO worker_start VALUES ('summary',5,'done','test');")[0]
-        self.assertEqual(row['parent_session_id'], 'explicit-parent')
-        self.assertEqual(row['session_id'], 'real-child')
-        self.assertEqual(row['task'], '先行改善を継続')
-        process = self.query('SELECT * FROM worker_processes')[0]
-        self.assertEqual(process['task_id'], row['task_id'])
-        self.assertEqual(process['session_id'], 'real-child')
-
-    def test_launch_conflict_rejected_without_creating_task(self):
-        branch = self.launch_fixture()
-        with self.assertRaisesRegex(ValueError, 'parent session ID conflicts'):
-            self.begin(branch)
-        self.assertEqual(self.query('SELECT * FROM workers'), [])
-        self.env['SCAFFOLD_PARENT_SESSION_ID'] = 'explicit-parent'
-        with store.connect(self.repo) as db:
-            db.execute("INSERT INTO worker_processes(process_id,session_id,pid) VALUES ('launch-1','wrong-child',12345)")
-        with self.assertRaisesRegex(ValueError, 'process identity conflicts'):
-            self.begin(branch)
-        self.assertEqual(self.query('SELECT * FROM workers'), [])
-
-    def test_operator_cannot_redirect_worker_through_notes_or_task(self):
-        branch = self.repo.parent / 'worker'
-        self.git('worktree', 'add', '-b', 'worker', str(branch))
-        row = self.begin(branch)
-        with self.assertRaisesRegex(sqlite3.IntegrityError, 'other worker notes are read-only'):
-            self.sql("UPDATE workers SET notes='初期化失敗の調査を優先';")
-        with self.assertRaisesRegex(sqlite3.IntegrityError, 'assignment is fixed'):
-            self.sql("UPDATE workers SET task='初期化失敗の調査';", branch)
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.sql(f"INSERT INTO worker_updates(task_id,kind,body) VALUES ('{row['task_id']}','assignment','調査して');")
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.sql(f"INSERT INTO worker_updates(task_id,kind,body) VALUES ('{row['task_id']}','observation','根拠なし');")
-        self.sql(f"INSERT INTO worker_updates(task_id,kind,body,run_id,commit_hash) VALUES ('{row['task_id']}','observation','初期化60秒timeout','run-123','{row['base_commit']}');")
-        received = self.sql("UPDATE workers SET notes='先行改善継続';", branch)[0]
-        self.assertEqual(received['updates'][0]['body'], '初期化60秒timeout')
-        self.assertEqual(self.query('SELECT notes FROM workers')[0]['notes'], '先行改善継続')
-        self.assertEqual(len(self.query('SELECT * FROM worker_updates')), 1)
 
     def test_latest_report_export_and_length(self):
         runner.save_report(self.repo, 'codex', 'あ'*300, self.bundle, 'local-ref', 'session', now=1)
@@ -226,19 +124,33 @@ class OperationsTests(unittest.TestCase):
             self.assertFalse(future.result(timeout=5))
         self.assertEqual(self.query("SELECT state FROM scouts WHERE name='codex'")[0]['state'], 'stopped')
 
+    def test_conversation_cli_replaces_explicit_source_without_using_old_registrations(self):
+        with store.connect(self.repo) as db:
+            db.execute('CREATE TABLE operators(agent TEXT, session_id TEXT)')
+            db.execute("INSERT INTO operators VALUES ('claude','old-session')")
+        self.assertEqual(inputs.generate(self.repo, self.cfg)['conversations'], {})
+        cli = [sys.executable, str(self.repo/'scripts/operations/main.py'), 'conversation', 'codex']
+        for session in ('first-session', 'current-session'):
+            subprocess.run(cli + [session], cwd=self.repo, check=True, capture_output=True)
+        self.assertEqual(self.query('SELECT agent,session_id FROM conversation_sources'),
+                         [dict(agent='codex', session_id='current-session')])
+        self.assertEqual(self.query('SELECT session_id FROM operators')[0]['session_id'], 'old-session')
+        rejected = subprocess.run(cli + [' '], cwd=self.repo, capture_output=True)
+        self.assertNotEqual(rejected.returncode, 0)
+
     def test_history_matches_both_explicit_ids_not_recency(self):
         folder = self.repo / 'docs/agent-history'
-        (folder / 'operator.md').write_text('- Agent: `codex`\n- Session: `operator-1`\n\noperator conversation')
-        (folder / 'newer-worker.md').write_text('- Agent: `codex`\n- Session: `worker-2`\n\nSECRET WORKER')
+        (folder / 'selected.md').write_text('- Agent: `codex`\n- Session: `selected-1`\n\nselected conversation')
+        (folder / 'newer-unselected.md').write_text('- Agent: `codex`\n- Session: `unselected-2`\n\nUNSELECTED CONVERSATION')
         with store.connect(self.repo) as db:
-            db.execute("INSERT INTO operators(agent,session_id) VALUES ('codex','operator-1')")
+            db.execute("INSERT INTO conversation_sources(agent,session_id) VALUES ('codex','selected-1')")
         bundle = inputs.generate(self.repo, self.cfg)
         text = json.dumps(bundle)
-        self.assertIn('operator conversation', text)
-        self.assertNotIn('SECRET WORKER', text)
+        self.assertIn('selected conversation', text)
+        self.assertNotIn('UNSELECTED CONVERSATION', text)
         self.assertNotIn('scouts', bundle)
         self.assertIn('error', bundle['metrics'])
-        self.assertIn('error', bundle['operators']['claude'][0])
+        self.assertNotIn('claude', bundle['conversations'])
 
     def test_run_selection_and_bounded_comparisons(self):
         calls=[]

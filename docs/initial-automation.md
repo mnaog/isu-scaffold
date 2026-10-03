@@ -15,8 +15,8 @@ cp config/environment.example.env .local/environment.env
 
 ```bash
 make kickoff
-# kickoffがworktree作成直後にiTermでworkerを起動し、初期build環境の調査も並行開始する
-# kickoffの終了を待たない。起動側のoperatorはセットアップを継続する
+# kickoffが先行回収・commit後に初期build環境の調査を並行開始する
+# 全台準備の終了を待たず、初期build設定を確認する
 # .local/draft/review.mdのFAILを直し、WARNを判断する
 CONFIRM_DRAFT=true make kickoff-apply
 # importを確認して初期状態をcommit
@@ -26,7 +26,7 @@ make phase1-check
 
 `kickoff`はまずnode発見後、回収元の1台（既定では最初のapplication node）だけSSHを確立し、`/home/isucon/webapp/rust`と`/home/isucon/webapp/sql`のDDL・初期化script（`.sql`、`.sh`、`.py`、`.rb`、`.pl`）だけを先行回収します。1ファイル1MiB・合計16MiBを超えるものやそれ以外の初期データは後回しにし、`.local/code-schema-manifest.log`へ`INCLUDED`／`DEFERRED`として記録します。上限は`CODE_SCHEMA_MAX_FILE_BYTES`、`CODE_SCHEMA_MAX_TOTAL_BYTES`で変更できます。生成物の`target`、`node_modules`、`.git`は除外します。pathが異なる場合は`CODE_SOURCE_NODE`、`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`、`CODE_SCHEMA_PATH`を環境変数で明示します。回収した`config/application.env`、`webapp/rust`、`webapp/sql`だけを自動commitし、他の未commit変更は含めません。この回収はコード読解開始用の暫定snapshotであり、全node一致の保証は後続の完全importが担当します。
 
-続いて先行回収のcommitから別worktree（lane）を作り、目的・触ってよい範囲・mainへの報告形式と、他のlaneの一覧をまとめた引き継ぎ文を`<worktree>/.local/lane.md`へ生成します。laneを追加する場合は`make worktree BRANCH=<name> PURPOSE="何をするlaneか"`を使います。目的は必須で、`git config branch.<name>.description`へ保存されるため、branchを消せば一緒に消えます。進み具合や取り込み状況は記録せず、毎回gitから計算します。worktreeの場所は途中と最後に表示されます。worktree作成直後にiTermの新しいタブでworkerを自動起動し、このファイルと`docs/phases/Phase1.md`を読ませます。初期改善用の引き継ぎ文は、同じworktreeで探索・修正を継続し、観測結果を取り込み、検証済みcommitを途中で渡す運用を指示します。同時に初期build処理が1台目のCPU・OS・Rust版を調査します。operatorは全台準備を待たず、`docs/phases/Phase1.md`の「3並列の開始と確認」に従ってbuild設定を確定します。設定が保存されると初期buildが始まります。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。
+続いて初期build処理が1台目のCPU・OS・Rust版を調査します。全台準備を待たず、`docs/phases/Phase1.md`の「非同期buildの開始と確認」に従ってbuild設定を確定します。設定が保存されると初期buildが始まります。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。worktreeや別AIセッションは自動作成しません。並行作業が必要な場合のみ`make worktree BRANCH=<name> PURPOSE="目的"`を使います。目的はbranchのdescriptionへ保存し、作業情報を`<worktree>/.local/lane.md`へ生成します。
 
 Rustを採用しているため、draftは`webapp/`全体ではなく、`webapp/rust`（`sync.rust.example.json`のbuild設定とCargo.tomlのbinary名つき）、Rustのsystemd unit、`webapp/sql`内の1MiB以下の`.sql`・`.sh`、nginx・MySQL設定だけを同期対象に提案します。初期データはnodeに残し、配布しません。初期状態でRust用unitがない場合（他言語のunitだけが動いている場合）はrestart commandを入れずWARNにするので、unitを`config/systemd/`へ作ってitemとcommandを足してから切り替えます。
 
@@ -52,7 +52,7 @@ lockを取る変更系操作は、終了時に`.local/operation-timing.tsv`へ�
 - `DISCOVERY_PROVIDER=aws-cloudformation`: stack配下のEC2をName tagのregexで分類する
 - `DISCOVERY_PROVIDER=static`: `config/nodes.example.json`を`.local/nodes.json`へコピーし、任意のSSH接続先を記述する
 
-SSH鍵が既に登録済みなら`SSH_BOOTSTRAP_METHOD=existing`、EC2 Instance Connectからoperator鍵を登録するなら`eic`を使います。
+SSH鍵が既に登録済みなら`SSH_BOOTSTRAP_METHOD=existing`、EC2 Instance ConnectからSSH鍵を登録するなら`eic`を使います。
 
 ## 2. nodeと実設定を生成する
 
@@ -238,7 +238,7 @@ SSH接続だけでは初期DB投入の完了とみなさない。bootstrapは全
 設定変更前に停止し、構築ログを確認する。練習の復旧scriptは完了markerを消して
 開始し、bootstrapは復旧processの終了とmarkerの再作成も確認する。
 復旧成功のmarkerがある場合だけ、中断したcloud-initの終了コードを許容する。
-先行コード回収・worktree作成はこの待機より前に行える。
+先行コード回収はこの待機より前に行える。
 
 会話紐付けと運営向け出力の除外は`config/isuscope-policy.json`を正本とする。
 `make discover`によるisuscope設定の再生成時に自動反映し、`make phase1-check`でも
@@ -255,7 +255,7 @@ Rust unitのfragmentは`/etc/systemd/system`、`/lib/systemd/system`、
 
 Phase 1で公式実行手順を `docs/official/` へ保存し、
 `config/benchmark-contract.example.json` を `config/benchmark-contract.json` にコピーする。
-operatorはmode、通常/初期化timeout、負荷時間、接続先を公式手順と照合し、
+操作者はmode、通常/初期化timeout、負荷時間、接続先を公式手順と照合し、
 `conditions`、`reviewed_by`、`reviewed_at`、一次資料のpath/SHA-256を記入する。
 条件がCLIで変更できない場合も、既定値・固定値・API側管理の別と根拠を書く。
 CLI型では `invocation.executable` と `required_flags` に明示が必要な引数を列挙する。
@@ -273,8 +273,8 @@ python3 scripts/benchmark-contract.py --seal
 ```
 
 `--seal`はベンチを起動しない。公式資料の意味を自動判定する承認処理でもない。
-operator自身の照合後に使う。必須引数の欠落・不一致・重複はseal時にも拒否する。
-HTTP型は送信先・body・headerを含む実設定をoperatorが照合する。
+操作者自身の照合後に使う。必須引数の欠落・不一致・重複はseal時にも拒否する。
+HTTP型は送信先・body・headerを含む実設定を操作者が照合する。
 `--check`・`--probe`・本実行のすべてで、資料hashと実設定hashを検査する。
 秘密設定による上書き、接続先変更、HTTP body変更も未確認のまま実行できない。
 変更後は再照合してsealする。記録には秘密情報の値を保存せずhashだけを残す。
@@ -307,5 +307,5 @@ conf.d、mysql.conf.d/mysql.cnf、mariadb.conf.d/mariadb.cnf等だけを列挙�
 `sync_validate`はimport/check/deployの前に`check-deployment.py`を実行する。
 Git管理される`webapp/sql/`のSQL/.sh（tests配下を除く）が同期対象から漏れると停止する。
 ローカル専用ならsync.jsonの`local_only_files`へ`{"local":"webapp/sql/example.sql","reason":"具体的な除外理由"}`を記録する。
-workerの受け渡し要件は統合時にもnode group・remote path・migration commandまで照合する。
+配布先・migrationの要件は`sync.json`の`deployment_requirements`へ記録する。各要件の`path`、`node_group`、`remote`、任意の`command`を同期itemと`post_deploy_commands`に照合する。ローカル専用なら`local_only_reason`を明示する。検査は作業履歴DBに依存しない。
 統合済み要件は以後のdeploy時にも検査し、設定が消えた場合も検出する。

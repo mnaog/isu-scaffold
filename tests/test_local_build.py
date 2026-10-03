@@ -94,7 +94,6 @@ class LocalBuildTests(unittest.TestCase):
         self.command("git", "config", "user.email", "test@example.invalid")
         self.commit()
         (self.repo / 'scripts/operations').mkdir(exist_ok=True)
-        shutil.copy2(ROOT / 'scripts/operations/handoffs.py', self.repo / 'scripts/operations/handoffs.py')
 
     def command(self, *args, ok=True, **env):
         result = subprocess.run(args, cwd=self.repo, env=dict(self.env, **env), capture_output=True)

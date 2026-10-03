@@ -17,7 +17,7 @@ spec = json.loads(config.read_text())
 version = subprocess.check_output(['codex', '--version'], text=True).strip()
 env = dict(os.environ)
 # The child owns its own real thread ID. Do not associate its hook events with
-# this operator's existing conversation or a previous worker task.
+# this controller's existing conversation or a previous trial.
 for key in ('CODEX_THREAD_ID', 'SCAFFOLD_SESSION_ID', 'SCAFFOLD_PARENT_SESSION_ID', 'SCAFFOLD_TASK_ID'):
     env.pop(key, None)
 args = [sys.executable, str(ROOT / 'scripts/ai-compare/manage.py'), 'run',

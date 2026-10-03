@@ -104,6 +104,6 @@ Phaseの変更は人間が決定する。
 
 ## scoutと人間向けボード
 
-人間がこのPhaseへの移行を決めたら、[scout手順](../roles/scout.md)で設定・入力を確認して`make scout-start`を明示実行する。4体が独立して探索し、それぞれの投稿完了から15分後に次回実行する。`make board`でworker、最新scout報告、isuscopeの計測内容・比較を確認する。画面には開始・停止スイッチを置かない。
+人間がこのPhaseへの移行を決めたら、[scout手順](../roles/scout.md)で設定・入力を確認して`make scout-start`を明示実行する。4体が独立して探索し、それぞれの投稿完了から15分後に次回実行する。`make board`で最新scout報告、isuscopeの計測内容・比較を確認する。画面には開始・停止スイッチを置かない。
 
-停止は`make scout-stop`、状態確認は`make scout-status`。必要な気づきは人間がoperatorへ渡す。workerの開発完了後はoperatorが統合を判断し、統合済みの記録・deploy・ベンチ・worktreeの片付けを行う。
+停止は`make scout-stop`、状態確認は`make scout-status`。必要な気づきは人間が作業中のAIへ渡す。修正からdeploy・ベンチ・採否まで一貫して進める。

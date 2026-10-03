@@ -40,7 +40,6 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/worktree.sh \
   "${fixture_repo}/scripts/"
 mkdir -p "${fixture_repo}/scripts/operations"
-cp "${source_repo}/scripts/operations/handoffs.py" "${fixture_repo}/scripts/operations/"
 # collectorの正本はisuscopeが配るので、fixtureにはbenchmark adapterだけを置く。
 cp "${source_repo}/.isuscope/benchmark.sh" "${fixture_repo}/.isuscope/"
 cp "${source_repo}/config/environment.example.env" "${fixture_repo}/.local/environment.env"

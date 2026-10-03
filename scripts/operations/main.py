@@ -12,19 +12,13 @@ import threading
 import time
 from inputs import generate, metrics
 from runner import active, attempt, daemon, export_board, initialize, start, stop_daemon
-from store import config, connect, local, root, rows, worker_sql
+from store import config, connect, local, root, rows
 
 
 def status(repo):
     with connect(repo) as db:
-        return {'daemon_running': active(repo), 'workers': rows(db, 'SELECT * FROM workers ORDER BY started_at DESC'),
-                'handoffs': rows(db, 'SELECT h.*,i.integration_commit FROM worker_handoffs h LEFT JOIN worker_integrations i USING(handoff_id) ORDER BY h.handoff_id DESC'),
-                'worker_stops': rows(db, 'SELECT * FROM worker_stops ORDER BY request_id DESC'),
-                'worker_updates': rows(db, 'SELECT * FROM worker_updates ORDER BY id DESC LIMIT 100'),
-                'scouts': rows(db, 'SELECT * FROM scouts ORDER BY name'),
-                'operators': rows(db, 'SELECT * FROM operators'),
-                'processes': rows(db, 'SELECT * FROM worker_processes ORDER BY started_at DESC LIMIT 100')}
-
+        return {'daemon_running': active(repo), 'scouts': rows(db, 'SELECT * FROM scouts ORDER BY name'),
+                'conversations': rows(db, 'SELECT * FROM conversation_sources ORDER BY agent')}
 
 def serve(repo, port):
     cached = {'value': {'error': '計測を取得中です'}}
@@ -77,11 +71,11 @@ def serve(repo, port):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='scaffold local operations; worker records accept SQL on stdin')
+    parser = argparse.ArgumentParser(description='scaffold scout and metrics')
     sub = parser.add_subparsers(dest='command', required=True)
-    for cmd in ('init', 'db-path', 'sql', 'start', 'stop', 'status', 'daemon', 'export', 'input', 'check'):
+    for cmd in ('init', 'db-path', 'start', 'stop', 'status', 'daemon', 'export', 'input', 'check'):
         sub.add_parser(cmd)
-    p = sub.add_parser('operator')
+    p = sub.add_parser('conversation')
     p.add_argument('agent', choices=['claude', 'codex'])
     p.add_argument('session_id')
     p = sub.add_parser('once')
@@ -98,13 +92,11 @@ def main():
     elif args.command == 'init':
         export_board(repo)
         print(local(repo) / 'state.sqlite3')
-    elif args.command == 'sql':
-        print(json.dumps(worker_sql(repo, Path.cwd(), sys.stdin.read()), ensure_ascii=False, indent=2))
-    elif args.command == 'operator':
+    elif args.command == 'conversation':
         if not args.session_id.strip():
             raise ValueError('実際のセッションIDが必要です')
         with connect(repo) as db:
-            db.execute('INSERT INTO operators(agent,session_id) VALUES (?,?) ON CONFLICT(agent) DO UPDATE SET session_id=excluded.session_id,registered_at=strftime(\'%s\',\'now\')', (args.agent, args.session_id))
+            db.execute('INSERT INTO conversation_sources(agent,session_id) VALUES (?,?) ON CONFLICT(agent) DO UPDATE SET session_id=excluded.session_id,registered_at=strftime(\'%s\',\'now\')', (args.agent, args.session_id))
     elif args.command == 'start':
         if Path.cwd().resolve() != repo:
             raise ValueError('scout開始はmain worktreeのrootで行ってください')

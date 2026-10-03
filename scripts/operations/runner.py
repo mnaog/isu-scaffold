@@ -77,7 +77,7 @@ def invoke(repo, spec, text, directory, stop, timeout, session, lock_fd=None, ro
     if shutil.which(argv[0]) is None:
         raise FileNotFoundError(f'No such file: CLI {argv[0]}')
     env = os.environ.copy()
-    # A fresh invocation must not inherit the operator's identity or nesting guard.
+    # A fresh invocation must not inherit the calling session's identity or nesting guard.
     for key in ('CODEX_THREAD_ID', 'CLAUDECODE', 'SCAFFOLD_SESSION_ID', 'SCAFFOLD_PARENT_SESSION_ID', 'SCAFFOLD_TASK_ID',
                 'SCAFFOLD_RESEARCH_JOB_ID', 'SCAFFOLD_INVOCATION_ID'):
         env.pop(key, None)

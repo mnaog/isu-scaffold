@@ -64,6 +64,6 @@ report.update(initial_commit=manifest['task_commit'], sessions=sorted(sessions),
               validation_seconds=sum(r['elapsed_seconds'] for r in validations),
               diff_numstat=diff, audit=audit,
               evidence_directory=str(local),
-              timing_note='CLI start to exit. Validation time excludes preparation and operator audit; residual is not model-only time.')
+              timing_note='CLI start to exit. Validation time excludes preparation and independent audit; residual is not model-only time.')
 a.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
 print(a.output)

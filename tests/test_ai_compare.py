@@ -39,7 +39,7 @@ class TrialGuards(unittest.TestCase):
     def save_manifest(self):
         manage.write_json(self.root / 'state/trials/test-01.json', self.manifest)
 
-    def test_environment_change_is_rejected_using_operator_copy(self):
+    def test_environment_change_is_rejected_using_controller_copy(self):
         (self.dest / '.local/manifest.json').write_text('{}')
         self.assertEqual(manage.trial_manifest(self.dest), self.manifest)
         (self.dest / '.local/environment.json').write_text('{"cargo": "wrong"}')

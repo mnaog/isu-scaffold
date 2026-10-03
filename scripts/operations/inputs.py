@@ -1,4 +1,4 @@
-"""Bounded, read-only isuscope queries and explicitly registered operator history."""
+"""Bounded, read-only isuscope queries and explicitly registered conversation history."""
 import json
 from pathlib import Path
 import subprocess
@@ -85,13 +85,10 @@ def generate(repo, cfg, stop=None):
     else:
         scenario_data = {'source': cfg['scenario'], 'error': 'Phase 1のシナリオ整理が未作成です。推測で補わないでください'}
     with connect(repo) as db:
-        workers = rows(db, "SELECT * FROM workers WHERE state IN ('working','blocked','developed') ORDER BY started_at")
-        operators = rows(db, 'SELECT agent,session_id FROM operators ORDER BY agent')
-    conversations = {r['agent']: history(repo, r['agent'], r['session_id']) for r in operators}
-    for agent in ('claude', 'codex'):
-        conversations.setdefault(agent, [{'error': 'operatorセッション未登録'}])
+        sources = rows(db, 'SELECT agent,session_id FROM conversation_sources ORDER BY agent')
+    conversations = {r['agent']: history(repo, r['agent'], r['session_id']) for r in sources}
     return {'generated_at': time.time(), 'repository': str(repo), 'scenario': scenario_data,
-            'metrics': metrics(repo, cfg, stop), 'workers': workers, 'operators': conversations,
+            'metrics': metrics(repo, cfg, stop), 'conversations': conversations,
             'rules': (repo / 'AGENTS.md').read_text()}
 
 
