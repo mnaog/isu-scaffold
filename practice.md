@@ -4,7 +4,7 @@
 
 ## 今回の練習
 
-- 対象はISUCON12 final。開始用のprivate templateは`mnaog/practice-12-ready`。毎回独立した作業repoを作る（2回目は`mnaog/practice-12-second`）。操作対象は現在の作業repoとし、名前から旧環境へ接続しない。
+- 対象はISUCON12 final。開始用のprivate templateは`mnaog/practice-12-ready`。毎回独立した作業repoを作る。操作対象は現在の作業repoとし、名前から旧環境へ接続しない。
 - 前回のGitHub repoは`mnaog/practice-12-first`。ローカルの旧ディレクトリ名は`practice-12`のまま。今回は旧repoのアプリ・schema・run・改善案・会話を読んだりコピーしたりして解かない。
 - 初期テンプレにはPhase 1の継続改善worktreeの手順を含む。過去のAI比較課題・解答・分析は開始用templateへ持ち込まない。
 - AWSは今回確認した`default` profile、`ap-northeast-1`を使う。account・鍵・接続先・APIの生出力は`.local/`に置く。profileの設定変更や認証期限に注意する。
@@ -32,7 +32,7 @@
 開始前に済ませるのはPhase 0の汎用準備だけ。練習問題が既に公開されていても、今回の初期アプリ・schema・データを先読み・先行回収しない。過去の会話を継承せず、準備用セッションから問題分析の知識を初期改善セッションへ渡さない。
 
 1. 人間がPhase 1開始を宣言し、その時刻を記録する。本番の問題公開に相当する開始点とする。
-2. 練習用の未変更の配布環境を、公式の構築資料に従って作成・起動する。AMI、台数・instance type・初期状態を記録する。今回のscaffoldの`infra/`は雛形であり、`make kickoff`自体はEC2作成を行わない。前回の改善済み環境を初期状態として再利用しない。
+2. 開始宣言後に練習運営側から当日の配布物を受け取る。AMI・台数・起動方法・初期状態をその時点で確認して、環境を作成する。配布物は開始用templateと別管理し、開始前の参加者・AIへ渡さない。`make kickoff`自体はEC2作成を行わない。前回の接続先や改善済み環境を流用しない。
 3. 当日配布情報に相当する資料を保存し、provider・stack・SSH user/key・node分類を`.local/environment.env`へ設定する。具体的な練習環境の構築方式・AMI・stack名は開始時に確認し、前回の接続先を推測で流用しない。
 4. `make kickoff`を開始する。nodeを発見し、回収元のapplication node 1台のSSHを確立する。
 5. `quick-import-code.sh`がSSH経由でアプリをtar転送し、schemaと初期化scriptを先行回収する。既定の回収元は`/home/isucon/webapp/rust`と`/home/isucon/webapp/sql`、ローカルは`webapp/rust`と`webapp/sql`。これはscaffoldの既定値であり、本番の配置保証ではない。異なる場合は`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`等で指定する。大きな初期データはこの段階では回収しない。

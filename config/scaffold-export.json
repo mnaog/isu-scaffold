@@ -12,6 +12,7 @@
     "docs/phases/Phase1.md",
     "docs/roles/operator.md",
     "docs/roles/worker.md",
+    "practice.md",
     "scripts/benchmark-contract.py",
     "scripts/check-phase0.py",
     "scripts/configure-draft.py",
