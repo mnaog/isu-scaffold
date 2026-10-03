@@ -81,3 +81,34 @@ Phase 1ではコード回収・worktree作成直後、kickoff終了を待たず�
 起動情報の`mode`と`purpose`が担当の正本。`phase1`は先行改善の継続、`task`は一つの目的だけを扱い完了後待機する。起動情報がある場合はworker_startのtask名も固定のpurposeから登録する。別目的の調査・実装は別workerへ割り当てるため、自分の担当を変更しない。
 
 worker-dbの返り値`updates`に自分宛ての観測・統合結果が最新50件まで含まれる。区切りで読み直す場合は `SELECT * FROM worker_inbox;` を実行する。これは追加依頼ではない。初期化失敗など担当範囲外の問題が届いても、自分の作業を切り替えずoperatorへ報告する。`notes`は自分の作業進捗専用。他workerのnotesは更新しない。
+
+## 検証済みcommitの途中受け渡しと停止
+
+継続workerは、検証が完了したcommitごとに次を記録する。検証内容・合格基準は従来どおりとし、検証を省略したり速度測定を一律に打ち切ったりする変更ではない。
+
+```sql
+INSERT INTO worker_handoff(validation,notes,deployment_requirements)
+VALUES ('実行した検証と結果','注意点。なければ「なし」',
+ '[{"path":"webapp/sql/restore.sql","node_group":"role_app","remote":"/home/isucon/webapp/sql/restore.sql"}]');
+```
+
+`worker-db`がtask、現在のHEAD、前回受け渡しcommit（初回は分岐元）を記録する。
+webappの未commit変更がある場合は拒否する。次の作業は受け渡し後に始める。
+`workers.state`はworkingのまま、`result_commit`と`validation`は最新の受け渡しへ更新される。
+新規SQL/.shには配布要件、または`{"path":"webapp/tests/fixture.sql","local_only_reason":"ローカル検証専用"}`の判断が必要。
+DB migrationを伴う場合は同じ要件へ`command`を追加し、operatorが設定する`post_deploy_commands`と一致させる。
+配布変更がない場合は`[]`。通常タスクも受け渡しを記録してからdevelopedへ更新する。
+
+作業の区切りと新しい実装を始める前に`worker-db`で状況を読み直す。
+返り値の`stop_requests`に要求があれば、新しい作業を始めず、途中状態を保存する。
+保存状態・未commit変更・動いている専用テスト等を確認してから受領を記録する。
+
+```sql
+INSERT INTO worker_stop_ack(request_id,acknowledgement)
+VALUES (1,'途中変更をworktreeへ保持。専用テストは終了済み。作業を停止する');
+```
+
+受領後、新しい受け渡しは拒否される。新launcherは受領を確認して自分のCLIへ終了を要求し、
+実際に終了してからprocess終了を記録する。要求のみではCLIを強制終了しない。
+古いlauncherで起動済みのセッションは自動終了しないため、iTerm内で終了する。
+異常終了・応答なしを受領済みや停止確認済みと扱わない。

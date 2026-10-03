@@ -79,7 +79,25 @@ def worker_prompt(context_path, parent, mode, purpose):
 親IDの環境変数が見えなくても推測や人間への再質問は不要。./scripts/worker-dbが起動情報から補完する。
 自分の実セッションIDはCODEX_THREAD_IDを使う。作業前にworker_startへ開始・分単位の見込みをINSERTする。
 worker-dbがCLI起動記録とtask紐付けを同じtransactionで行う。worker_processesへ手動INSERTしない。
+各作業の区切りでworker-dbを実行しstop_requestsを確認する。停止要求はworker_stop_ackへ受領・保存状態を記録して、作業を止める。保存完了の受領後はlauncherがこのCLIを終了し、実終了を記録する。受領だけでCLI終了と報告しない。
+検証済みcommitはworker_handoffへ検証結果・注意点・配布要件を記録する。継続タスクはworkingのまま次を進める。
 worker_inboxは観測・統合結果だけで、新規依頼ではない。notesは自分の進捗に使う。remote変更・deploy・共有ベンチは禁止。'''
+
+
+def wait_for_worker(repo, process_id, child):
+    # A request alone never interrupts validation or an in-flight file write.
+    # The worker acknowledges only after saving its state; then the foreground
+    # launcher ends that exact child and records its real exit in main().
+    stopping = False
+    while True:
+        try:
+            return child.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            with connect(repo) as db:
+                ack = db.execute('SELECT 1 FROM worker_stop_requests WHERE process_id=? AND acknowledged_at IS NOT NULL', (process_id,)).fetchone()
+            if ack and not stopping:
+                child.terminate()
+                stopping = True
 
 
 def main():
@@ -184,7 +202,7 @@ def main():
         signal.signal(signal.SIGHUP, stop)
         signal.signal(signal.SIGTERM, stop)
         signal.signal(signal.SIGINT, lambda *_: None)  # terminal also delivers Ctrl-C to Codex
-        code = child.wait()
+        code = wait_for_worker(repo, process_id, child)
         with connect(repo) as db:
             db.execute("UPDATE worker_processes SET exited_at=strftime('%s','now'),exit_code=? WHERE process_id=?", (code, process_id))
         record.update(state='exited', exit_code=code)

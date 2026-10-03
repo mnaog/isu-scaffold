@@ -47,7 +47,7 @@ operatorは初回および以後の計測について、run ID、評価したcom
 
 全候補の完成を待たず、検証済みcommitの範囲、変更根拠、検証結果、注意点をoperatorへ渡す。operatorは初回baseline分析後に受け取ったcommitを確認し、統合・deploy・ベンチ・採否を担当する。受け渡し済みcommitはamend/rebaseせず、後続の修正を新しいcommitとして積む。統合対象は動くbranch先端ではなく明示したcommitとし、operatorは作業中のworktreeを変更・削除しない。初期改善セッション自身が未commit変更を整理した区切りでmainを取り込む。
 
-SQLiteでは「Phase 1の初期改善」を一つの継続タスクとして開始・見込みを記録する。途中の受け渡しは`working`のまま`notes`へcommit範囲・検証結果とともに残し、operatorは統合した範囲をworker_updates（kind=integration）へ記録し、worker本人のnotesを変更しない。部分的な統合でタスク全体を`integrated`にしない。人間がPhase 2移行を決める際に残件を引き継ぎ、継続作業を終了して`developed`を記録する。operatorは最終成果の統合または見送りを確認してタスクを閉じ、その後は通常の1目的workerへ切り替える。
+SQLiteでは「Phase 1の初期改善」を一つの継続タスクとして開始・見込みを記録する。途中の受け渡しは`working`のまま`worker_handoff`へ検証済みcommit・検証結果・配布要件を記録し、operatorは`worker_integrate`へ対象handoff IDを記録する。worker本人のnotesは変更しない。部分的な統合でタスク全体を`integrated`にしない。人間がPhase 2移行を決める際に残件を引き継ぎ、継続作業を終了して`developed`を記録する。operatorは最終成果の統合または見送りを確認してタスクを閉じ、その後は通常の1目的workerへ切り替える。
 
 先行importはコード読解開始用の暫定snapshotである。mainの完全importで全配布先のdigest一致と設定を改めて確認する。並行worktreeは`webapp/`のコード・schemaとそのテストを所有する。mainは`config/`、`ansible/`、`scripts/`、`.isuscope/`、remote操作を所有する。競合を避けられない変更は、先に小さいcommitへ分離する。
 

@@ -62,7 +62,7 @@ class LocalBuildTests(unittest.TestCase):
         self.repo.mkdir()
         for folder in ("scripts", "config/rust-builder", "webapp/rust/src", ".local", "bin"):
             (self.repo / folder).mkdir(parents=True)
-        for script in ("local-build.py", "deploy.sh", "sync-lib.sh"):
+        for script in ("local-build.py", "deploy.sh", "sync-lib.sh", "check-deployment.py"):
             shutil.copy2(ROOT / "scripts" / script, self.repo / "scripts" / script)
         (self.repo / "scripts/ssh-node.sh").write_text(FAKE_SSH)
         (self.repo / "scripts/ssh-node.sh").chmod(0o755)
@@ -93,6 +93,8 @@ class LocalBuildTests(unittest.TestCase):
         self.command("git", "config", "user.name", "Test")
         self.command("git", "config", "user.email", "test@example.invalid")
         self.commit()
+        (self.repo / 'scripts/operations').mkdir(exist_ok=True)
+        shutil.copy2(ROOT / 'scripts/operations/handoffs.py', self.repo / 'scripts/operations/handoffs.py')
 
     def command(self, *args, ok=True, **env):
         result = subprocess.run(args, cwd=self.repo, env=dict(self.env, **env), capture_output=True)

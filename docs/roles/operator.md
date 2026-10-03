@@ -64,3 +64,29 @@ VALUES ('対象task ID','observation','観測事実と不明点','完全run ID',
 `kind`は`observation`、`integration`、`dismissal`のみ。観測にはrun IDと評価commitが必須。統合範囲や見送り理由もnotesの上書きではなくこの表へ残す。直接SQLiteで検査を迂回しない。
 
 単独の`make worker-start`は親ID・目的・lane種別を`.local/worker-context.json`と起動promptへ明示し、実セッションIDによるtask開始とCLI紐付けを確認してから成功する。CLIだけ動いて登録が止まった場合は非0となるが、既存CLIを重複起動しない。修復後は `python3 scripts/worker-iterm.py WORKTREE --check-started` で確認する。
+
+## 途中受け渡しの統合と停止の確認
+
+継続workerの`worker_handoffs`を読み、検証済み`source_commit`を指定して統合する。
+移動中のbranch先端や未commit変更は対象にしない。必要な配布設定もcommitした後に記録する。
+
+```sql
+INSERT INTO worker_integrate(handoff_id) VALUES (1);
+```
+
+current main HEAD、operator実セッションIDを記録し、統合の存在・配布先・node group・migration commandを照合する。
+未統合・設定漏れなら記録は失敗する。部分だけ採る場合はworkerからその範囲の検証済みcommitを受け取る。
+継続task全体のstateは変えない。通常task全体が完了した場合のみ従来のintegrated更新も行う。
+ボードでは各受け渡しの未統合/統合済みcommitを表示する。
+
+終了要求もnotesや観測本文に埋め込まず、専用記録へ入れる。
+
+```sql
+INSERT INTO worker_stop(task_id,reason) VALUES ('対象task ID','人間の練習終了指示');
+```
+
+worker-dbの操作には`SCAFFOLD_ROLE=operator`と実セッションIDが必要。
+ボード/APIの`worker_stops.status`はrequested→acknowledged→stopped。
+workerが保存完了を受領し、対応するCLIの実終了が記録された場合だけstoppedになる。
+CLIだけ落ちた場合はexited_without_ackであり、保存状態は未確認。
+要求を登録しただけで「停止済み」と報告しない。未応答の場合は既存iTermを確認し、重複起動しない。

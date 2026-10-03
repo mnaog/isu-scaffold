@@ -20,6 +20,7 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/timeout-command.py \
   "${source_repo}"/scripts/benchmark-http.sh \
   "${source_repo}"/scripts/benchmark-contract.py \
+  "${source_repo}"/scripts/check-deployment.py \
   "${source_repo}"/scripts/sync-lib.sh \
   "${source_repo}"/scripts/local-build.py \
   "${source_repo}"/scripts/sync-check.sh \
@@ -38,6 +39,8 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/application-policy.sh \
   "${source_repo}"/scripts/worktree.sh \
   "${fixture_repo}/scripts/"
+mkdir -p "${fixture_repo}/scripts/operations"
+cp "${source_repo}/scripts/operations/handoffs.py" "${fixture_repo}/scripts/operations/"
 # collectorの正本はisuscopeが配るので、fixtureにはbenchmark adapterだけを置く。
 cp "${source_repo}/.isuscope/benchmark.sh" "${fixture_repo}/.isuscope/"
 cp "${source_repo}/config/environment.example.env" "${fixture_repo}/.local/environment.env"
@@ -546,7 +549,7 @@ cat >"${fixture_repo}/.local/inspection/app1.json" <<'EOF'
   "processes":["1 root nginx","2 mysql mysqld"],
   "application_candidates":["/home/isucon/webapp/go.mod"],
   "application_candidate_ownership":["/home/isucon/webapp/go.mod\tisucon\tisucon"],
-  "configuration_paths":["/etc/nginx/nginx.conf","/etc/mysql"],
+  "configuration_paths":["/etc/nginx/nginx.conf","/etc/mysql","/etc/mysql/mysql.cnf","/etc/mysql/conf.d","/etc/mysql/mysql.conf.d"],
   "service_fragments":["nginx.service\t/etc/systemd/system/nginx.service","isu-rust.service\t/etc/systemd/system/isu-rust.service"],
   "nginx_access_logs":["/var/log/nginx/custom.log","/var/log/nginx/isuscope-access.log"],
   "mysql_slow_logs":["/var/log/mysql/slow.log"],

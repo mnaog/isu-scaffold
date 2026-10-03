@@ -87,3 +87,44 @@ CREATE TRIGGER IF NOT EXISTS worker_integrate_guard BEFORE UPDATE OF state ON wo
 CREATE TRIGGER IF NOT EXISTS worker_codex_only BEFORE INSERT ON workers
  WHEN NEW.agent!='codex'
  BEGIN SELECT RAISE(ABORT,'worker must use Codex'); END;
+
+-- A continuous task can publish many independently validated checkpoints.
+CREATE TABLE IF NOT EXISTS worker_handoffs (
+ handoff_id INTEGER PRIMARY KEY,
+ task_id TEXT NOT NULL REFERENCES workers(task_id),
+ base_commit TEXT NOT NULL CHECK(length(base_commit)=40),
+ source_commit TEXT NOT NULL CHECK(length(source_commit)=40),
+ validation TEXT NOT NULL CHECK(length(trim(validation))>0),
+ notes TEXT NOT NULL CHECK(length(trim(notes))>0),
+ deployment_requirements TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(deployment_requirements) AND json_type(deployment_requirements)='array'),
+ created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+ UNIQUE(task_id,source_commit)
+);
+CREATE TABLE IF NOT EXISTS worker_integrations (
+ handoff_id INTEGER PRIMARY KEY REFERENCES worker_handoffs(handoff_id),
+ integration_commit TEXT NOT NULL CHECK(length(integration_commit)=40),
+ operator_session_id TEXT NOT NULL CHECK(length(operator_session_id)>0),
+ created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE TABLE IF NOT EXISTS worker_stop_requests (
+ request_id INTEGER PRIMARY KEY,
+ process_id TEXT NOT NULL UNIQUE REFERENCES worker_processes(process_id),
+ reason TEXT NOT NULL CHECK(length(trim(reason))>0),
+ requested_by TEXT NOT NULL CHECK(length(requested_by)>0),
+ requested_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+ acknowledged_at INTEGER,
+ acknowledgement TEXT,
+ CHECK((acknowledged_at IS NULL AND acknowledgement IS NULL) OR
+       (acknowledged_at IS NOT NULL AND length(trim(acknowledgement))>0))
+);
+CREATE VIEW IF NOT EXISTS worker_stops AS
+ SELECT s.*,p.task_id,p.session_id,p.exited_at,p.exit_code,
+ CASE WHEN s.acknowledged_at IS NOT NULL AND p.exited_at IS NOT NULL THEN 'stopped'
+      WHEN p.exited_at IS NOT NULL THEN 'exited_without_ack'
+      WHEN s.acknowledged_at IS NOT NULL THEN 'acknowledged'
+      ELSE 'requested' END AS status
+ FROM worker_stop_requests s JOIN worker_processes p USING(process_id);
+CREATE TRIGGER IF NOT EXISTS handoff_immutable BEFORE UPDATE ON worker_handoffs
+ BEGIN SELECT RAISE(ABORT,'handoffs are immutable; publish another validated commit'); END;
+CREATE TRIGGER IF NOT EXISTS integration_immutable BEFORE UPDATE ON worker_integrations
+ BEGIN SELECT RAISE(ABORT,'integration receipts are immutable'); END;

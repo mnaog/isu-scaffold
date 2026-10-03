@@ -18,6 +18,8 @@ from store import config, connect, local, root, rows, worker_sql
 def status(repo):
     with connect(repo) as db:
         return {'daemon_running': active(repo), 'workers': rows(db, 'SELECT * FROM workers ORDER BY started_at DESC'),
+                'handoffs': rows(db, 'SELECT h.*,i.integration_commit FROM worker_handoffs h LEFT JOIN worker_integrations i USING(handoff_id) ORDER BY h.handoff_id DESC'),
+                'worker_stops': rows(db, 'SELECT * FROM worker_stops ORDER BY request_id DESC'),
                 'worker_updates': rows(db, 'SELECT * FROM worker_updates ORDER BY id DESC LIMIT 100'),
                 'scouts': rows(db, 'SELECT * FROM scouts ORDER BY name'),
                 'operators': rows(db, 'SELECT * FROM operators'),

@@ -58,6 +58,8 @@ sync_validate() {
     return 1
   }
 
+  python3 "${sync_script_dir}/check-deployment.py" --repo "${sync_repo_dir}" --manifest "${sync_manifest}" || return 1
+
   python3 "${sync_script_dir}/local-build.py" validate --manifest "${sync_manifest}" || return 1
 
   local path_name path_value other_name other_value

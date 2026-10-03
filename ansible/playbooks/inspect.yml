@@ -57,7 +57,7 @@
 
     - name: Find known configuration paths
       ansible.builtin.shell: |
-        for path in /etc/nginx/nginx.conf /etc/mysql /etc/my.cnf /etc/redis /etc/postgresql; do
+        for path in /etc/nginx/nginx.conf /etc/mysql /etc/mysql/conf.d /etc/mysql/mysql.conf.d /etc/mysql/mysql.cnf /etc/mysql/mariadb.conf.d /etc/mysql/mariadb.cnf /etc/mysql/my.cnf /etc/my.cnf /etc/redis /etc/postgresql; do
           if test -e "$path"; then printf '%s\n' "$path"; fi
         done
       args:

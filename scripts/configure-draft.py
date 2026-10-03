@@ -188,6 +188,21 @@ def application_owner(reports: list[dict], root: str | None) -> tuple[str, str] 
     return Counter(owners).most_common(1)[0][0]
 
 
+def mysql_config_items(mysql_root, source_node, observed):
+    if mysql_root == '/etc/mysql':
+        # Do not collect node-specific debian.cnf credentials with the directory.
+        paths = [('conf.d', 'directory'), ('mysql.conf.d', 'directory'), ('mysql.cnf', 'file'), ('mariadb.conf.d', 'directory'), ('mariadb.cnf', 'file')]
+        if not any('/etc/mysql/' + n in observed for n in ('mysql.cnf','mariadb.cnf')):
+            paths.append(('my.cnf','file'))
+        return [dict(name='mysql-' + name, type=kind, node_group='role_mysql', source_node=source_node,
+                     local='config/mysql/' + name, remote='/etc/mysql/' + name,
+                     owner='root', owner_group='root') for name, kind in paths if '/etc/mysql/' + name in observed]
+    if mysql_root == '/etc/my.cnf':
+        return [dict(name='mysql-conf', type='file', node_group='role_mysql', source_node=source_node,
+                     local='config/mysql/my.cnf', remote='/etc/my.cnf', owner='root', owner_group='root')]
+    return []
+
+
 def main() -> int:
     if len(sys.argv) != 4:
         print(f"usage: {sys.argv[0]} INVENTORY INSPECTION_DIR OUTPUT_DIR", file=sys.stderr)
@@ -355,16 +370,11 @@ def main() -> int:
         })
     mysql_root = most_common([path for path in config_paths if path in ("/etc/mysql", "/etc/my.cnf")])
     if mysql_root:
-        items.append({
-            "name": "mysql-conf",
-            "type": "directory" if mysql_root == "/etc/mysql" else "file",
-            "node_group": "role_mysql",
-            "source_node": source_for_role("mysql"),
-            "local": "config/mysql" if mysql_root == "/etc/mysql" else "config/mysql/my.cnf",
-            "remote": mysql_root,
-            "owner": "root",
-            "owner_group": "root",
-        })
+        mysql_source = source_for_role("mysql")
+        mysql_items = mysql_config_items(mysql_root, mysql_source, reports[mysql_source].get("configuration_paths", []))
+        items.extend(mysql_items)
+        if not mysql_items:
+            draft_warnings.append("No shared MySQL configuration files found; rerun inspection and review explicit paths (never copy /etc/mysql wholesale)")
 
     post_commands = []
     if any("nginx" in roles for roles in roles_by_node.values()):

@@ -296,3 +296,16 @@ python3 scripts/sync-scaffold.py /absolute/path/to/ready --ref COMMIT
 アプリ・計測結果・会話・接続情報・当日のベンチ条件は転送しない。
 開始用repoでPhase 0境界検査とテストを通し、差分と出典をcommitする。
 新しいファイルを追加した際はexport対象へ追加し、単発の手コピーに戻さない。
+
+## 回収するMySQL設定と追加SQLの配布
+
+inspectionはMySQL/MariaDBの共有設定候補を個別に確認する。draftは回収元で存在した
+conf.d、mysql.conf.d/mysql.cnf、mariadb.conf.d/mariadb.cnf等だけを列挙し、
+`/etc/mysql`全体やnode固有の`debian.cnf`を同期しない。古いinspectionで子pathが不明なら再調査する。
+環境固有の配置はdraftレビューで明示する。許可候補でも秘密を含む独自設定は操作者が除外する。
+
+`sync_validate`はimport/check/deployの前に`check-deployment.py`を実行する。
+Git管理される`webapp/sql/`のSQL/.sh（tests配下を除く）が同期対象から漏れると停止する。
+ローカル専用ならsync.jsonの`local_only_files`へ`{"local":"webapp/sql/example.sql","reason":"具体的な除外理由"}`を記録する。
+workerの受け渡し要件は統合時にもnode group・remote path・migration commandまで照合する。
+統合済み要件は以後のdeploy時にも検査し、設定が消えた場合も検出する。
