@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
 import tarfile
@@ -201,7 +202,14 @@ def archive_with_artifacts(index, paths, commit="HEAD"):
                     destination.addfile(entry, io.BytesIO(data))
 
 
+def interrupted(signum, _frame):
+    # Run build_one's finally block so stopping the parallel lane also removes
+    # its Docker container instead of leaving the compiler running detached.
+    raise SystemExit(128 + signum)
+
+
 def main():
+    signal.signal(signal.SIGTERM, interrupted)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["build", "validate", "archive"])
     parser.add_argument("--manifest", default=str(REPO / "config/sync.json"))

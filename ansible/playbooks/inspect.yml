@@ -73,7 +73,9 @@
         } |
         awk '$1 ~ /\.service$/ {print $1}' | sort -u | while IFS= read -r unit; do
           fragment=$(systemctl show "$unit" -p FragmentPath --value 2>/dev/null || true)
-          test -n "$fragment" && printf '%s\t%s\n' "$unit" "$fragment"
+          if test -n "$fragment"; then
+            printf '%s\t%s\n' "$unit" "$fragment"
+          fi
         done
       args:
         executable: /bin/bash

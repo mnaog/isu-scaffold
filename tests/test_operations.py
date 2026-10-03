@@ -127,6 +127,60 @@ class OperationsTests(unittest.TestCase):
             self.sql("INSERT INTO worker_start VALUES ('x',5,'x','x'); INSERT INTO nonexistent VALUES(1);")
         self.assertEqual(self.query('SELECT * FROM workers'), [])
 
+    def launch_fixture(self):
+        branch = self.repo.parent / 'launched-worker'
+        self.git('worktree', 'add', '-b', 'launched-worker', str(branch))
+        self.git('config', 'branch.launched-worker.scaffold-mode', 'phase1')
+        self.git('config', 'branch.launched-worker.description', '先行改善を継続')
+        (branch / '.local').mkdir()
+        record = dict(worktree=str(branch), branch='launched-worker', mode='phase1',
+                      purpose='先行改善を継続', parent_session_id='explicit-parent',
+                      process_id='launch-1', pid=12345, state='running')
+        (branch / '.local/worker-context.json').write_text(json.dumps(record))
+        return branch
+
+    def test_launch_file_recovers_missing_parent_and_links_task_atomically(self):
+        branch = self.launch_fixture()
+        with patch.dict(os.environ, {'SCAFFOLD_PARENT_SESSION_ID':'', 'SCAFFOLD_AGENT':'',
+                                    'SCAFFOLD_SESSION_ID':'', 'CODEX_THREAD_ID':'real-child'}):
+            row = store.worker_sql(self.repo, branch, "INSERT INTO worker_start VALUES ('summary',5,'done','test');")[0]
+        self.assertEqual(row['parent_session_id'], 'explicit-parent')
+        self.assertEqual(row['session_id'], 'real-child')
+        self.assertEqual(row['task'], '先行改善を継続')
+        process = self.query('SELECT * FROM worker_processes')[0]
+        self.assertEqual(process['task_id'], row['task_id'])
+        self.assertEqual(process['session_id'], 'real-child')
+
+    def test_launch_conflict_rejected_without_creating_task(self):
+        branch = self.launch_fixture()
+        with self.assertRaisesRegex(ValueError, 'parent session ID conflicts'):
+            self.begin(branch)
+        self.assertEqual(self.query('SELECT * FROM workers'), [])
+        self.env['SCAFFOLD_PARENT_SESSION_ID'] = 'explicit-parent'
+        with store.connect(self.repo) as db:
+            db.execute("INSERT INTO worker_processes(process_id,session_id,pid) VALUES ('launch-1','wrong-child',12345)")
+        with self.assertRaisesRegex(ValueError, 'process identity conflicts'):
+            self.begin(branch)
+        self.assertEqual(self.query('SELECT * FROM workers'), [])
+
+    def test_operator_cannot_redirect_worker_through_notes_or_task(self):
+        branch = self.repo.parent / 'worker'
+        self.git('worktree', 'add', '-b', 'worker', str(branch))
+        row = self.begin(branch)
+        with self.assertRaisesRegex(sqlite3.IntegrityError, 'other worker notes are read-only'):
+            self.sql("UPDATE workers SET notes='初期化失敗の調査を優先';")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, 'assignment is fixed'):
+            self.sql("UPDATE workers SET task='初期化失敗の調査';", branch)
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.sql(f"INSERT INTO worker_updates(task_id,kind,body) VALUES ('{row['task_id']}','assignment','調査して');")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.sql(f"INSERT INTO worker_updates(task_id,kind,body) VALUES ('{row['task_id']}','observation','根拠なし');")
+        self.sql(f"INSERT INTO worker_updates(task_id,kind,body,run_id,commit_hash) VALUES ('{row['task_id']}','observation','初期化60秒timeout','run-123','{row['base_commit']}');")
+        received = self.sql("UPDATE workers SET notes='先行改善継続';", branch)[0]
+        self.assertEqual(received['updates'][0]['body'], '初期化60秒timeout')
+        self.assertEqual(self.query('SELECT notes FROM workers')[0]['notes'], '先行改善継続')
+        self.assertEqual(len(self.query('SELECT * FROM worker_updates')), 1)
+
     def test_latest_report_export_and_length(self):
         runner.save_report(self.repo, 'codex', 'あ'*300, self.bundle, 'local-ref', 'session', now=1)
         with self.assertRaises(ValueError):

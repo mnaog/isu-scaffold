@@ -18,6 +18,7 @@ from store import config, connect, local, root, rows, worker_sql
 def status(repo):
     with connect(repo) as db:
         return {'daemon_running': active(repo), 'workers': rows(db, 'SELECT * FROM workers ORDER BY started_at DESC'),
+                'worker_updates': rows(db, 'SELECT * FROM worker_updates ORDER BY id DESC LIMIT 100'),
                 'scouts': rows(db, 'SELECT * FROM scouts ORDER BY name'),
                 'operators': rows(db, 'SELECT * FROM operators'),
                 'processes': rows(db, 'SELECT * FROM worker_processes ORDER BY started_at DESC LIMIT 100')}

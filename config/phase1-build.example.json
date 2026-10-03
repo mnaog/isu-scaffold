@@ -1,0 +1,6 @@
+{
+  "base_image": "rust:replace-with-toolchain-and-distribution",
+  "target": "x86_64-unknown-linux-gnu",
+  "binary": "replace-with-binary-name",
+  "dockerfile": "config/rust-builder/Dockerfile"
+}

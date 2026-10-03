@@ -22,6 +22,7 @@ load_config() {
     source "${benchmark_secrets}"
   fi
   set +a
+  python3 "${project_root}/scripts/benchmark-contract.py" --root "${project_root}" >&2
 }
 
 validate_regex() {

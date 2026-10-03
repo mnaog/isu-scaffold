@@ -301,6 +301,15 @@ def main() -> int:
 
         local_builds = [dict(build, binary=adapt(build["binary"]))
                         for build in example["local_builds"]]
+        early_build = REPO_DIR / "config/phase1-build.json"
+        if early_build.exists():
+            # Preserve the early compiler/target recipe so later deploy reuses its cache.
+            settings = read_json(early_build)
+            if set(settings) != {"base_image", "target", "binary", "dockerfile"}:
+                raise ValueError("invalid config/phase1-build.json")
+            if binary and settings["binary"] != binary:
+                raise ValueError("early build binary differs from imported Cargo manifest")
+            local_builds = [dict(settings, item="rust-app")]
         draft_warnings.append("Verify local Rust builder base_image, target CPU and runtime libraries before deploy")
         if service:
             language_commands = [{"node_group": "role_app", "command": adapt(command["command"])}

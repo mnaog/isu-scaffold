@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "reviewed_by": "",
+  "reviewed_at": "",
+  "conditions": {
+    "mode": "",
+    "request_timeout": "",
+    "initialize_timeout": "",
+    "load_duration": "",
+    "target": ""
+  },
+  "sources": [],
+  "invocation": {"executable": "", "required_flags": {}},
+  "effective_sha256": ""
+}

@@ -13,6 +13,11 @@
 ## コード先行import後は並行して進める
 
 ```text
+初期build: 1台目からCPU・OS・glibc・Rust版を調査
+  → operatorが配布コードと照合してconfig/phase1-build.jsonを設定
+  → 待機中のbuild処理が未修正コードを自動build（完全importを待たない）
+  → 同じDockerfile・image・targetをdraftへ引き継ぎ、修正後は差分build
+
 main: bootstrap、全node調査、完全import、role・deploy・benchmark adapter・isuscopeを準備
   → phase1-check
   → 未変更のbaselineをsurvey-run
@@ -34,7 +39,7 @@ baseline分析後、受け渡しごと: mainを初期改善worktreeへ取り込�
   → 通常のisuscope runでbaselineと比較・採否
 ```
 
-`kickoff`の途中でworktreeが表示された時点で初期改善セッションを起動する。`kickoff`終了や完全import、初回計測を待たない。operatorはセットアップを継続する。CLIの起動自体は自動ではない。
+`kickoff`の途中でworktreeが表示された時点で初期改善セッションを起動する。`kickoff`終了や完全import、初回計測を待たない。operatorはセットアップを継続する。workerは`kickoff`がiTermの新しいタブへ自動起動する。既に起動済みなら同じlauncherを使い、終了済みの未完了タスクはoperatorが明示的に再開する。
 
 このセッションは、通常workerへ1目的ずつ依頼する運用とは異なる。Phase 1全体で同じworktreeとコード読解の文脈を維持し、許可された範囲の自明な改善を自律的に見つけて修正する。個々の修正開始にoperatorの承認は挟まない。新しい常設ロールは増やさず、起動・記録上は`役割: worker`、`SCAFFOLD_ROLE=worker`に加えて「Phase 1の初期改善」を明示する。通常workerの1目的・完了後待機のルールは、この継続作業の途中の受け渡しには適用しない。
 
@@ -42,7 +47,7 @@ operatorは初回および以後の計測について、run ID、評価したcom
 
 全候補の完成を待たず、検証済みcommitの範囲、変更根拠、検証結果、注意点をoperatorへ渡す。operatorは初回baseline分析後に受け取ったcommitを確認し、統合・deploy・ベンチ・採否を担当する。受け渡し済みcommitはamend/rebaseせず、後続の修正を新しいcommitとして積む。統合対象は動くbranch先端ではなく明示したcommitとし、operatorは作業中のworktreeを変更・削除しない。初期改善セッション自身が未commit変更を整理した区切りでmainを取り込む。
 
-SQLiteでは「Phase 1の初期改善」を一つの継続タスクとして開始・見込みを記録する。途中の受け渡しは`working`のまま`notes`へcommit範囲・検証結果とともに残し、operatorも統合した範囲を追記する。部分的な統合でタスク全体を`integrated`にしない。人間がPhase 2移行を決める際に残件を引き継ぎ、継続作業を終了して`developed`を記録する。operatorは最終成果の統合または見送りを確認してタスクを閉じ、その後は通常の1目的workerへ切り替える。
+SQLiteでは「Phase 1の初期改善」を一つの継続タスクとして開始・見込みを記録する。途中の受け渡しは`working`のまま`notes`へcommit範囲・検証結果とともに残し、operatorは統合した範囲をworker_updates（kind=integration）へ記録し、worker本人のnotesを変更しない。部分的な統合でタスク全体を`integrated`にしない。人間がPhase 2移行を決める際に残件を引き継ぎ、継続作業を終了して`developed`を記録する。operatorは最終成果の統合または見送りを確認してタスクを閉じ、その後は通常の1目的workerへ切り替える。
 
 先行importはコード読解開始用の暫定snapshotである。mainの完全importで全配布先のdigest一致と設定を改めて確認する。並行worktreeは`webapp/`のコード・schemaとそのテストを所有する。mainは`config/`、`ansible/`、`scripts/`、`.isuscope/`、remote操作を所有する。競合を避けられない変更は、先に小さいcommitへ分離する。
 
@@ -200,3 +205,15 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 operatorのClaude CodeとCodexの実セッションIDを`./scripts/scout operator <agent> <session-id>`で登録する。workerは[worker手順](../roles/worker.md)に従って開始・開発完了を共通SQLiteへ記録する。シナリオの整理先は`docs/benchmark-scenario.md`。利用資料は適用される公式ルールとAGENTS.mdの指示に従う。
 Phase 1中にscoutは自動起動しない。人間がPhase 2への移行を決めた後に開始する。
+
+## 3並列の開始と確認
+
+`make kickoff`は先行回収・commit・worktree作成後、独立した初期build処理を開始し、iTermの対話型workerを起動してから全台bootstrapを進める。workerのCLI起動確認は最大20秒で、task登録確認は全台準備の後に行う（最大120秒）。親IDは起動ファイルでも明示し、開始登録・CLI紐付けまで成功しなければkickoffは非0で終了する。起動失敗時も全台準備を継続するが、最後に非0で終了し、operatorへ再起動を促す。
+
+operatorは全台準備を待たず、`.local/phase1-build/status.json`と`environment.txt`を確認する。`needs_configuration`なら`config/phase1-build.example.json`を参考に、回収したCargo.toml・Cargo.lock・toolchain指定、remoteのCPU・OS・glibc・Rust版、追加Cライブラリを照合して`config/phase1-build.json`を作る。対象は`base_image`・`target`・`binary`・`dockerfile`。未記入のexampleを実設定へコピーしたままにしない。完成内容を一時ファイルに書き、renameで一括配置する。操作者自身の判断でよく、人間への追加承認は不要。
+
+初期build処理は設定を最大30分待ち、設定完了後は既存の`local-build.py`を使って共有キャッシュへbuildする。設定が既にあれば調査・CPU照合後すぐbuildする。全台準備とbaselineはbuild処理の完了待ちを入れない。deployに必要なbuild完了は従来どおりdeployが保証する。
+
+`configure-draft`はこの初期build設定をそのまま`local_builds`へ取り込む。draft生成より後に設定した場合は、設定済みとなった後にdraftを再生成するか、同じ設定をdraftへ反映してからreviewする。異なるimage・Dockerfile・targetに変える場合はキャッシュが別になることを認識する。設定とDockerfileは通常のcommitへ含める。
+
+進行確認は`python3 scripts/phase1-build.py status`、失敗後の再開は`python3 scripts/phase1-build.py start`。ログは`.local/phase1-build/build.log`。同時起動は専用lockで防ぐ。練習停止時はiTerm内のworkerを終了し、`python3 scripts/phase1-build.py stop`で初期build処理も止める。停止してもソース・成果物・キャッシュは残す。ローカル検証用Composeはこのデプロイ用buildと別キャッシュであり、同時コンパイルによる端末の資源競合を避ける。

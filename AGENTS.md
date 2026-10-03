@@ -55,6 +55,7 @@
 
 operatorはClaude CodeとCodexの2セッションを常時開き、積極的に動かすのは基本的に片方。担当調整・実験所有権・leaseは追加せず、既存の操作排他を維持する。operatorの実セッションIDを明示登録し、scout入力へworkerの会話を混ぜない。
 workerはCodex（GPT-6-Astra、推論medium）を使う。通常の調査と採否判断はoperatorが担い、scoutの短報を必要に応じて使う。Phase 1は例外として、一つのworktree・同じ初期改善セッションが自明な改善の探索・実装を継続し、operatorの観測結果を取り込む。起動・記録上の役割はworkerとし、個々の修正依頼や途中の受け渡し後の待機は不要。詳細は`docs/phases/Phase1.md`に従う。
+先行改善workerへ別目的の調査・実装を追加しない。追加の目的は別worktree・別workerへ渡す。既存taskの目的は固定し、operatorは他workerのnotesを上書きしない。run ID・評価commit付きの観測や統合結果はworker_updatesへ記録する（docs/roles/operator.md）。
 workerの作業開始・開発完了・統合済みとCLIプロセスの起動・終了は別に記録する。作業記録の共通SQLiteへの書き込みはworkerにも許可するが、remote変更・deploy・共有ベンチ・worktree削除は許可しない。
 scoutは人間がPhase 2開始を決めてから`make scout-start`で起動し、`make scout-stop`で止める。ボードは`make board`で開く読み取り専用画面。最新報告の`docs/scout-board.md`は通常のコミットに含める。
 
@@ -70,7 +71,8 @@ Phase 0は本番開始前に利用できる情報だけで行える準備をす�
 ```text
 make kickoff
   → 回収元1台のSSH確立後、webapp/rustとDDLを先行回収し、その範囲だけ自動commit
-  → 別worktreeと引き継ぎ文を作成（ここでコード読解セッションを開始）
+  → 別worktreeと引き継ぎ文を作成し、iTermの見えるタブでworkerを自動起動
+  → 並行して1台目のbuild環境を調査。operatorがconfig/phase1-build.jsonを確定すると初期buildを自動開始
   → 並行してローカル実行環境を構成し、make local-up / local-checkで初期改善に使う
   → 全nodeのSSH確立、Ansible導入、初期収束、初期構成の調査
   → node role、同期対象、Ansible変数、log pathの候補を.local/draftへ生成
@@ -140,3 +142,10 @@ isucopeの取得データについてより自由度の高い分析や比較に�
 初回runのHTTP routeに動的IDが残っている場合は、`isuscope routes suggest <run-id> --output .local/route-suggestions.toml`で`.local/route-suggestions.toml`を作る。候補を確認したものだけ`.isuscope/routes.toml`へ移し、再計測する。
 
 `[context.agent]`を有効にした後のベンチは、会話履歴を正しく紐付けるため現在のCodexまたはClaude Codeのセッションから実行する。
+
+## workerを見えるiTermで起動する
+
+workerはiTermの新しいタブを前面に開き、対話型Codexをタブのフォアグラウンドで実行する。バックグラウンドの`codex exec`やログファイルだけの起動で代替しない。
+単独起動・起動失敗後の再試行はmainで`make worker-start WORKTREE=/absolute/path/to/worktree`を実行する。Phase 1の通常開始は`kickoff`が自動起動する。親の実セッションIDは`CODEX_THREAD_ID`から渡す。Claude operatorは`python3 scripts/worker-iterm.py <worktree> --parent <実セッションID>`を使う。
+Phase 1ではコード回収・worktree作成直後、kickoff終了を待たずに起動する。起動処理が親ID・担当を.local/worker-context.jsonとpromptへ明示し、タブ内のCLI起動だけでなくSQLiteの開始記録・CLIとの紐付けを確認して成功する。開始前検査だけなら同scriptの`--check`を使う。進行中・停止中の未完了タスクがあるworktreeでは新規起動せず既存セッションを再開する。
+この起動方法はPhase 1の独立セッション用で、過去の問題分析会話をforkしない。タブ内で終了操作を行い、CLI終了とタスク状態は別に記録する。練習停止の指示がある間は起動しない。

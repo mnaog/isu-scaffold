@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
+import time
 import subprocess
 import tarfile
 import tempfile
@@ -30,6 +32,9 @@ elif a[0] == "run":
     data = sys.stdin.buffer.read()
     with tarfile.open(fileobj=io.BytesIO(data)) as t:
         assert "webapp/rust/Cargo.lock" in t.getnames()
+    if os.environ.get("WAIT_BUILD"):
+        import time
+        time.sleep(30)
     if os.environ.get("FAIL_BUILD"): sys.exit(1)
 elif a[0] == "cp":
     elf = bytearray(128)
@@ -113,6 +118,25 @@ class LocalBuildTests(unittest.TestCase):
 
     def record(self):
         return json.loads((self.repo / ".local/local-build.json").read_text())[0]
+
+    def test_stopping_build_group_removes_container(self):
+        child = subprocess.Popen(['python3', 'scripts/local-build.py', 'build'], cwd=self.repo,
+                                 env=dict(self.env, WAIT_BUILD='1'), start_new_session=True,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.monotonic() + 10
+            while not any(c[0] == 'run' for c in self.calls('docker')):
+                if time.monotonic() > deadline:
+                    self.fail('fake compiler did not start')
+                time.sleep(.05)
+            os.killpg(child.pid, signal.SIGTERM)
+            self.assertEqual(child.wait(timeout=5), 143)
+            self.assertTrue(any(c[:2] == ['rm', '-f'] for c in self.calls('docker')))
+            self.assertFalse((self.repo / '.local/local-build.json').exists())
+        finally:
+            if child.poll() is None:
+                os.killpg(child.pid, signal.SIGKILL)
+                child.wait()
 
     def test_cache_reuses_artifact_and_dependencies_after_source_change(self):
         self.build()

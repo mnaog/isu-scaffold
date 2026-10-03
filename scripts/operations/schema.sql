@@ -45,6 +45,24 @@ CREATE TABLE IF NOT EXISTS operators (
  session_id TEXT NOT NULL UNIQUE,
  registered_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
+-- Observations and integration decisions do not change a worker's assignment.
+CREATE TABLE IF NOT EXISTS worker_updates (
+ id INTEGER PRIMARY KEY,
+ task_id TEXT NOT NULL REFERENCES workers(task_id),
+ kind TEXT NOT NULL CHECK(kind IN ('observation','integration','dismissal')),
+ body TEXT NOT NULL CHECK(length(trim(body))>0),
+ run_id TEXT,
+ commit_hash TEXT,
+ created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+ CHECK(kind!='observation' OR
+   (run_id IS NOT NULL AND length(run_id)>0 AND commit_hash IS NOT NULL AND length(commit_hash)=40))
+);
+CREATE TRIGGER IF NOT EXISTS worker_assignment_immutable
+ BEFORE UPDATE OF task,worktree,branch,parent_session_id,session_id,base_commit ON workers
+ WHEN NEW.task!=OLD.task OR NEW.worktree!=OLD.worktree OR NEW.branch!=OLD.branch
+   OR NEW.parent_session_id!=OLD.parent_session_id OR NEW.session_id!=OLD.session_id
+   OR NEW.base_commit!=OLD.base_commit
+ BEGIN SELECT RAISE(ABORT,'worker assignment is fixed; create a separate worktree for a new task'); END;
 CREATE TABLE IF NOT EXISTS scouts (
  name TEXT PRIMARY KEY,
  state TEXT NOT NULL DEFAULT 'stopped',

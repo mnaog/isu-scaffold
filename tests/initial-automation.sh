@@ -19,6 +19,7 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/ssh-node.sh \
   "${source_repo}"/scripts/timeout-command.py \
   "${source_repo}"/scripts/benchmark-http.sh \
+  "${source_repo}"/scripts/benchmark-contract.py \
   "${source_repo}"/scripts/sync-lib.sh \
   "${source_repo}"/scripts/local-build.py \
   "${source_repo}"/scripts/sync-check.sh \
@@ -122,6 +123,7 @@ BENCHMARK_TIMEOUT_SECONDS=0
 EOF
 printf 'Score: 42 PASS\n' >"${fixture_repo}/config/benchmark-sample.log"
 
+(cd "${fixture_repo}" && set -a && source config/benchmark.env && python3 "${source_repo}/tests/benchmark-contract-fixture.py")
 (cd "${fixture_repo}" && ./.isuscope/benchmark.sh --check)
 (cd "${fixture_repo}" && ./.isuscope/benchmark.sh --probe)
 mkdir -p "${fixture_repo}/.local/test-run/tmp"
@@ -134,6 +136,7 @@ jq -e '.type == "isuscope.result" and .score == 42 and .pass == true' <<<"${resu
 sed -i.bak 's|BENCHMARK_COMMAND=.*|BENCHMARK_COMMAND='\''printf "Score: 42 PASS\\n"; exit 7'\''|' \
   "${fixture_repo}/config/benchmark.env"
 rm -f "${fixture_repo}/config/benchmark.env.bak"
+(cd "${fixture_repo}" && set -a && source config/benchmark.env && python3 "${source_repo}/tests/benchmark-contract-fixture.py")
 failed_result=$(cd "${fixture_repo}" && \
   ISUSCOPE_PROJECT_ROOT="${fixture_repo}" \
   ISUSCOPE_RUN_DIR="${fixture_repo}/.local/test-run" \
@@ -182,6 +185,7 @@ BENCHMARK_HTTP_MAX_POLLS=2
 BENCHMARK_HTTP_REQUEST_TIMEOUT_SECONDS=10
 EOF
 printf '{"score":77,"pass":true}\n' >"${fixture_repo}/config/benchmark-sample.log"
+(cd "${fixture_repo}" && set -a && source config/benchmark.env && python3 "${source_repo}/tests/benchmark-contract-fixture.py")
 (cd "${fixture_repo}" && PATH="${mock_bin}:${PATH}" ./.isuscope/benchmark.sh --check)
 (cd "${fixture_repo}" && PATH="${mock_bin}:${PATH}" ./.isuscope/benchmark.sh --probe)
 http_result=$(cd "${fixture_repo}" && \
@@ -572,7 +576,11 @@ if (cd "${fixture_repo}" && ./scripts/configure-draft.sh >.local/missing-rust.lo
 fi
 grep -q 'complete early import' "${fixture_repo}/.local/missing-rust.log"
 mv "${fixture_repo}/.local/Cargo.toml.saved" "${fixture_repo}/webapp/rust/Cargo.toml"
+cat >"${fixture_repo}/config/phase1-build.json" <<'JSON'
+{"base_image":"rust:1.80-bullseye","target":"x86_64-unknown-linux-gnu","binary":"isu-app","dockerfile":"config/rust-builder/Dockerfile"}
+JSON
 (cd "${fixture_repo}" && ./scripts/configure-draft.sh)
+jq -e '.local_builds[0].base_image == "rust:1.80-bullseye" and .local_builds[0].target == "x86_64-unknown-linux-gnu"' "${fixture_repo}/.local/draft/sync.json" >/dev/null
 jq -e '.items | any(.node_group == "role_mysql" and .source_node == "app1")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
 # Rustを採用した場合、webapp全体ではなくRust実装・unit・小さいSQLだけを配布候補にします。

@@ -36,7 +36,7 @@
 3. 当日配布情報に相当する資料を保存し、provider・stack・SSH user/key・node分類を`.local/environment.env`へ設定する。具体的な練習環境の構築方式・AMI・stack名は開始時に確認し、前回の接続先を推測で流用しない。
 4. `make kickoff`を開始する。nodeを発見し、回収元のapplication node 1台のSSHを確立する。
 5. `quick-import-code.sh`がSSH経由でアプリをtar転送し、schemaと初期化scriptを先行回収する。既定の回収元は`/home/isucon/webapp/rust`と`/home/isucon/webapp/sql`、ローカルは`webapp/rust`と`webapp/sql`。これはscaffoldの既定値であり、本番の配置保証ではない。異なる場合は`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`等で指定する。大きな初期データはこの段階では回収しない。
-6. 回収範囲のcommitと初期改善worktreeが作られたら、その途中表示を受けて別セッションを起動する。`kickoff`終了を待たない。同じworktreeで自明な修正を継続し、検証済みcommitを区切って渡す。
+6. 回収範囲のcommitと初期改善worktreeが作られたら、`kickoff`がiTermで独立workerを自動起動する。初期buildも設定確認後に並行開始する。`kickoff`終了を待たない。同じworktreeで自明な修正を継続し、検証済みcommitを区切って渡す。
 7. operatorは並行して全台準備・draft確認・完全import・deploy・計測準備を進める。初回baselineの分析後に実測と候補を照合して統合する。観測結果はrun ID・評価commit付きで初期改善セッションへ返す。
 
 現在の本番想定に合わせ、サーバー作成・起動の待ち時間もPhase 1に含める。別の練習で「起動済み環境からの開始」を選ぶ場合は、その差を記録し、AMI公開から始めた本番相当の所要時間と混同しない。

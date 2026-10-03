@@ -7,11 +7,21 @@ import re
 import tomllib
 
 
+def toml_value(value):
+    if isinstance(value, dict):
+        return '{ ' + ', '.join(f'{json.dumps(k)} = {toml_value(v)}' for k, v in value.items()) + ' }'
+    if isinstance(value, list):
+        return '[' + ', '.join(toml_value(v) for v in value) + ']'
+    return json.dumps(value, ensure_ascii=False)
+
+
 def apply(text, policy):
     settings = {
         'context.agent': {'history_dir': policy['history_dir']},
         'benchmark': {'operator_line_pattern': policy['operator_line_pattern']},
     }
+    if policy.get('benchmark_parsers'):
+        settings['benchmark']['parsers'] = policy['benchmark_parsers']
     for section, values in settings.items():
         pattern = re.compile(r'^\[' + re.escape(section) + r'\][ \t]*$', re.M)
         match = pattern.search(text)
@@ -24,7 +34,7 @@ def apply(text, policy):
         for key, value in values.items():
             body = re.sub(r'^' + re.escape(key) + r'\s*=.*\n?', '', body, flags=re.M)
             body = body.rstrip()
-            body += f'\n{key} = {json.dumps(value, ensure_ascii=False)}\n'
+            body += f'\n{key} = {toml_value(value)}\n'
         text = text[:match.end()] + body + text[end:]
     check(text, policy)
     return text
@@ -37,6 +47,8 @@ def check(text, policy):
     if config.get('benchmark', {}).get('operator_line_pattern') != policy['operator_line_pattern']:
         raise ValueError('isuscope operator line filter differs from config/isuscope-policy.json; run make discover')
     re.compile(policy['operator_line_pattern'])
+    if config.get('benchmark', {}).get('parsers', []) != policy.get('benchmark_parsers', []):
+        raise ValueError('benchmark parsers differ from repository policy; run make discover')
 
 
 def main():

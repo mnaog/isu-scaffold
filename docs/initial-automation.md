@@ -15,7 +15,7 @@ cp config/environment.example.env .local/environment.env
 
 ```bash
 make kickoff
-# kickoff実行中、worktreeが表示された時点で別ターミナルの初期改善セッションを開始する
+# kickoffがworktree作成直後にiTermでworkerを起動し、初期build環境の調査も並行開始する
 # kickoffの終了を待たない。起動側のoperatorはセットアップを継続する
 # .local/draft/review.mdのFAILを直し、WARNを判断する
 CONFIRM_DRAFT=true make kickoff-apply
@@ -26,7 +26,7 @@ make phase1-check
 
 `kickoff`はまずnode発見後、回収元の1台（既定では最初のapplication node）だけSSHを確立し、`/home/isucon/webapp/rust`と`/home/isucon/webapp/sql`のDDL・初期化script（`.sql`、`.sh`、`.py`、`.rb`、`.pl`）だけを先行回収します。1ファイル1MiB・合計16MiBを超えるものやそれ以外の初期データは後回しにし、`.local/code-schema-manifest.log`へ`INCLUDED`／`DEFERRED`として記録します。上限は`CODE_SCHEMA_MAX_FILE_BYTES`、`CODE_SCHEMA_MAX_TOTAL_BYTES`で変更できます。生成物の`target`、`node_modules`、`.git`は除外します。pathが異なる場合は`CODE_SOURCE_NODE`、`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`、`CODE_SCHEMA_PATH`を環境変数で明示します。回収した`config/application.env`、`webapp/rust`、`webapp/sql`だけを自動commitし、他の未commit変更は含めません。この回収はコード読解開始用の暫定snapshotであり、全node一致の保証は後続の完全importが担当します。
 
-続いて先行回収のcommitから別worktree（lane）を作り、目的・触ってよい範囲・mainへの報告形式と、他のlaneの一覧をまとめた引き継ぎ文を`<worktree>/.local/lane.md`へ生成します。laneを追加する場合は`make worktree BRANCH=<name> PURPOSE="何をするlaneか"`を使います。目的は必須で、`git config branch.<name>.description`へ保存されるため、branchを消せば一緒に消えます。進み具合や取り込み状況は記録せず、毎回gitから計算します。worktreeの場所は途中と最後に表示されます。途中の表示を受けた時点で、別セッションにこのファイルと`docs/phases/Phase1.md`を読ませて開始します。初期改善用の引き継ぎ文は、同じworktreeで探索・修正を継続し、観測結果を取り込み、検証済みcommitを途中で渡す運用を指示します。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。
+続いて先行回収のcommitから別worktree（lane）を作り、目的・触ってよい範囲・mainへの報告形式と、他のlaneの一覧をまとめた引き継ぎ文を`<worktree>/.local/lane.md`へ生成します。laneを追加する場合は`make worktree BRANCH=<name> PURPOSE="何をするlaneか"`を使います。目的は必須で、`git config branch.<name>.description`へ保存されるため、branchを消せば一緒に消えます。進み具合や取り込み状況は記録せず、毎回gitから計算します。worktreeの場所は途中と最後に表示されます。worktree作成直後にiTermの新しいタブでworkerを自動起動し、このファイルと`docs/phases/Phase1.md`を読ませます。初期改善用の引き継ぎ文は、同じworktreeで探索・修正を継続し、観測結果を取り込み、検証済みcommitを途中で渡す運用を指示します。同時に初期build処理が1台目のCPU・OS・Rust版を調査します。operatorは全台準備を待たず、`docs/phases/Phase1.md`の「3並列の開始と確認」に従ってbuild設定を確定します。設定が保存されると初期buildが始まります。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。
 
 Rustを採用しているため、draftは`webapp/`全体ではなく、`webapp/rust`（`sync.rust.example.json`のbuild設定とCargo.tomlのbinary名つき）、Rustのsystemd unit、`webapp/sql`内の1MiB以下の`.sql`・`.sh`、nginx・MySQL設定だけを同期対象に提案します。初期データはnodeに残し、配布しません。初期状態でRust用unitがない場合（他言語のunitだけが動いている場合）はrestart commandを入れずWARNにするので、unitを`config/systemd/`へ作ってitemとcommandを足してから切り替えます。
 
@@ -249,3 +249,50 @@ systemdの調査は稼働中だけでなく、インストール済み・停止�
 Rust unitのfragmentは`/etc/systemd/system`、`/lib/systemd/system`、
 `/usr/lib/systemd/system`からdraft候補にできる。unitが見つかったことと稼働確認は
 別に扱い、draft reviewとdeployの起動検査は引き続き必要とする。
+
+
+## ベンチの競技条件の確認
+
+Phase 1で公式実行手順を `docs/official/` へ保存し、
+`config/benchmark-contract.example.json` を `config/benchmark-contract.json` にコピーする。
+operatorはmode、通常/初期化timeout、負荷時間、接続先を公式手順と照合し、
+`conditions`、`reviewed_by`、`reviewed_at`、一次資料のpath/SHA-256を記入する。
+条件がCLIで変更できない場合も、既定値・固定値・API側管理の別と根拠を書く。
+CLI型では `invocation.executable` と `required_flags` に明示が必要な引数を列挙する。
+大会ごとの値をscaffoldの既定値として埋め込まない。
+
+確認後、実際のadapterと同じ順序で設定を読み、検査記録を確定する。
+
+```bash
+set -a
+source config/benchmark.env
+source .local/benchmark-secrets.env  # 存在する場合
+set +a
+python3 scripts/benchmark-contract.py --seal
+.isuscope/benchmark.sh --check
+```
+
+`--seal`はベンチを起動しない。公式資料の意味を自動判定する承認処理でもない。
+operator自身の照合後に使う。必須引数の欠落・不一致・重複はseal時にも拒否する。
+HTTP型は送信先・body・headerを含む実設定をoperatorが照合する。
+`--check`・`--probe`・本実行のすべてで、資料hashと実設定hashを検査する。
+秘密設定による上書き、接続先変更、HTTP body変更も未確認のまま実行できない。
+変更後は再照合してsealする。記録には秘密情報の値を保存せずhashだけを残す。
+この確定ファイルはPhase 1固有で、開始前テンプレートへ含めない。
+
+
+## 汎用修正を開始用テンプレートへ反映する
+
+汎用修正はisu-scaffoldを正本としてcommitする。追加・変更した汎用ファイルを
+`config/scaffold-export.json`へ列挙し、次のコマンドで確定commitから開始用repoへ反映する。
+
+```bash
+python3 scripts/sync-scaffold.py /absolute/path/to/ready --ref COMMIT --apply
+python3 scripts/sync-scaffold.py /absolute/path/to/ready --ref COMMIT
+```
+
+対象に未commitの変更があれば上書きせず停止する。列挙外のファイルは変更しない。
+出典commitとファイルhashは転送先の`docs/phase0/scaffold-source.json`に記録する。
+アプリ・計測結果・会話・接続情報・当日のベンチ条件は転送しない。
+開始用repoでPhase 0境界検査とテストを通し、差分と出典をcommitする。
+新しいファイルを追加した際はexport対象へ追加し、単発の手コピーに戻さない。
