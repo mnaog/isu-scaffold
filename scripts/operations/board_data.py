@@ -24,7 +24,14 @@ def selection(params):
     return run, base, int(limit)
 
 
-def detail(repo, cfg, run, base='', limit=50):
+MYSQL_METRICS = ['mysql.threads_running', 'mysql.threads_connected',
+                 'mysql.queries_per_second', 'mysql.row_lock_waits_per_second',
+                 'mysql.row_lock_time_ms_per_second', 'mysql.log_waits_per_second',
+                 'mysql.buffer_pool_reads_per_second', 'mysql.buffer_pool_read_requests_per_second',
+                 'mysql.data_fsyncs_per_second']
+
+
+def detail(repo, cfg, run, base='', limit=50, measured=None):
     def read(args):
         return command_json(repo, cfg['isuscope'] + args, max_bytes=2_000_000)
     brief = read(['brief', run, '--limit', '25'])
@@ -33,7 +40,7 @@ def detail(repo, cfg, run, base='', limit=50):
     candidate = brief.get('run', {})
     if candidate.get('state') not in ('complete', 'degraded', 'failed', 'aborted'):
         return {'error': '終了したrunを選んでください'}
-    result = {'latest': candidate, 'brief': brief, 'base': None, 'sections': {},
+    result = {'latest': candidate, 'brief': brief, 'base': None,
               'collected_at': time.time(), 'current_commit': git(repo, 'rev-parse', 'HEAD'),
               'dirty': bool(git(repo, 'status', '--porcelain'))}
     analysis = (brief.get('review') or {}).get('latest_analysis') or {}
@@ -45,59 +52,114 @@ def detail(repo, cfg, run, base='', limit=50):
         if 'error' in baseline or baseline.get('run', {}).get('state') not in ('complete', 'degraded', 'failed', 'aborted'):
             return {'error': baseline.get('error', '終了した比較元runを選んでください')}
         result['base'] = baseline['run']
-    for name, args in (('http', ['--view', 'http']),
-                       ('sql', ['--view', 'database', '--window', 'load'])):
-        argv = ['query', candidate['id'], *args, '--limit', str(limit)]
-        if result['base']:
-            argv += ['--base', result['base']['id']]
-        result['sections'][name] = {'command': cfg['isuscope'] + argv, 'data': read(argv)}
-    # These reads are independent and never start collectors or a benchmark.
-    mysql_metrics = ['mysql.threads_running', 'mysql.threads_connected',
-                     'mysql.queries_per_second', 'mysql.row_lock_waits_per_second',
-                     'mysql.row_lock_time_ms_per_second', 'mysql.log_waits_per_second',
-                     'mysql.buffer_pool_reads_per_second', 'mysql.buffer_pool_read_requests_per_second',
-                     'mysql.data_fsyncs_per_second']
-    mysql_args = ['series', candidate['id'], '--window', 'load', '--bucket', '5', '--limit', '3000']
-    for metric in mysql_metrics:
-        mysql_args += ['--metric', metric]
-    queries = {
-        'graph_http': ['query', candidate['id'], '--view', 'http', '--limit', '500'],
-        'timeline': ['series', candidate['id'], '--window', 'load', '--bucket', '5', '--limit', '1000'],
-        'mysql': mysql_args,
-        'survey_index': ['sql', "SELECT id, started_at FROM runs WHERE mode='survey-run' AND passed=1 "
-                         "AND state IN ('complete','degraded') ORDER BY started_at, id LIMIT 1", '--limit', '1'],
-    }
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        futures = {name: pool.submit(read, args) for name, args in queries.items()}
-        for name, future in futures.items():
-            result[name] = future.result()
-    survey = result.pop('survey_index')
-    if survey.get('rows'):
-        first = survey['rows'][0]
-        result['survey'] = read(['brief', first['id'], '--limit', '200'])
-        result['survey']['quality'] = read(['query', first['id'], '--metric-prefix', 'transition.', '--limit', '1000'])
-    else:
-        result['survey'] = {'error': survey.get('error'), 'run': None}
+    # A finished run's measurements never change; only the brief (analysis, notes) is re-read.
+    key = (tuple(cfg['isuscope']), candidate['id'], result['base']['id'] if result['base'] else '', limit)
+    measurements = measured.get(key) if measured is not None else None
+    if measurements is None:
+        measurements = measure(read, cfg['isuscope'], candidate['id'], result['base'], limit)
+        if measured is not None and complete(measurements):
+            measured.put(key, measurements)
+    result.update(measurements)
     return result
 
 
-class DetailCache:
-    """Serialize expensive CLI reads and keep at most eight selections for 30s."""
-    def __init__(self):
+def measure(read, prefix, run_id, base, limit):
+    sections = {}
+    for name, args in (('http', ['--view', 'http']),
+                       ('sql', ['--view', 'database', '--window', 'load'])):
+        argv = ['query', run_id, *args, '--limit', str(limit)]
+        if base:
+            argv += ['--base', base['id']]
+        sections[name] = argv
+    mysql_args = ['series', run_id, '--window', 'load', '--bucket', '5', '--limit', '3000']
+    for metric in MYSQL_METRICS:
+        mysql_args += ['--metric', metric]
+    queries = {
+        'graph_http': ['query', run_id, '--view', 'http', '--limit', '500'],
+        'timeline': ['series', run_id, '--window', 'load', '--bucket', '5', '--limit', '1000'],
+        'mysql': mysql_args,
+    }
+    # These reads are independent and never start collectors or a benchmark.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        section_futures = {name: pool.submit(read, argv) for name, argv in sections.items()}
+        futures = {name: pool.submit(read, argv) for name, argv in queries.items()}
+        futures['survey'] = pool.submit(survey, read)
+        result = {name: future.result() for name, future in futures.items()}
+        result['sections'] = {name: {'command': prefix + sections[name], 'data': future.result()}
+                              for name, future in section_futures.items()}
+    return result
+
+
+def survey(read):
+    index = read(['sql', "SELECT id, started_at FROM runs WHERE mode='survey-run' AND passed=1 "
+                  "AND state IN ('complete','degraded') ORDER BY started_at, id LIMIT 1", '--limit', '1'])
+    if not index.get('rows'):
+        return {'error': index.get('error'), 'run': None}
+    first = index['rows'][0]
+    result = read(['brief', first['id'], '--limit', '200'])
+    result['quality'] = read(['query', first['id'], '--metric-prefix', 'transition.', '--limit', '1000'])
+    return result
+
+
+def complete(measurements):
+    """Errors may be transient and a later survey-run may appear, so neither is kept."""
+    parts = [measurements['graph_http'], measurements['timeline'], measurements['mysql'], measurements['survey'],
+             measurements['survey'].get('quality') or {},
+             *(section['data'] for section in measurements['sections'].values())]
+    return measurements['survey'].get('run') is not None and not any(part.get('error') for part in parts)
+
+
+class BoundedCache:
+    """Thread-safe LRU map holding at most `size` entries."""
+    def __init__(self, size):
+        self.size = size
         self.lock = threading.Lock()
         self.items = OrderedDict()
 
+    def get(self, key):
+        with self.lock:
+            if key not in self.items:
+                return None
+            self.items.move_to_end(key)
+            return self.items[key]
+
+    def put(self, key, value):
+        with self.lock:
+            self.items[key] = value
+            self.items.move_to_end(key)
+            while len(self.items) > self.size:
+                self.items.popitem(last=False)
+
+
+class DetailCache:
+    """Keep eight selections for 30s; one CLI read per selection, other selections never wait."""
+    def __init__(self):
+        self.results = BoundedCache(8)
+        self.measured = BoundedCache(8)
+        self.lock = threading.Lock()
+        self.pending = {}
+
+    def fresh(self, key):
+        cached = self.results.get(key)
+        if cached and time.monotonic() - cached[0] < 30:
+            return cached
+        return None
+
     def get(self, repo, cfg, run, base, limit):
         key = (tuple(cfg['isuscope']), run, base, limit)
+        cached = self.fresh(key)
+        if cached:
+            return cached[1]
         with self.lock:
-            now = time.monotonic()
-            cached = self.items.get(key)
-            if cached and now - cached[0] < 30:
-                self.items.move_to_end(key)
+            gate = self.pending.setdefault(key, threading.Lock())
+        with gate:
+            cached = self.fresh(key)
+            if cached:
                 return cached[1]
-            value = detail(repo, cfg, run, base, limit)
-            self.items[key] = (time.monotonic(), value)
-            self.items.move_to_end(key)
-            while len(self.items) > 8:
-                self.items.popitem(last=False)
+            try:
+                value = detail(repo, cfg, run, base, limit, self.measured)
+                self.results.put(key, (time.monotonic(), value))
+            finally:
+                with self.lock:
+                    self.pending.pop(key, None)
             return value

@@ -3,6 +3,7 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import sqlite3
@@ -337,7 +338,81 @@ class OperationsTests(unittest.TestCase):
             cache.get(self.repo, self.cfg, 'a', '', 50)
             self.assertEqual(fetch.call_count, 1)
             for i in range(12): cache.get(self.repo, self.cfg, str(i), '', 50)
-        self.assertEqual(len(cache.items), 8)
+        self.assertEqual(len(cache.results.items), 8)
+
+    def test_board_detail_reuses_measurements_of_a_finished_run(self):
+        calls = []
+        analysis = {'body': 'first'}
+        def fake(repo, argv, **kwargs):
+            calls.append(argv)
+            if 'sql' in argv: return {'rows': [{'id': 'survey'}]}
+            if 'brief' in argv:
+                return {'run': {'id': argv[2], 'state': 'complete'}, 'review': {'latest_analysis': dict(analysis)}}
+            return {'rows': []}
+        measured = board_data.BoundedCache(8)
+        with patch.object(board_data, 'command_json', fake):
+            first = board_data.detail(self.repo, self.cfg, 'candidate', 'baseline', 50, measured)
+            calls.clear()
+            analysis['body'] = 'second'
+            second = board_data.detail(self.repo, self.cfg, 'candidate', 'baseline', 50, measured)
+        self.assertEqual([c[1] for c in calls], ['brief', 'brief'])
+        self.assertEqual(second['brief']['review']['latest_analysis']['body'], 'second')
+        self.assertEqual(second['sections'], first['sections'])
+        self.assertEqual(second['survey']['run']['id'], 'survey')
+
+    def test_board_detail_retries_measurements_that_failed(self):
+        calls = []
+        def fake(repo, argv, **kwargs):
+            calls.append(argv)
+            if 'brief' in argv: return {'run': {'id': 'candidate', 'state': 'complete'}}
+            if 'series' in argv: return {'error': 'isuscope busy'}
+            return {'rows': []}
+        measured = board_data.BoundedCache(8)
+        with patch.object(board_data, 'command_json', fake):
+            board_data.detail(self.repo, self.cfg, 'candidate', '', 50, measured)
+            calls.clear()
+            board_data.detail(self.repo, self.cfg, 'candidate', '', 50, measured)
+        self.assertIn('series', [c[1] for c in calls])
+
+    def test_board_detail_rereads_until_the_initial_survey_exists(self):
+        calls = []
+        def fake(repo, argv, **kwargs):
+            calls.append(argv)
+            if 'brief' in argv: return {'run': {'id': 'candidate', 'state': 'complete'}}
+            return {'rows': []}
+        measured = board_data.BoundedCache(8)
+        with patch.object(board_data, 'command_json', fake):
+            board_data.detail(self.repo, self.cfg, 'candidate', '', 50, measured)
+            calls.clear()
+            board_data.detail(self.repo, self.cfg, 'candidate', '', 50, measured)
+        self.assertIn('sql', [c[1] for c in calls])
+
+    def test_board_detail_reads_measurements_in_parallel(self):
+        barrier = threading.Barrier(2, timeout=5)
+        def fake(repo, argv, **kwargs):
+            if 'brief' in argv: return {'run': {'id': 'candidate', 'state': 'complete'}}
+            if '--view' in argv and '--limit' in argv and argv[argv.index('--limit') + 1] == '50':
+                barrier.wait()
+            return {'rows': []}
+        with patch.object(board_data, 'command_json', fake):
+            data = board_data.detail(self.repo, self.cfg, 'candidate')
+        self.assertEqual(set(data['sections']), {'http', 'sql'})
+
+    def test_board_cache_serves_other_selections_while_one_is_slow(self):
+        cache = board_data.DetailCache()
+        release = threading.Event()
+        calls = []
+        def slow(repo, cfg, run, base, limit, measured=None):
+            calls.append(run)
+            if run == 'slow': release.wait(5)
+            return {'latest': {'id': run}}
+        with patch.object(board_data, 'detail', slow), concurrent.futures.ThreadPoolExecutor(3) as pool:
+            waiting = [pool.submit(cache.get, self.repo, self.cfg, 'slow', '', 50) for _ in range(2)]
+            fast = pool.submit(cache.get, self.repo, self.cfg, 'fast', '', 50)
+            self.assertEqual(fast.result(timeout=2)['latest']['id'], 'fast')
+            release.set()
+            self.assertTrue(all(f.result(timeout=5)['latest']['id'] == 'slow' for f in waiting))
+        self.assertEqual(calls.count('slow'), 1)
 
     def test_daemon_restart_preserves_deadline_and_multiple_start_stops(self):
         runner.start(self.repo)
@@ -436,7 +511,11 @@ class OperationsTests(unittest.TestCase):
                 self.assertIn('openMetric', r.read().decode())
             with urllib.request.urlopen(url+'/board-scenario.js') as r:
                 self.assertIn('buildScenario', r.read().decode())
-            with urllib.request.urlopen(url+'/mermaid.tiny.js') as r:
+            with urllib.request.urlopen(url) as r:
+                self.assertEqual(r.headers['Cache-Control'], 'no-store')
+                asset = re.search(r'src="(/mermaid\.tiny\.js\?v=[0-9a-f]{12})"', r.read().decode()).group(1)
+            with urllib.request.urlopen(url+asset) as r:
+                self.assertIn('immutable', r.headers['Cache-Control'])
                 self.assertGreater(len(r.read()), 100000)
             with self.assertRaises(urllib.error.HTTPError) as invalid:
                 urllib.request.urlopen(url+'/api/metrics?run=--help')

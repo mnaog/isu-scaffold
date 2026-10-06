@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -25,6 +26,10 @@ def status(repo):
 
 def serve(repo, port):
     details = DetailCache()
+    here = Path(__file__).parent
+    mermaid = (here / 'vendor/mermaid.tiny.js').read_bytes()
+    # The versioned URL lets the browser keep the 2.8MB bundle until the vendored file changes.
+    mermaid_url = f'/mermaid.tiny.js?v={hashlib.sha256(mermaid).hexdigest()[:12]}'
     cached = {'value': {'error': '計測を取得中です'}}
     shutdown = threading.Event()
     def refresh():
@@ -42,6 +47,7 @@ def serve(repo, port):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             path = urlsplit(self.path)
+            cache_control = 'no-store'
             if path.path == '/api/metrics':
                 try:
                     args = selection(parse_qs(path.query, keep_blank_values=True))
@@ -51,12 +57,15 @@ def serve(repo, port):
                     return
                 body = json.dumps(result, ensure_ascii=False).encode()
                 content_type = 'application/json; charset=utf-8'
-            elif self.path in ('/board-workspace.js', '/board-details.js', '/board-insights.js', '/board-scenario.js', '/mermaid.tiny.js'):
-                asset = Path(__file__).parent / ('vendor/mermaid.tiny.js' if self.path == '/mermaid.tiny.js' else self.path[1:])
-                body = asset.read_bytes()
+            elif self.path == mermaid_url:
+                body = mermaid
+                content_type = 'text/javascript; charset=utf-8'
+                cache_control = 'public, max-age=31536000, immutable'
+            elif self.path in ('/board-workspace.js', '/board-details.js', '/board-insights.js', '/board-scenario.js'):
+                body = (here / self.path[1:]).read_bytes()
                 content_type = 'text/javascript; charset=utf-8'
             elif self.path == '/':
-                body = Path(__file__).with_name('board.html').read_bytes()
+                body = (here / 'board.html').read_bytes().replace(b'src="/mermaid.tiny.js"', f'src="{mermaid_url}"'.encode())
                 content_type = 'text/html; charset=utf-8'
             elif self.path == '/api/board':
                 result = status(repo)
@@ -72,7 +81,7 @@ def serve(repo, port):
                 return
             self.send_response(200)
             self.send_header('Content-Type', content_type)
-            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Cache-Control', cache_control)
             self.send_header('X-Content-Type-Options', 'nosniff')
             self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
             self.end_headers()
