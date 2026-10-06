@@ -53,7 +53,8 @@
     "tests/board-workspace.test.js",
     "scripts/operations/activity.py",
     "docs/roles/scout-prompt.txt",
-    "tests/board-details.test.js"
+    "tests/board-details.test.js",
+    "rust-toolchain.toml"
   ],
   "remove_files": [
     "docs/roles/operator.md",
