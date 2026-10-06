@@ -248,7 +248,7 @@ class OperationsTests(unittest.TestCase):
         def fake(repo, argv, **kwargs):
             if 'brief' in argv:
                 return {'run': {'id': argv[2], 'state': 'complete'},
-                        'review': {'latest_analysis': {'base_run_id': 'analysis-base'}}}
+                        'review': {'latest_analysis': {'base_run': 'analysis-base'}}}
             return {'rows': []}
         with patch.object(board_data, 'command_json', fake):
             auto = board_data.detail(self.repo, self.cfg, 'candidate', 'auto')
@@ -258,6 +258,35 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(auto['base_mode'], 'analysis')
         self.assertEqual(manual['base']['id'], 'chosen')
         self.assertIsNone(none['base'])
+
+    def test_board_restores_text_that_brief_cut_for_ai(self):
+        run = '01a1017e-d070-71c2-a89f-0835b7c5d88e'
+        calls = []
+        def fake(repo, argv, **kwargs):
+            calls.append(argv)
+            if 'brief' in argv:
+                return {'run': {'id': run, 'state': 'complete'}, 'review': {
+                    'latest_analysis': {'body': '冒頭…', 'full_text': 'isuscope sql ...'},
+                    'changes': [{'id': 'cut', 'description': '説明…', 'reason': '理由…', 'full_text': 'x'},
+                                {'id': 'same', 'description': '短い', 'reason_same_as_analysis': True,
+                                 'full_text': 'x'},
+                                {'id': 'short', 'description': '短い', 'reason': '短い理由'}]}}
+            if 'sql' in argv and 'run_analyses' in argv[-1]:
+                return {'rows': [{'body': '分析の全文'}]}
+            if argv[-3:-1] == ['change', 'show']:
+                return {'change': {'description': f'{argv[-1]}の全文'},
+                        'decisions': [{'reason': '古い理由'}, {'reason': '最新の理由'}]}
+            return {'rows': []}
+        with patch.object(board_data, 'command_json', fake):
+            result = board_data.detail(self.repo, self.cfg, run, '')
+        review = result['brief']['review']
+        self.assertEqual(review['latest_analysis']['body'], '分析の全文')
+        cut, same, short = review['changes']
+        self.assertEqual((cut['description'], cut['reason']), ('cutの全文', '最新の理由'))
+        self.assertNotIn('reason', same)
+        self.assertEqual(short['reason'], '短い理由')
+        # 切られていない変更は取り直さない。
+        self.assertNotIn(['change', 'show', 'short'], [argv[-3:] for argv in calls])
 
     def test_auto_comparison_without_analysis_does_not_guess(self):
         def fake(repo, argv, **kwargs):

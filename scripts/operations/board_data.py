@@ -31,6 +31,30 @@ MYSQL_METRICS = ['mysql.threads_running', 'mysql.threads_connected',
                  'mysql.data_fsyncs_per_second']
 
 
+def restore_full_text(read, brief):
+    """brief cuts long analysis and decision text for AI readers (`full_text` marks a cut);
+    the board shows the saved text in full."""
+    review = brief.get('review') or {}
+    analysis = review.get('latest_analysis') or {}
+    run_id = (brief.get('run') or {}).get('id', '')
+    if analysis.get('full_text') and re.fullmatch(r'[0-9a-f-]{36}', run_id):
+        rows = read(['sql', f"SELECT body FROM run_analyses WHERE run_id='{run_id}' "
+                     "ORDER BY created_at DESC, id DESC LIMIT 1"]).get('rows') or []
+        if rows:
+            analysis['body'] = rows[0]['body']
+    for change in review.get('changes') or []:
+        if not change.get('full_text'):
+            continue
+        history = read(['change', 'show', change['id']])
+        if 'error' in history:
+            continue
+        change['description'] = history['change']['description']
+        # Decisions are oldest first; brief shows the latest one.
+        decisions = history.get('decisions') or []
+        if decisions and not change.get('reason_same_as_analysis'):
+            change['reason'] = decisions[-1]['reason']
+
+
 def detail(repo, cfg, run, base='', limit=50, measured=None):
     def read(args):
         return command_json(repo, cfg['isuscope'] + args, max_bytes=2_000_000)
@@ -43,10 +67,11 @@ def detail(repo, cfg, run, base='', limit=50, measured=None):
     result = {'latest': candidate, 'brief': brief, 'base': None,
               'collected_at': time.time(), 'current_commit': git(repo, 'rev-parse', 'HEAD'),
               'dirty': bool(git(repo, 'status', '--porcelain'))}
+    restore_full_text(read, brief)
     analysis = (brief.get('review') or {}).get('latest_analysis') or {}
     result['base_mode'] = 'analysis' if base == 'auto' else 'manual'
     if base == 'auto':
-        base = analysis.get('base_run_id') or ''
+        base = analysis.get('base_run') or ''
     if base:
         baseline = read(['brief', base, '--limit', '1'])
         if 'error' in baseline or baseline.get('run', {}).get('state') not in ('complete', 'degraded', 'failed', 'aborted'):

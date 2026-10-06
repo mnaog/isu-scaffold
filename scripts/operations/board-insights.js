@@ -58,7 +58,12 @@ function renderHosts(parent,b){
   dataList(card,[['CPU peak',percentText(h.cpu_busy_peak_percent)],['最繁忙core',percentText(h.busiest_core_peak_percent)],['I/O wait',percentText(h.iowait_percent)],['steal',percentText(h.steal_percent)],['メモリpeak',h.memory_used_peak_bytes==null?'—':num(h.memory_used_peak_bytes/1048576,1)+' MiB'],['Disk peak',percentText(h.disk_util_peak_percent)],['Load peak',num(h.load1_peak,2)],['PSI',h.pressure?`${h.pressure.resource} ${num(h.pressure.peak_percent,1)}%`:'—']]);
   for(const service of h.top_services||[])card.append(el('p',`${service.service} · CPU peak ${num(service.cpu_cores_peak,2)} cores`));
  }
- if(!b.hosts?.length)panel.append(el('p','ホスト計測がありません。','panel-note'));
+ const quiet=b.quiet_hosts;
+ if(quiet){
+  const card=el('div',null,'insight-card');grid.append(card);card.append(el('h3',`待機中 · ${quiet.nodes.join(', ')}`),el('div',percentText(quiet.cpu_busy_peak_percent),'insight-number'),el('p','CPU peak（この中の最大）'));
+  dataList(card,[['最繁忙core',percentText(quiet.busiest_core_peak_percent)],['I/O wait',percentText(quiet.iowait_percent)],['PSI peak',percentText(quiet.pressure_peak_percent)],['Disk peak',percentText(quiet.disk_util_peak_percent)]]);
+ }
+ if(!b.hosts?.length&&!quiet)panel.append(el('p','ホスト計測がありません。','panel-note'));
 }
 function renderMysql(parent,data={}){
  const panel=insightPanel(parent,'mysql','MySQL ステータス','LOAD · 5秒区間');sectionNotice(panel,data);

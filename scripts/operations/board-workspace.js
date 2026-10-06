@@ -7,11 +7,12 @@ function workspaceData(q,node){
  const items=data=>data?{...data,items:(data.items||[]).filter(r=>r.node===node)}:data;
  return {...q,sections:Object.fromEntries(Object.entries(q.sections||{}).map(([k,s])=>[k,{...s,data:scopedRows(s.data||{},node)}])),
   timeline:scopedRows(q.timeline||{},node),mysql:scopedRows(q.mysql||{},node),graph_http:scopedRows(q.graph_http||{},node),
-  brief:{...b,hosts:(b.hosts||[]).filter(r=>r.node===node),clients:(b.clients||[]).filter(r=>r.node===node),upstreams:items(b.upstreams),cpu:items(b.cpu)}};
+  brief:{...b,hosts:(b.hosts||[]).filter(r=>r.node===node),quiet_hosts:b.quiet_hosts?.nodes?.includes(node)?{...b.quiet_hosts,nodes:[node]}:null,clients:(b.clients||[]).filter(r=>r.node===node),upstreams:items(b.upstreams),cpu:items(b.cpu)}};
 }
 function prepareWorkspace(q){
  const select=document.querySelector('#node-select'),nodes=new Set();
  for(const h of q.brief?.hosts||[])nodes.add(h.node);
+ for(const n of q.brief?.quiet_hosts?.nodes||[])nodes.add(n);
  for(const section of Object.values(q.sections||{}))for(const r of section.data?.rows||[]){const x=r.candidate||r.base||r;if(x.node)nodes.add(x.node);}
  const values=[...nodes].filter(Boolean).sort();if(workspace.node&&!nodes.has(workspace.node))values.push(workspace.node);
  select.replaceChildren(...[['','全サーバー'],...values.map(n=>[n,n])].map(([v,t])=>{const o=el('option',t);o.value=v;return o}));select.value=workspace.node;
