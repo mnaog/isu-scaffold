@@ -352,8 +352,10 @@ class OperationsTests(unittest.TestCase):
         self.assertIsNone(row['base'])
         self.assertEqual(row['candidate'], {'calls': 3, 'p99_ms': 2})
         self.assertEqual(set(row['changes']), {'calls'})
-        brief = board_data.brief_items({'http': {'total_count': 1, 'truncated': False, 'rows': [{'route': '/'}]}})
-        self.assertEqual(brief['http']['items'], [{'route': '/'}])
+        brief = board_data.brief_items({'http': {'total_count': 1, 'truncated': False, 'common': {'node': 'app1'},
+                                                  'rows': [{'route': '/'}]}})
+        self.assertEqual(brief['http']['items'], [{'route': '/', 'node': 'app1'}])
+        self.assertNotIn('common', brief['http'])
 
     def test_auto_comparison_without_analysis_does_not_guess(self):
         def fake(repo, argv, **kwargs):

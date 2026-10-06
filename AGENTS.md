@@ -125,7 +125,7 @@ FAILしたrunの理由とエラーの実例は、`.isuscope/parse-benchmark.sh`�
 
 `survey-run`はPhase 1の初回調査だけに使い、その後は構成やroutingを大きく変えた場合も`run`を使う。時間が最大の制約なので、同じ変更の比較のためにベンチを重ねない。終了前はprofilerや重いログを外した構成へ切り替え、確認のベンチは通常の`run`で一度だけ行う。
 
-isuscopeの取得データについてより自由度の高い分析や比較には、`isuscope-data/isuscope.sqlite3`を`sqlite3 -readonly`で開いて確認する。
+isuscopeの取得データについてより自由度の高い分析や比較には、`isuscope sql`（table定義は`--schema`）で確認する。接続は読み取り専用で、データの場所は設定から解決する。
 
 初回runのHTTP routeに動的IDが残っている場合は、`isuscope routes suggest <run-id> --output .local/route-suggestions.toml`で`.local/route-suggestions.toml`を作る。候補を確認したものだけ`.isuscope/routes.toml`へ移し、再計測する。
 

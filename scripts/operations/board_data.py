@@ -79,10 +79,11 @@ def nested_comparison(result):
 
 
 def brief_items(result):
-    """brief sections hold their table in `items`."""
+    """brief sections hold their table in `items`, with values shared by every row in `common`."""
     if isinstance(result, dict):
         for section in result.values():
             if isinstance(section, dict) and 'total_count' in section and 'rows' in section:
+                with_common(section)
                 section['items'] = section.pop('rows')
     return result
 
