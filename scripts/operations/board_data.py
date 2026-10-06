@@ -81,27 +81,30 @@ def detail(repo, cfg, run, base='', limit=50, measured=None):
     key = (tuple(cfg['isuscope']), candidate['id'], result['base']['id'] if result['base'] else '', limit)
     measurements = measured.get(key) if measured is not None else None
     if measurements is None:
-        measurements = measure(read, cfg['isuscope'], candidate['id'], result['base'], limit)
+        measurements = measure(read, cfg['isuscope'], candidate['id'], result['base'], limit, brief)
         if measured is not None and complete(measurements):
             measured.put(key, measurements)
     result.update(measurements)
     return result
 
 
-def measure(read, prefix, run_id, base, limit):
+def measure(read, prefix, run_id, base, limit, brief):
+    # A run that did not record the end of initialize has only a `whole` window; brief says which.
+    database_window = brief.get('database_window') or 'whole'
+    series_window = brief.get('hosts_window') or 'whole'
     sections = {}
     for name, args in (('http', ['--view', 'http']),
-                       ('sql', ['--view', 'database', '--window', 'load'])):
+                       ('sql', ['--view', 'database', '--window', database_window])):
         argv = ['query', run_id, *args, '--limit', str(limit)]
         if base:
             argv += ['--base', base['id']]
         sections[name] = argv
-    mysql_args = ['series', run_id, '--window', 'load', '--bucket', '5', '--limit', '3000']
+    mysql_args = ['series', run_id, '--window', series_window, '--bucket', '5', '--limit', '3000']
     for metric in MYSQL_METRICS:
         mysql_args += ['--metric', metric]
     queries = {
         'graph_http': ['query', run_id, '--view', 'http', '--limit', '500'],
-        'timeline': ['series', run_id, '--window', 'load', '--bucket', '5', '--limit', '1000'],
+        'timeline': ['series', run_id, '--window', series_window, '--bucket', '5', '--limit', '1000'],
         'mysql': mysql_args,
     }
     # These reads are independent and never start collectors or a benchmark.

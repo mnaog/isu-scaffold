@@ -288,6 +288,20 @@ class OperationsTests(unittest.TestCase):
         # 切られていない変更は取り直さない。
         self.assertNotIn(['change', 'show', 'short'], [argv[-3:] for argv in calls])
 
+    def test_board_reads_the_windows_the_brief_chose(self):
+        for windows, expected in (({'database_window': 'load', 'hosts_window': 'load'}, 'load'),
+                                  ({'database_window': 'whole', 'hosts_window': 'whole'}, 'whole'),
+                                  ({}, 'whole')):
+            calls = []
+            def fake(repo, argv, **kwargs):
+                calls.append(argv)
+                if 'brief' in argv: return {'run': {'id': argv[2], 'state': 'complete'}, **windows}
+                return {'rows': []}
+            with patch.object(board_data, 'command_json', fake):
+                board_data.detail(self.repo, self.cfg, 'candidate', '')
+            used = {argv[argv.index('--window') + 1] for argv in calls if '--window' in argv}
+            self.assertEqual(used, {expected}, windows)
+
     def test_auto_comparison_without_analysis_does_not_guess(self):
         def fake(repo, argv, **kwargs):
             if 'brief' in argv: return {'run': {'id': argv[2], 'state': 'complete'}}
