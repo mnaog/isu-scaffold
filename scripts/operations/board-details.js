@@ -2,7 +2,7 @@
 let boardState=null, detailState=null, detailKey='', detailFetched=0, requestVersion=0;
 let detailController=null, openDetailKeys=[];
 const tableSort={http:{key:'total_ms',direction:-1},sql:{key:'total_ms',direction:-1}};
-const runLabel=r=>`${r.short_id||r.id.slice(-8)} · ${r.passed===true?'PASS':r.passed===false?'FAIL':r.state} · ${num(r.score)} · ${r.started_at?new Date(r.started_at).toLocaleString('ja-JP'):''}`;
+const runLabel=r=>`${r.started_at?new Date(r.started_at).toLocaleString('ja-JP'):'日時不明'} · ${num(r.score)}点 · ${r.passed===true?'PASS':r.passed===false?'FAIL':r.state}`;
 const signed=n=>n==null?'—':`${n>0?'+':''}${num(n,2)}`;
 const metricNames={total_ms:'合計 ms',avg_ms:'平均 ms',p95_ms:'p95 ms',p99_ms:'p99 ms',max_ms:'最大 ms',min_ms:'最小 ms',p50_ms:'p50 ms',count:'回数',calls:'回数',errors:'エラー数',response_bytes:'転送 bytes',lock_ms:'ロック ms',rows_sent:'返却行数',rows_examined:'走査行数',rows_examined_per_call:'走査行数 / 回'};
 
@@ -55,7 +55,7 @@ function updateRunChoices(d){
  const q=d.metrics||{},runs=[...(q.score_history||[])].reverse();
  for(const id of ['run-select','base-select']){
   const select=document.getElementById(id),previous=select.value;
-  const options=[...(id==='run-select'?[{value:'',label:'最新のベンチを自動表示'}]:[{value:'auto',label:'分析の比較元に追従'},{value:'',label:'比較なし'}]),...runs.map(r=>({value:r.id,label:runLabel(r)}))];
+  const options=[...(id==='run-select'?[{value:'',label:'最新の結果（自動更新）'}]:[{value:'auto',label:'分析の比較元に追従'},{value:'',label:'比較なし'}]),...runs.map(r=>({value:r.id,label:runLabel(r)}))];
   if(previous&&!options.some(o=>o.value===previous))options.push({value:previous,label:previous});
   const signature=JSON.stringify(options);
   if(select.dataset.options!==signature){select.replaceChildren(...options.map(o=>{const e=el('option',o.label);e.value=o.value;return e}));select.dataset.options=signature;}
@@ -67,10 +67,7 @@ function updateMeasurementHeader(){
  const q=boardState?.metrics||{},id=document.querySelector('#run-select').value||q.latest?.id;
  const runs=[...(q.score_history||[])].reverse(),index=runs.findIndex(r=>r.id===id),run=runs[index];
  const following=!document.querySelector('#run-select').value;
- for(const selector of ['.run-shortcuts','.measurement-options'])document.querySelector(selector).hidden=!run;
- document.querySelector('#measurement-title').textContent=run?`${following?'最新の計測':'選択中の計測'} · ${run.short_id||run.id.slice(-8)}`:'最新の計測';
- const base=document.querySelector('#base-select').value;
- document.querySelector('#measurement-context').textContent=run?`${run.passed===true?'PASS':run.passed===false?'FAIL':run.state} · ${num(run.score)}点 · ${base==='auto'?(detailState?.latest?.id===id&&detailState?.base?'分析の比較元 '+(detailState.base.short_id||detailState.base.id.slice(-8)):'分析の比較元に追従'):base?'比較元 '+base.slice(-8):'比較元なし'}${following?' · 自動更新':''}`:'最初の計測が完了すると、ここに表示されます';
+ document.querySelector('.measurement-browser').hidden=!run;
  document.querySelector('#previous-run').disabled=index<0||index>=runs.length-1;
  document.querySelector('#next-run').disabled=index<=0;
  document.querySelector('#latest-run').disabled=following;
