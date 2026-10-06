@@ -7,7 +7,7 @@ const source=fs.readFileSync(__dirname+'/../scripts/operations/board-details.js'
 vm.runInContext(source.slice(0,source.indexOf("document.querySelector('#previous-run').addEventListener")),ctx);
 
 test('saved analysis is explicitly distinguished from an unrelated manual comparison',()=>{
- const q={brief:{review:{latest_analysis:{base_run:'12345678'}}},base:{id:'run-87654321'}};
+ const q={brief:{review:{latest_analysis:{base_short_id:'12345678'}}},base:{id:'run-87654321'}};
  assert.match(ctx.analysisComparisonNote(q),/12345678/);
  q.base={id:'run-12345678'};assert.equal(ctx.analysisComparisonNote(q),'');
  q.base=null;assert.match(ctx.analysisComparisonNote(q),/異なります/);
@@ -80,4 +80,18 @@ test('chart highlights selection without duplicating details or numeric x-axis l
  assert.ok(!nodes.some(n=>n.text==='inspect one change'));
  assert.equal(nodes.filter(n=>n.attrs.class==='score-axis'&&n.attrs.y===204).length,0);
  assert.ok(nodes.some(n=>n.attrs.class==='score-axis'&&n.attrs.y===208&&String(n.text).includes(':')));
+});
+test('comparison rows get their identity back from key on both sides',()=>{
+ const row=ctx.withIdentity({key:{node:'app1',digest:'select 1',window:'-'},presence:'added',base:null,candidate:{calls:3}});
+ assert.equal(row.candidate.node,'app1');assert.equal(row.candidate.digest,'select 1');assert.equal(row.candidate.calls,3);
+ assert.equal(row.candidate.window,undefined);assert.equal(row.base,null);
+ assert.equal(ctx.withIdentity({key:{node:'app1',window:'load'},base:{calls:1},candidate:{calls:2}}).base.window,'load');
+});
+test('values shared by every comparison row come back from common',()=>{
+ const row=ctx.withIdentity({key:{digest:'select 1'},base:{calls:1},candidate:{calls:2}},{node:'app1',window:'load'});
+ assert.equal(row.candidate.node,'app1');assert.equal(row.base.window,'load');assert.equal(row.candidate.digest,'select 1');
+});
+test('deltas isuscope leaves out are computed from both sides',()=>{
+ const d=ctx.valueDelta(200,150);assert.equal(d.delta,-50);assert.equal(d.delta_percent,-25);
+ assert.equal(ctx.valueDelta(0,5).delta_percent,null);assert.deepEqual({...ctx.valueDelta(null,5)},{});
 });

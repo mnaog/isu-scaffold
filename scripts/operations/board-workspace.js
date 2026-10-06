@@ -1,6 +1,7 @@
 // Evidence navigation only: no inferred causal links, collection or run mutations.
 const workspace={node:'',search:{http:'',sql:''}};
-function scopedRows(data,node){return {...data,rows:(data?.rows||[]).filter(r=>!node||(r.candidate||r.base||r).node===node)};}
+function rowNode(data,r){return r.key?.node??data?.common?.node??(r.candidate||r.base||r).node;}
+function scopedRows(data,node){return {...data,rows:(data?.rows||[]).filter(r=>!node||rowNode(data,r)===node)};}
 function workspaceData(q,node){
  if(!node)return q;
  const b=q.brief||{};
@@ -13,7 +14,7 @@ function prepareWorkspace(q){
  const select=document.querySelector('#node-select'),nodes=new Set();
  for(const h of q.brief?.hosts||[])nodes.add(h.node);
  for(const n of q.brief?.quiet_hosts?.nodes||[])nodes.add(n);
- for(const section of Object.values(q.sections||{}))for(const r of section.data?.rows||[]){const x=r.candidate||r.base||r;if(x.node)nodes.add(x.node);}
+ for(const section of Object.values(q.sections||{}))for(const r of section.data?.rows||[]){const node=rowNode(section.data,r);if(node)nodes.add(node);}
  const values=[...nodes].filter(Boolean).sort();if(workspace.node&&!nodes.has(workspace.node))values.push(workspace.node);
  select.replaceChildren(...[['','全サーバー'],...values.map(n=>[n,n])].map(([v,t])=>{const o=el('option',t);o.value=v;return o}));select.value=workspace.node;
 }

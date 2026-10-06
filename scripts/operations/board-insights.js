@@ -48,21 +48,21 @@ function renderTimeline(parent,data={}){
  panel.append(el('p',(load?'横軸は負荷走行開始からの経過秒。':'横軸はベンチ開始からの経過秒。')+'点にカーソルを合わせると値を表示します。p95は区間内の分位値の最大で、全要求をまとめ直したp95ではありません。','panel-note'));
  if(data.window?.edges==='approximate')panel.append(el('p','区間境界は近似です。境界をまたぐbucketがあります。','insight-warning'));
  const rows=data.rows||[],nodes=[...new Set(rows.map(r=>r.node))].sort(),grid=el('div',null,'chart-grid');panel.append(grid);
- const specs=[['リクエスト数','件/区間','http_requests'],['応答時間 p95の最大','ms','http_p95_ms_max_of_quantile'],['HTTPエラー数','件/区間','http_errors'],['CPU 平均','%','cpu_percent_average'],['SQL 呼び出し数','回/区間','db_calls'],['SQL 合計時間','ms/区間','db_total_duration_ms'],['メモリ使用量 平均','MiB','memory_used_mib_average'],['Disk util. 最大','%','disk_util_percent_max']];
+ const specs=[['リクエスト数','件/区間','http_requests'],['応答時間 p95の最大','ms','http_p95_max_ms'],['HTTPエラー数','件/区間','http_errors'],['CPU 平均','%','cpu_busy_avg_percent'],['SQL 呼び出し数','回/区間','db_calls'],['SQL 合計時間','ms/区間','db_duration_total_ms'],['メモリ使用量 平均','MiB','memory_used_avg_mib'],['Disk util. 最大','%','disk_util_max_percent']];
  for(const [title,unit,key]of specs)lineChart(grid,title,unit,nodes.map(node=>({name:node,points:rows.filter(r=>r.node===node).map(r=>({x:r.from_seconds,y:r[key]}))})),data.window);
 }
 function renderHosts(parent,b){
  const panel=insightPanel(parent,'hosts','ホスト・サービスの負荷',(b.hosts_window||'whole').toUpperCase()),grid=el('div',null,'insight-grid');panel.append(grid);
  for(const h of b.hosts||[]){
-  const card=el('div',null,'insight-card');grid.append(card);card.append(el('h3',h.node),el('div',percentText(h.cpu_busy_percent),'insight-number'),el('p','CPU 平均'));
-  const bar=el('div',null,'insight-bar'),fill=el('i');fill.style.width=Math.min(100,Math.max(0,h.cpu_busy_percent||0))+'%';bar.append(fill);card.append(bar);
-  dataList(card,[['CPU peak',percentText(h.cpu_busy_peak_percent)],['最繁忙core',percentText(h.busiest_core_peak_percent)],['I/O wait',percentText(h.iowait_percent)],['steal',percentText(h.steal_percent)],['メモリpeak',h.memory_used_peak_bytes==null?'—':num(h.memory_used_peak_bytes/1048576,1)+' MiB'],['Disk peak',percentText(h.disk_util_peak_percent)],['Load peak',num(h.load1_peak,2)],['PSI',h.pressure?`${h.pressure.resource} ${num(h.pressure.peak_percent,1)}%`:'—']]);
-  for(const service of h.top_services||[])card.append(el('p',`${service.service} · CPU peak ${num(service.cpu_cores_peak,2)} cores`));
+  const card=el('div',null,'insight-card');grid.append(card);card.append(el('h3',h.node),el('div',percentText(h.cpu_busy_avg_percent),'insight-number'),el('p','CPU 平均'));
+  const bar=el('div',null,'insight-bar'),fill=el('i');fill.style.width=Math.min(100,Math.max(0,h.cpu_busy_avg_percent||0))+'%';bar.append(fill);card.append(bar);
+  dataList(card,[['CPU peak',percentText(h.cpu_busy_max_percent)],['最繁忙core',percentText(h.busiest_core_max_percent)],['I/O wait',percentText(h.iowait_avg_percent)],['steal',percentText(h.steal_avg_percent)],['メモリpeak',h.memory_used_max_mib==null?'—':num(h.memory_used_max_mib,1)+' MiB'],['Disk peak',percentText(h.disk_util_max_percent)],['Load peak',num(h.load1_max,2)],['PSI',h.pressure?`${h.pressure.resource} ${num(h.pressure.max_percent,1)}%`:'—']]);
+  for(const service of h.top_services||[])card.append(el('p',`${service.service} · CPU peak ${num(service.cpu_cores_max,2)} cores`));
  }
  const quiet=b.quiet_hosts;
  if(quiet){
-  const card=el('div',null,'insight-card');grid.append(card);card.append(el('h3',`待機中 · ${quiet.nodes.join(', ')}`),el('div',percentText(quiet.cpu_busy_peak_percent),'insight-number'),el('p','CPU peak（この中の最大）'));
-  dataList(card,[['最繁忙core',percentText(quiet.busiest_core_peak_percent)],['I/O wait',percentText(quiet.iowait_percent)],['PSI peak',percentText(quiet.pressure_peak_percent)],['Disk peak',percentText(quiet.disk_util_peak_percent)]]);
+  const card=el('div',null,'insight-card');grid.append(card);card.append(el('h3',`待機中 · ${quiet.nodes.join(', ')}`),el('div',percentText(quiet.cpu_busy_max_percent),'insight-number'),el('p','CPU peak（この中の最大）'));
+  dataList(card,[['最繁忙core',percentText(quiet.busiest_core_max_percent)],['I/O wait',percentText(quiet.iowait_avg_percent)],['PSI peak',percentText(quiet.pressure_max_percent)],['Disk peak',percentText(quiet.disk_util_max_percent)]]);
  }
  if(!b.hosts?.length&&!quiet)panel.append(el('p','ホスト計測がありません。','panel-note'));
 }
@@ -85,7 +85,7 @@ function renderExpandedMetrics(root,q,position){
  upstream.append(el('p','retryを含む試行単位の値です。cache HIT/MISSは現在の標準計測には含まれません。','panel-note'));
  insightTable(upstream,['入口node','接続先','試行数','再試行','接続 p95 ms','ヘッダー p95 ms','応答 p95 ms'],(b.upstreams?.items||[]).map(r=>[r.node,textCell(r.upstream),num(r.requests),num(r.retried_requests),num(r.connect_p95_ms,2),num(r.header_p95_ms,2),num(r.response_p95_ms,2)]));
  const clients=insightPanel(root,'clients','クライアント接続',(b.hosts_window||'whole').toUpperCase());
- insightTable(clients,['node','使用中接続 平均','使用中接続 peak','新規接続 /s','要求 / 接続','次要求まで p95 ms'],(b.clients||[]).map(r=>[r.node,num(r.connections_in_use,1),num(r.connections_in_use_peak,1),num(r.connections_opened_per_second,1),num(r.requests_per_connection,1),num(r.request_gap_ms?.p95,2)]));
+ insightTable(clients,['node','使用中接続 平均','使用中接続 peak','新規接続 /s','要求 / 接続','次要求まで p95 ms'],(b.clients||[]).map(r=>[r.node,num(r.connections_in_use_avg,1),num(r.connections_in_use_max,1),num(r.connections_opened_per_second,1),num(r.requests_per_connection_avg,1),num(r.request_gap_ms?.p95,2)]));
  const cpu=insightPanel(root,'cpu','CPUプロファイル · 上位関数','選択run');sectionNotice(cpu,b.cpu);
  insightTable(cpu,['node','process / binary','symbol','sample %','source'],(b.cpu?.items||[]).map(r=>[r.node,textCell([r.process,r.binary].filter(Boolean).join(' / ')),textCell(r.symbol),num(r.sample_percent,2),r.source]));
  const health=insightPanel(root,'coverage','計測の取得状況','選択run');sectionNotice(health,b.coverage_issues);

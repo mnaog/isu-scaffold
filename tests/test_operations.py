@@ -248,7 +248,7 @@ class OperationsTests(unittest.TestCase):
         def fake(repo, argv, **kwargs):
             if 'brief' in argv:
                 return {'run': {'id': argv[2], 'state': 'complete'},
-                        'review': {'latest_analysis': {'base_run': 'analysis-base'}}}
+                        'review': {'latest_analysis': {'base_short_id': 'analysis-base'}}}
             return {'rows': []}
         with patch.object(board_data, 'command_json', fake):
             auto = board_data.detail(self.repo, self.cfg, 'candidate', 'auto')
@@ -301,6 +301,59 @@ class OperationsTests(unittest.TestCase):
                 board_data.detail(self.repo, self.cfg, 'candidate', '')
             used = {argv[argv.index('--window') + 1] for argv in calls if '--window' in argv}
             self.assertEqual(used, {expected}, windows)
+
+    def test_board_reads_isuscope_without_the_ai_output_cap(self):
+        seen = []
+        def fake_run(argv, **kwargs):
+            if argv[0] == 'isuscope':
+                seen.append(kwargs.get('env') or {})
+            class Done: returncode = 0; stdout = '{"run": {"id": "r", "state": "complete"}}'; stderr = ''
+            return Done()
+        with patch.object(inputs.subprocess, 'run', fake_run):
+            board_data.detail(self.repo, self.cfg, 'r', '')
+            inputs.command_json(self.repo, ['isuscope', 'list'])
+        self.assertTrue(all(env.get('ISUSCOPE_OUTPUT_BYTES') == '0' for env in seen[:-1]))
+        self.assertNotIn('ISUSCOPE_OUTPUT_BYTES', seen[-1])
+
+    def test_board_puts_shared_values_back_on_each_row(self):
+        plain = board_data.with_common({'common': {'node': 'app1', 'labels': {'collector': 'alp'}},
+                                        'rows': [{'route': '/a', 'labels': {'quantile': '0.95'}}]})
+        self.assertNotIn('common', plain)
+        self.assertEqual(plain['rows'][0], {'route': '/a', 'node': 'app1',
+                                            'labels': {'collector': 'alp', 'quantile': '0.95'}})
+        diff = board_data.with_common({'common': {'node': 'app1'},
+                                       'rows': [{'key': {'digest': 'select 1'}, 'base': {'calls': 1}}]})
+        self.assertEqual(diff['rows'][0]['key'], {'digest': 'select 1', 'node': 'app1'})
+        self.assertEqual(board_data.with_common({'error': 'x'}), {'error': 'x'})
+
+    def test_scout_inputs_use_the_windows_the_brief_chose(self):
+        calls = []
+        def fake(repo, argv, **kwargs):
+            calls.append(argv)
+            if 'list' in argv: return {'runs': [{'id': 'r', 'state': 'complete', 'passed': True}]}
+            if 'brief' in argv: return {'run': {'id': 'r'}, 'database_window': 'whole', 'hosts_window': 'whole'}
+            return {'rows': []}
+        with patch.object(inputs, 'command_json', fake):
+            inputs.metrics(self.repo, self.cfg)
+        used = {argv[argv.index('--window') + 1] for argv in calls if '--window' in argv}
+        self.assertEqual(used, {'whole'})
+
+    def test_board_reads_tables_back_as_named_rows(self):
+        table = inputs.records({'total_count': 1, 'columns': ['node', 'calls'], 'rows': [['app1', 3]],
+                                'hosts': {'columns': ['node'], 'rows': [['app1'], ['app2']]}})
+        self.assertEqual(table['rows'], [{'node': 'app1', 'calls': 3}])
+        self.assertEqual(table['hosts'], [{'node': 'app1'}, {'node': 'app2'}])
+        self.assertNotIn('columns', table)
+        diff = board_data.nested_comparison({'candidate_run_id': 'c', 'rows': [
+            {'digest': 'select 1', 'presence': 'added', 'calls_base': None, 'calls': 3, 'calls_delta': None,
+             'calls_delta_percent': None, 'p99_ms_base': None, 'p99_ms': 2}]})
+        row = diff['rows'][0]
+        self.assertEqual(row['key'], {'digest': 'select 1'})
+        self.assertIsNone(row['base'])
+        self.assertEqual(row['candidate'], {'calls': 3, 'p99_ms': 2})
+        self.assertEqual(set(row['changes']), {'calls'})
+        brief = board_data.brief_items({'http': {'total_count': 1, 'truncated': False, 'rows': [{'route': '/'}]}})
+        self.assertEqual(brief['http']['items'], [{'route': '/'}])
 
     def test_auto_comparison_without_analysis_does_not_guess(self):
         def fake(repo, argv, **kwargs):

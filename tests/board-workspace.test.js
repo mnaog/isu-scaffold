@@ -13,7 +13,7 @@ test('node scope filters both comparison sides without rewriting run totals or o
  assert.equal(q.sections.http.data.rows.length,2);assert.equal(filtered.sections.http.data.truncated,true);
 });
 test('a quiet node stays selectable and keeps its folded summary',()=>{
- const q={brief:{hosts:[{node:'n1'}],quiet_hosts:{nodes:['n2','n3'],cpu_busy_peak_percent:6.8}},sections:{}};
+ const q={brief:{hosts:[{node:'n1'}],quiet_hosts:{nodes:['n2','n3'],cpu_busy_max_percent:6.8}},sections:{}};
  assert.equal(ctx.workspaceData(q,'n2').brief.hosts.length,0);
  assert.deepEqual([...ctx.workspaceData(q,'n2').brief.quiet_hosts.nodes],['n2']);
  assert.equal(ctx.workspaceData(q,'n1').brief.quiet_hosts,null);

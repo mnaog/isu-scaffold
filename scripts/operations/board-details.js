@@ -12,7 +12,7 @@ function analysisLabel(run){
 }
 function metricPair(base,candidate,digits=0){return num(base,digits)+' → '+num(candidate,digits);}
 function analysisComparisonNote(q){
- const analysis=q.brief?.review?.latest_analysis,base=analysis?.base_run;
+ const analysis=q.brief?.review?.latest_analysis,base=analysis?.base_short_id;
  if(!analysis)return q.base_mode==='analysis'?'分析の比較元はまだ記録されていません。':'';
  if((base||null)===(q.base?.id?.slice(-8)||null))return '';
  if(!base)return '保存済み分析には比較元の記録がありません。表示中の比較についての分析とは限りません。';
@@ -121,7 +121,7 @@ function renderDetail(q){
  const comparisonNote=analysisComparisonNote(q);if(comparisonNote)summary.append(el('p',comparisonNote,'panel-note'));
  const info=disclosure(summary,'分析・変更の現在の採否・コードの情報','run-info');info.className='run-info';
  const content=el('div',null,'detail-padding');info.append(content);
- dataList(content,[['対象',run.short_id||run.id],['比較元',q.base?.short_id||q.base?.id||'なし'],['状態',`${run.state} · ${run.passed===true?'PASS':run.passed===false?'FAIL':'判定なし'}`],['仮説',run.hypothesis],['判定',analysis?.verdict||run.analysis_status],['分析',analysis?.body],['分析の比較元',analysis?.base_run||'未指定'],['計測commit',(run.commit_hash||'不明')+(run.dirty?' (dirty)':'')],['現在commit',(q.current_commit||'不明')+(q.dirty?' (dirty)':'')]]);
+ dataList(content,[['対象',run.short_id||run.id],['比較元',q.base?.short_id||q.base?.id||'なし'],['状態',`${run.state} · ${run.passed===true?'PASS':run.passed===false?'FAIL':'判定なし'}`],['仮説',run.hypothesis],['判定',analysis?.verdict||run.analysis_status],['分析',analysis?.body],['分析の比較元',analysis?.base_short_id||'未指定'],['計測commit',(run.commit_hash||'不明')+(run.dirty?' (dirty)':'')],['現在commit',(q.current_commit||'不明')+(q.dirty?' (dirty)':'')]]);
  if(run.commit_hash!==q.current_commit||run.dirty||q.dirty)content.append(el('p','現在のコードと計測時のコードが一致するとは限りません。commitとdirtyを確認してください。','note'));
  for(const x of review.changes||[])dataList(content,[['変更',`${x.id} · ${x.description}`],['現在の採否',x.status||'未判断'],['理由',x.reason_same_as_analysis?'分析と同じ':x.reason],['再検討',x.revisit]]);
  if(review.changes?.length)content.append(el('p','採否は関連する変更の現在の判断です。この計測当時の判断やdeploy済みを表すものではありません。','note'));
@@ -134,7 +134,11 @@ function renderDetail(q){
  renderExpandedMetrics(root,q,'after');
  renderHistory(root);applyWorkspace(q);
 }
-function metricRows(data,comparing){return (data.rows||[]).map(r=>comparing?r:{candidate:r,base:null,changes:{},presence:'candidate'});}
+// Comparison rows name the row once in `key`; put it back on each side for display.
+function withIdentity(r,common={}){const {window,...key}={...common,...r.key},identity=window&&window!=='-'?{...key,window}:key;return {...r,base:r.base&&{...identity,...r.base},candidate:r.candidate&&{...identity,...r.candidate}};}
+// isuscope reports deltas only for the main values; the rest follow from both sides.
+function valueDelta(base,candidate){if(base==null||candidate==null)return {};return {delta:candidate-base,delta_percent:base===0?null:Math.round((candidate-base)/base*10000)/100};}
+function metricRows(data,comparing){return (data.rows||[]).map(r=>comparing?withIdentity(r,data.common):{candidate:r,base:null,changes:{},presence:'candidate'});}
 function sortRows(rows,sort){return [...rows].sort((a,b)=>{
  const value=r=>sort.key==='delta'?r.changes?.total_ms?.delta:r.candidate?.[sort.key];
  const av=value(a),bv=value(b);if(av==null)return bv==null?0:1;if(bv==null)return -1;
@@ -184,7 +188,7 @@ function openMetric(kind,row,comparing){
   for(const [key,reason]of Object.entries(value.unavailable||{}))body.append(el('p',`${metricNames[key]||key}: ${reason}`,'note'));
  }
  const keys=kind==='http'?['count','total_ms','avg_ms','min_ms','p50_ms','p95_ms','p99_ms','max_ms','errors','response_bytes']:['calls','total_ms','avg_ms','p95_ms','p99_ms','max_ms','lock_ms','rows_sent','rows_examined','rows_examined_per_call'];
- if(comparing)comparisonTable(body,keys.map(key=>{const d=row.changes?.[key];return [metricNames[key],row.base?.[key],row.candidate?.[key],d?.delta,d?.delta_percent]}));
+ if(comparing)comparisonTable(body,keys.map(key=>{const d=row.changes?.[key]||valueDelta(row.base?.[key],row.candidate?.[key]);return [metricNames[key],row.base?.[key],row.candidate?.[key],d?.delta,d?.delta_percent]}));
  else table(body,['項目','対象'],keys.map(key=>[metricNames[key],num(x[key],2)]));
  if(kind==='http')for(const [label,value]of [['比較元',row.base],['対象',row.candidate]])if(value)table(body,[label+' HTTP status','回数'],Object.entries(value.status_counts||{}).map(([key,count])=>[key,num(count)]));
  dialog.showModal();

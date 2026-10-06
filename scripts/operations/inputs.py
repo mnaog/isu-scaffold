@@ -1,5 +1,6 @@
 """Bounded, read-only isuscope queries and explicitly registered conversation history."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import sqlite3
@@ -7,9 +8,28 @@ import time
 from store import connect, git, rows
 
 
-def command_json(repo, argv, max_bytes=200000):
+def records(value):
+    """isuscope writes tables as `columns` and `rows` (value lists); give back one dict per row."""
+    if isinstance(value, list):
+        return [records(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    value = {name: records(item) for name, item in value.items()}
+    columns, rows = value.get('columns'), value.get('rows')
+    if isinstance(columns, list) and isinstance(rows, list) and all(isinstance(row, list) for row in rows):
+        table = [dict(zip(columns, row)) for row in rows]
+        if set(value) == {'columns', 'rows'}:
+            return table
+        value.pop('columns')
+        value['rows'] = table
+    return value
+
+
+def command_json(repo, argv, max_bytes=200000, uncapped=False):
+    # isuscope trims row output to fit an AI tool limit; the board draws every requested row.
+    env = {**os.environ, 'ISUSCOPE_OUTPUT_BYTES': '0'} if uncapped else None
     try:
-        p = subprocess.run(argv, cwd=repo, capture_output=True, text=True, timeout=30)
+        p = subprocess.run(argv, cwd=repo, capture_output=True, text=True, timeout=30, env=env)
         if p.returncode:
             return {'error': p.stderr.strip()[:500] or f'exit {p.returncode}', 'command': argv}
         if len(p.stdout.encode('utf-8')) > max_bytes:
@@ -25,7 +45,7 @@ def metrics(repo, cfg, stop=None):
             raise InterruptedError("停止されました")
         return command_json(repo, argv)
     prefix = cfg['isuscope']
-    listing = read(prefix + ['list', '--limit', '100'])
+    listing = records(read(prefix + ['list', '--limit', '100']))
     result = {'collected_at': time.time(), 'source': 'isuscope CLI', 'current_commit': git(repo, 'rev-parse', 'HEAD'),
               'dirty': bool(git(repo, 'status', '--porcelain')), 'latest': None, 'base': None, 'sections': {}, 'score_history': [], 'running': []}
     if 'error' in listing:
@@ -50,11 +70,15 @@ def metrics(repo, cfg, stop=None):
         else:
             result['base'] = brief['run']
             base = brief['run']['id']
+    # A run that did not record the end of initialize has only a `whole` window; brief says which.
+    brief = result['brief'] if isinstance(result['brief'], dict) else {}
+    database_window = brief.get('database_window') or 'whole'
+    series_window = brief.get('hosts_window') or 'whole'
     selectors = {
         'benchmark': ['--metric-prefix', 'benchmark.'],
         'http': ['--view', 'http'],
-        'sql': ['--view', 'database', '--window', 'load', '--group-by', 'sql-shape'],
-        'hosts': ['--scope', 'series', '--window', 'load', '--metric-prefix', 'host.'],
+        'sql': ['--view', 'database', '--window', database_window, '--group-by', 'sql-shape'],
+        'hosts': ['--scope', 'series', '--window', series_window, '--metric-prefix', 'host.'],
     }
     for name, selector in selectors.items():
         argv = prefix + ['query', run['id'], *selector, '--limit', '8']
@@ -97,7 +121,7 @@ def generate(repo, cfg, stop=None):
 def current(repo, cfg):
     """Final scout check in the same session; no input/log/DB writes or other scouts."""
     prefix = cfg['isuscope']
-    listing = command_json(repo, prefix + ['list', '--limit', '100'])
+    listing = records(command_json(repo, prefix + ['list', '--limit', '100']))
     completed = [r for r in listing.get('runs', [])
                  if r.get('state') in ('complete', 'degraded', 'failed', 'aborted')]
     latest = completed[0] if completed else None

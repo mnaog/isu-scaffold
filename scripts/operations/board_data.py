@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 import re
 import threading
 import time
-from inputs import command_json
+from inputs import command_json, records
 from store import git
 
 
@@ -55,9 +55,60 @@ def restore_full_text(read, brief):
             change['reason'] = decisions[-1]['reason']
 
 
+def nested_comparison(result):
+    """A comparison row is flat: identity, presence, and per value `x_base`, `x`, `x_delta`,
+    `x_delta_percent`. The board reads it as key / base / candidate / changes."""
+    if not isinstance(result, dict) or 'candidate_run_id' not in result:
+        return result
+    rows = []
+    for row in result.get('rows') or []:
+        values = [name for name in row if f'{name}_base' in row]
+        derived = {f'{name}{suffix}' for name in values for suffix in ('_base', '_delta', '_delta_percent')}
+        key = {name: value for name, value in row.items()
+               if name not in values and name not in derived and name != 'presence'}
+        presence = row.get('presence')
+        rows.append({
+            'key': key, 'presence': presence,
+            'base': None if presence == 'added' else {name: row[f'{name}_base'] for name in values},
+            'candidate': None if presence == 'removed' else {name: row[name] for name in values},
+            'changes': {name: {'delta': row[f'{name}_delta'], 'delta_percent': row.get(f'{name}_delta_percent')}
+                        for name in values if f'{name}_delta' in row},
+        })
+    result['rows'] = rows
+    return result
+
+
+def brief_items(result):
+    """brief sections hold their table in `items`."""
+    if isinstance(result, dict):
+        for section in result.values():
+            if isinstance(section, dict) and 'total_count' in section and 'rows' in section:
+                section['items'] = section.pop('rows')
+    return result
+
+
+def with_common(result):
+    """isuscope names values shared by every row once in `common`; the board reads them per row."""
+    common = result.pop('common', None) if isinstance(result, dict) else None
+    if not common:
+        return result
+    labels = common.pop('labels', {})
+    for row in result.get('rows') or []:
+        target = row['key'] if 'key' in row else row
+        for name, value in common.items():
+            target.setdefault(name, value)
+        if labels and 'key' not in row:
+            row['labels'] = {**labels, **(row.get('labels') or {})}
+        elif labels:
+            row['key']['labels'] = {**labels, **(row['key'].get('labels') or {})}
+    return result
+
+
 def detail(repo, cfg, run, base='', limit=50, measured=None):
     def read(args):
-        return command_json(repo, cfg['isuscope'] + args, max_bytes=2_000_000)
+        result = records(command_json(repo, cfg['isuscope'] + args, max_bytes=2_000_000, uncapped=True))
+        result = with_common(nested_comparison(result))
+        return brief_items(result) if args[:1] == ['brief'] else result
     brief = read(['brief', run, '--limit', '25'])
     if 'error' in brief:
         return {'error': brief['error']}
@@ -71,7 +122,7 @@ def detail(repo, cfg, run, base='', limit=50, measured=None):
     analysis = (brief.get('review') or {}).get('latest_analysis') or {}
     result['base_mode'] = 'analysis' if base == 'auto' else 'manual'
     if base == 'auto':
-        base = analysis.get('base_run') or ''
+        base = analysis.get('base_short_id') or ''
     if base:
         baseline = read(['brief', base, '--limit', '1'])
         if 'error' in baseline or baseline.get('run', {}).get('state') not in ('complete', 'degraded', 'failed', 'aborted'):
