@@ -17,8 +17,10 @@ function prepareWorkspace(q){
  const values=[...nodes].filter(Boolean).sort();if(workspace.node&&!nodes.has(workspace.node))values.push(workspace.node);
  select.replaceChildren(...[['','全サーバー'],...values.map(n=>[n,n])].map(([v,t])=>{const o=el('option',t);o.value=v;return o}));select.value=workspace.node;
 }
-function applyWorkspace(){
- document.querySelector('#workspace-context').textContent=`${workspace.node||'全サーバー'} · HTTPは計測全体、SQL・時系列は負荷走行中。スコア・採否・計測の不足は全サーバー共通。`;
+function windowLabel(name){return name==='load'?'負荷走行中':'ベンチ全体';}
+function applyWorkspace(q){
+ const b=q?.brief||{};
+ document.querySelector('#workspace-context').textContent=`${workspace.node||'全サーバー'} · HTTPは計測全体、SQLは${windowLabel(b.database_window)}、時系列は${windowLabel(b.hosts_window)}。スコア・採否・計測の不足は全サーバー共通。`;
 }
 function renderHistory(root){
  const panel=metricPanel('ベンチ走行履歴','直近100件の終了したベンチ');panel.id='detail-history';panel.classList.add('history-table');root.append(panel);

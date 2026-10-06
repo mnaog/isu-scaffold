@@ -130,9 +130,9 @@ function renderDetail(q){
  const messages=[...(b.benchmark_messages?.failure||[]),...(b.benchmark_messages?.errors||[]).flatMap(x=>x.samples||[]),...(b.warnings||[])];
  for(const message of messages)root.append(el('p',message,'metrics-error'));
  renderExpandedMetrics(root,q,'before');
- for(const kind of ['http','sql'])renderMetricTable(root,kind,q.sections?.[kind]?.data||{},!!q.base);
+ for(const kind of ['http','sql'])renderMetricTable(root,kind,q.sections?.[kind]?.data||{},!!q.base,b.database_window);
  renderExpandedMetrics(root,q,'after');
- renderHistory(root);applyWorkspace();
+ renderHistory(root);applyWorkspace(q);
 }
 function metricRows(data,comparing){return (data.rows||[]).map(r=>comparing?r:{candidate:r,base:null,changes:{},presence:'candidate'});}
 function sortRows(rows,sort){return [...rows].sort((a,b)=>{
@@ -140,8 +140,8 @@ function sortRows(rows,sort){return [...rows].sort((a,b)=>{
  const av=value(a),bv=value(b);if(av==null)return bv==null?0:1;if(bv==null)return -1;
  return typeof av==='number'?(av-bv)*sort.direction:String(av).localeCompare(String(bv))*sort.direction;
 });}
-function renderMetricTable(parent,kind,data,comparing){
- const panel=metricPanel(kind==='http'?'HTTP':'SQL',kind==='http'?'RUN全体':'LOAD · digest単位');panel.id='detail-'+kind;parent.append(panel);
+function renderMetricTable(parent,kind,data,comparing,databaseWindow){
+ const panel=metricPanel(kind==='http'?'HTTP':'SQL',kind==='http'?'RUN全体':`${(databaseWindow||'whole').toUpperCase()} · digest単位`);panel.id='detail-'+kind;parent.append(panel);
  if(data.error){panel.append(el('p',data.error,'metrics-error'));return;}
  for(const warning of data.warnings||[])panel.append(el('p',warning,'metrics-error'));
  if(!comparing&&tableSort[kind].key==='delta')tableSort[kind].key='total_ms';

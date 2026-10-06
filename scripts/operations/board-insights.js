@@ -43,8 +43,9 @@ function lineChart(parent,title,unit,series,window){
  });
 }
 function renderTimeline(parent,data={}){
- const panel=insightPanel(parent,'timeline','負荷走行のタイムライン','LOAD · 5秒区間');sectionNotice(panel,data);
- panel.append(el('p','横軸は負荷走行開始からの経過秒。点にカーソルを合わせると値を表示します。p95は区間内の分位値の最大で、全要求をまとめ直したp95ではありません。','panel-note'));
+ const load=data.window?.name==='load';
+ const panel=insightPanel(parent,'timeline',load?'負荷走行のタイムライン':'ベンチ全体のタイムライン',`${(data.window?.name||'whole').toUpperCase()} · 5秒区間`);sectionNotice(panel,data);
+ panel.append(el('p',(load?'横軸は負荷走行開始からの経過秒。':'横軸はベンチ開始からの経過秒。')+'点にカーソルを合わせると値を表示します。p95は区間内の分位値の最大で、全要求をまとめ直したp95ではありません。','panel-note'));
  if(data.window?.edges==='approximate')panel.append(el('p','区間境界は近似です。境界をまたぐbucketがあります。','insight-warning'));
  const rows=data.rows||[],nodes=[...new Set(rows.map(r=>r.node))].sort(),grid=el('div',null,'chart-grid');panel.append(grid);
  const specs=[['リクエスト数','件/区間','http_requests'],['応答時間 p95の最大','ms','http_p95_ms_max_of_quantile'],['HTTPエラー数','件/区間','http_errors'],['CPU 平均','%','cpu_percent_average'],['SQL 呼び出し数','回/区間','db_calls'],['SQL 合計時間','ms/区間','db_total_duration_ms'],['メモリ使用量 平均','MiB','memory_used_mib_average'],['Disk util. 最大','%','disk_util_percent_max']];
@@ -66,7 +67,7 @@ function renderHosts(parent,b){
  if(!b.hosts?.length&&!quiet)panel.append(el('p','ホスト計測がありません。','panel-note'));
 }
 function renderMysql(parent,data={}){
- const panel=insightPanel(parent,'mysql','MySQL ステータス','LOAD · 5秒区間');sectionNotice(panel,data);
+ const panel=insightPanel(parent,'mysql','MySQL ステータス',`${(data.window?.name||'whole').toUpperCase()} · 5秒区間`);sectionNotice(panel,data);
  const definitions=[['mysql.threads_running','実行中thread','threads'],['mysql.threads_connected','接続thread','threads'],['mysql.queries_per_second','クエリ数','回/s'],['mysql.row_lock_waits_per_second','行ロック待ち','回/s'],['mysql.row_lock_time_ms_per_second','行ロック待ち時間','ms/s'],['mysql.log_waits_per_second','ログ待ち','回/s'],['mysql.buffer_pool_reads_per_second','buffer pool 物理読み込み','回/s'],['mysql.buffer_pool_read_requests_per_second','buffer pool 読み込み要求','回/s'],['mysql.data_fsyncs_per_second','fsync','回/s']];
  const grid=el('div',null,'chart-grid');panel.append(grid);
  for(const [metric,title,unit]of definitions){const rows=(data.rows||[]).filter(r=>r.metric===metric),groups=new Map();

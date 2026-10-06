@@ -19,3 +19,8 @@ test('a quiet node stays selectable and keeps its folded summary',()=>{
  assert.equal(ctx.workspaceData(q,'n1').brief.quiet_hosts,null);
  assert.deepEqual([...q.brief.quiet_hosts.nodes],['n2','n3']);
 });
+test('window wording follows the window the brief chose',()=>{
+ assert.equal(ctx.windowLabel('load'),'負荷走行中');
+ assert.equal(ctx.windowLabel('whole'),'ベンチ全体');
+ assert.equal(ctx.windowLabel(undefined),'ベンチ全体');
+});
