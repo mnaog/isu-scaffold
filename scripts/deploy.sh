@@ -198,6 +198,22 @@ mark_phase() {
   printf '[deploy +%ss] %s\n' "${elapsed}" "${phase}"
 }
 
+# 1 node 1 SSHにまとめる。1 itemの失敗で同じnodeの他itemを止めない。
+pruning_node() {
+  local target_node=$1 name type node local_path remote_path owner owner_group size_kb
+  local remote_parent remote_name command="failed=''"
+  while IFS=$'\t' read -r name type node local_path remote_path owner owner_group size_kb <&3; do
+    [[ "${node}" == "${target_node}" ]] || continue
+    remote_parent=$(dirname -- "${remote_path}")
+    remote_name=$(basename -- "${remote_path}")
+    command+="; (set -eu; count=0; sudo find '${remote_parent}' -mindepth 1 -maxdepth 1 -name '${remote_name}.isuscope-backup.*' -printf '%T@ %p\\n' | sort -rn | cut -d' ' -f2- | while IFS= read -r path; do count=\$((count + 1)); if [ \"\$count\" -gt '${backup_retention}' ]; then sudo rm -rf -- \"\$path\"; fi; done) || failed=\"\$failed ${name}\""
+  done 3<"${plan_file}"
+  command+="; test -z \"\$failed\" || { echo \"\$failed\"; exit 1; }"
+  local failed_items
+  failed_items=$("${script_dir}/ssh-node.sh" "${target_node}" "${command}" 2>/dev/null) ||
+    echo "warning: failed to prune old backups on ${target_node}:${failed_items:- (connection)}" >&2
+}
+
 run_node_phase() {
   local phase=$1 node pid failed=0
   active_pids=()
@@ -406,12 +422,6 @@ mv "${sync_repo_dir}/.local/current-deploy-commit.tmp" \
   "${sync_repo_dir}/.local/current-deploy-commit"
 
 # rollback用backupは新しいものだけを残す。prune失敗はdeploy成功を取り消さない。
-while IFS=$'\t' read -r name type node local_path remote_path owner owner_group size_kb <&3; do
-  remote_parent=$(dirname -- "${remote_path}")
-  remote_name=$(basename -- "${remote_path}")
-  "${script_dir}/ssh-node.sh" "${node}" \
-    "set -eu; count=0; sudo find '${remote_parent}' -mindepth 1 -maxdepth 1 -name '${remote_name}.isuscope-backup.*' -printf '%T@ %p\\n' | sort -rn | cut -d' ' -f2- | while IFS= read -r path; do count=\$((count + 1)); if [ \"\$count\" -gt '${backup_retention}' ]; then sudo rm -rf -- \"\$path\"; fi; done" \
-    >/dev/null 2>&1 || echo "warning: failed to prune old backups for ${name} on ${node}" >&2
-done 3<"${plan_file}"
+run_node_phase pruning || true
 deploy_elapsed=$(($(date +%s) - deploy_started_epoch))
 echo "deploy complete: ${release} (${deploy_elapsed}s)"

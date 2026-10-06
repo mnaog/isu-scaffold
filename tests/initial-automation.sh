@@ -367,6 +367,10 @@ if [[ -n "${FAIL_PREFLIGHT_NODE:-}" && "$1" == "${FAIL_PREFLIGHT_NODE}" && "$2" 
   echo "no space left on device" >&2
   exit 1
 fi
+if [[ -n "${FAIL_BACKUP_CHECK_NODE:-}" && "$1" == "${FAIL_BACKUP_CHECK_NODE}" && "$2" == *"missing="* ]]; then
+  echo "rollback backup is missing for webapp on $1: fixture" >&2
+  exit 1
+fi
 if [[ -n "${FAIL_RESTORE_NODE:-}" && "$1" == "${FAIL_RESTORE_NODE}" && "$2" == *"failed=0"* ]]; then
   echo "restore: mv failed" >&2
   exit 1
@@ -414,6 +418,12 @@ grep -q "export ISUCON_DEPLOY_RELEASE=.*export ISUCON_DEPLOY_REMOTE_PATH=.*expor
   "${ssh_call_log}"
 grep -q "find '/home/isucon'.*isuscope-backup" "${ssh_call_log}"
 first_release=$(cat "${fixture_repo}/.local/current-release")
+# 古いbackupの整理はnodeごとに1回のSSHへまとめ、全itemを対象にします。
+prune_calls=${fixture_repo}/.local/prune-calls.log
+grep "isuscope-backup\.\*' -printf" "${ssh_call_log}" >"${prune_calls}"
+test -z "$(cut -f1 "${prune_calls}" | sort | uniq -d)"
+test "$(grep -o "sudo find '" "${prune_calls}" | wc -l)" -eq \
+  "$(wc -l <"${fixture_repo}/.local/deploy-transactions/${first_release}.tsv")"
 test "$(cat "${fixture_repo}/.local/current-commit")" = \
   "$(git -C "${fixture_repo}" rev-parse HEAD)"
 
@@ -421,10 +431,31 @@ test "$(cat "${fixture_repo}/.local/current-commit")" = \
 (cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" ./scripts/deploy.sh)
 second_release=$(cat "${fixture_repo}/.local/current-release")
 test "${first_release}" != "${second_release}"
+# backupが1つでも欠けていれば、どのnodeも戻し始めません。
+missing_start=$(wc -l <"${ssh_call_log}" | tr -d ' ')
+set +e
+missing_output=$(cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" FAIL_BACKUP_CHECK_NODE=app2 \
+  ./scripts/rollback.sh "${second_release}" 2>&1)
+missing_exit=$?
+set -e
+test "${missing_exit}" -ne 0
+grep -q 'rollback backup is missing for webapp on app2' <<<"${missing_output}"
+if tail -n "+$((missing_start + 1))" "${ssh_call_log}" | grep -q 'isuscope-failed'; then
+  echo "rollback changed remote paths although a backup was missing" >&2
+  exit 1
+fi
 rollback_start=$(wc -l <"${ssh_call_log}" | tr -d ' ')
 (cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" ./scripts/rollback.sh "${second_release}")
 tail -n "+$((rollback_start + 1))" "${ssh_call_log}" >"${fixture_repo}/.local/explicit-rollback-calls.log"
 grep -q 'fixture-runtime-rollback' "${fixture_repo}/.local/explicit-rollback-calls.log"
+# 確認と復元はそれぞれnodeごとに1回のSSHで、全itemを扱います。
+for marker in 'missing=' 'isuscope-failed'; do
+  grep -- "${marker}" "${fixture_repo}/.local/explicit-rollback-calls.log" | cut -f1 >"${fixture_repo}/.local/rollback-nodes.log"
+  test -s "${fixture_repo}/.local/rollback-nodes.log"
+  test -z "$(sort "${fixture_repo}/.local/rollback-nodes.log" | uniq -d)"
+done
+test "$(grep 'isuscope-failed' "${fixture_repo}/.local/explicit-rollback-calls.log" | grep -o "sudo mv '[^']*.isuscope-backup" | wc -l)" -eq \
+  "$(wc -l <"${fixture_repo}/.local/deploy-transactions/${second_release}.tsv")"
 test "$(cat "${fixture_repo}/.local/current-release")" = "${first_release}"
 test "$(cat "${fixture_repo}/.local/current-commit")" = \
   "$(git -C "${fixture_repo}" rev-parse HEAD)"
