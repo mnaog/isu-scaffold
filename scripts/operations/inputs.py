@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import subprocess
+import sqlite3
 import time
 from store import connect, git, rows
 
@@ -26,15 +27,16 @@ def metrics(repo, cfg, stop=None):
     prefix = cfg['isuscope']
     listing = read(prefix + ['list', '--limit', '100'])
     result = {'collected_at': time.time(), 'source': 'isuscope CLI', 'current_commit': git(repo, 'rev-parse', 'HEAD'),
-              'dirty': bool(git(repo, 'status', '--porcelain')), 'latest': None, 'base': None, 'sections': {}, 'score_history': []}
+              'dirty': bool(git(repo, 'status', '--porcelain')), 'latest': None, 'base': None, 'sections': {}, 'score_history': [], 'running': []}
     if 'error' in listing:
         result['error'] = listing['error']
         return result
+    result['running'] = [r for r in listing.get('runs', []) if r['state'] == 'running']
     completed = [r for r in listing.get('runs', []) if r['state'] in ('complete', 'degraded', 'failed', 'aborted')]
     if not completed:
         result['error'] = '直近100件に完了runがありません'
         return result
-    fields = ('id', 'short_id', 'started_at', 'score', 'passed', 'state', 'commit_hash', 'dirty')
+    fields = ('id', 'short_id', 'started_at', 'score', 'passed', 'state', 'commit_hash', 'dirty', 'hypothesis', 'analysis_status')
     result['score_history'] = [{key: run.get(key) for key in fields} for run in reversed(completed)]
     run = completed[0]
     result['latest'] = run
@@ -90,6 +92,31 @@ def generate(repo, cfg, stop=None):
     return {'generated_at': time.time(), 'repository': str(repo), 'scenario': scenario_data,
             'metrics': metrics(repo, cfg, stop), 'conversations': conversations,
             'rules': (repo / 'AGENTS.md').read_text()}
+
+
+def current(repo, cfg):
+    """Final scout check in the same session; no input/log/DB writes or other scouts."""
+    prefix = cfg['isuscope']
+    listing = command_json(repo, prefix + ['list', '--limit', '100'])
+    completed = [r for r in listing.get('runs', [])
+                 if r.get('state') in ('complete', 'degraded', 'failed', 'aborted')]
+    latest = completed[0] if completed else None
+    database = repo / '.local' / 'operations' / 'state.sqlite3'
+    sources = []
+    if database.exists():
+        db = sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)
+        try:
+            db.row_factory = sqlite3.Row
+            sources = rows(db, 'SELECT agent,session_id FROM conversation_sources ORDER BY agent')
+        finally:
+            db.close()
+    return {'checked_at': time.time(), 'current_commit': git(repo, 'rev-parse', 'HEAD'),
+            'working_tree': git(repo, 'status', '--porcelain'),
+            'diff_summary': git(repo, 'diff', 'HEAD', '--stat'),
+            'latest': latest,
+            'brief': command_json(repo, prefix + ['brief', latest['id'], '--limit', '5']) if latest else None,
+            'metrics_error': listing.get('error') or (None if latest else '終了runがありません'),
+            'conversations': {r['agent']: history(repo, r['agent'], r['session_id']) for r in sources}}
 
 
 def prompt(repo, bundle):

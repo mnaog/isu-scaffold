@@ -10,7 +10,8 @@ import sqlite3
 import sys
 import threading
 import time
-from inputs import generate, metrics
+from inputs import current, generate, metrics
+from activity import activity
 from board_data import DetailCache, selection
 from urllib.parse import urlsplit, parse_qs
 from runner import active, attempt, daemon, export_board, initialize, start, stop_daemon
@@ -63,6 +64,7 @@ def serve(repo, port):
                 for scout in result['scouts']:
                     scout.pop('input_ref', None)
                 result['metrics'] = cached['value']
+                result['activity'] = activity(repo)
                 body = json.dumps(result, ensure_ascii=False).encode()
                 content_type = 'application/json; charset=utf-8'
             else:
@@ -90,7 +92,7 @@ def serve(repo, port):
 def main():
     parser = argparse.ArgumentParser(description='scaffold scout and metrics')
     sub = parser.add_subparsers(dest='command', required=True)
-    for cmd in ('init', 'db-path', 'start', 'stop', 'status', 'daemon', 'export', 'input', 'check'):
+    for cmd in ('init', 'db-path', 'start', 'stop', 'status', 'daemon', 'export', 'input', 'current', 'check'):
         sub.add_parser(cmd)
     p = sub.add_parser('conversation')
     p.add_argument('agent', choices=['claude', 'codex'])
@@ -103,6 +105,9 @@ def main():
     args = parser.parse_args()
     repo = root()
     cfg = config(repo)
+    if args.command == 'current':
+        print(json.dumps(current(repo, cfg), ensure_ascii=False, indent=2))
+        return 0
     initialize(repo, cfg)
     if args.command == 'db-path':
         print(local(repo) / 'state.sqlite3')

@@ -1,4 +1,5 @@
 import concurrent.futures
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,7 @@ import inputs
 import board_data
 import runner
 import store
+import activity
 
 
 class OperationsTests(unittest.TestCase):
@@ -185,7 +187,84 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual([r['id'] for r in data['score_history']],['first','zero','failed'])
         self.assertEqual(data['score_history'][1]['score'],0)
         self.assertIsNone(data['score_history'][2]['score'])
-        self.assertNotIn('hypothesis',data['score_history'][0])
+        self.assertEqual(data['score_history'][0]['hypothesis'], 'large text')
+        self.assertEqual(data['running'][0]['id'], 'active')
+
+    def test_running_is_kept_before_first_completed_benchmark(self):
+        with patch.object(inputs, 'command_json', return_value={'runs': [{'id': 'active', 'state': 'running'}]}):
+            data = inputs.metrics(self.repo, self.cfg)
+        self.assertEqual(data['running'][0]['id'], 'active')
+        self.assertIsNone(data['latest'])
+
+    def test_scout_final_check_reads_only_registered_context_and_latest_analysis(self):
+        runner.save_report(self.repo, 'codex', 'PRIVATE SCOUT REPORT', self.bundle, 'ref', 'session')
+        with store.connect(self.repo) as db:
+            db.execute("INSERT INTO conversation_sources(agent,session_id) VALUES ('codex','selected')")
+        (self.repo/'docs/agent-history/current.md').write_text('- Agent: `codex`\n- Session: `selected`\nCURRENT CONVERSATION')
+        def fake(repo, argv):
+            if 'list' in argv:
+                return {'runs': [{'id': 'active', 'state': 'running'}, {'id': 'new', 'state': 'complete'}]}
+            self.assertEqual(argv[-3:], ['new', '--limit', '5'])
+            return {'review': {'latest_analysis': {'body': 'NEW ANALYSIS'}}}
+        before = self.query('SELECT * FROM scouts')
+        with patch.object(inputs, 'command_json', fake):
+            result = inputs.current(self.repo, self.cfg)
+        self.assertEqual(result['latest']['id'], 'new')
+        self.assertIn('NEW ANALYSIS', json.dumps(result))
+        self.assertIn('CURRENT CONVERSATION', json.dumps(result))
+        self.assertNotIn('PRIVATE SCOUT REPORT', json.dumps(result))
+        self.assertEqual(before, self.query('SELECT * FROM scouts'))
+
+    def test_current_cli_does_not_initialize_operations_database(self):
+        shutil.rmtree(self.repo/'.local/operations')
+        result = subprocess.run([sys.executable, str(self.repo/'scripts/operations/main.py'), 'current'],
+                                cwd=self.repo, text=True, capture_output=True, check=True)
+        self.assertIn('metrics_error', json.loads(result.stdout))
+        self.assertFalse((self.repo/'.local/operations').exists())
+
+    def test_activity_requires_held_lock_and_separates_deploy_record(self):
+        local = self.repo/'.local'
+        self.assertIsNone(activity.activity(self.repo)['operation'])
+        self.assertFalse((local/'operation.lock').exists())
+        lockdir = local/'operation.lock'
+        lockdir.mkdir()
+        (lockdir/'owner').write_text('pid=1\nstarted_at=2026-10-06T10:00:00+0900\noperation=deploy.sh\n')
+        with (lockdir/'lock').open('wb') as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.assertEqual(activity.activity(self.repo)['operation']['operation'], 'deploy.sh')
+        self.assertIsNone(activity.activity(self.repo)['operation'])
+        transactions = local/'deploy-transactions'
+        transactions.mkdir()
+        (transactions/'release.state').write_text('switching')
+        (transactions/'release.commit').write_text('new-commit')
+        (local/'current-deploy-commit').write_text('previous-success')
+        result = activity.activity(self.repo)
+        self.assertEqual(result['deploy']['phase'], 'switching')
+        self.assertIsNone(result['operation'])
+        self.assertEqual(result['last_deploy_commit'], 'previous-success')
+
+    def test_auto_comparison_tracks_analysis_and_manual_none_stays_none(self):
+        def fake(repo, argv, **kwargs):
+            if 'brief' in argv:
+                return {'run': {'id': argv[2], 'state': 'complete'},
+                        'review': {'latest_analysis': {'base_run_id': 'analysis-base'}}}
+            return {'rows': []}
+        with patch.object(board_data, 'command_json', fake):
+            auto = board_data.detail(self.repo, self.cfg, 'candidate', 'auto')
+            manual = board_data.detail(self.repo, self.cfg, 'candidate', 'chosen')
+            none = board_data.detail(self.repo, self.cfg, 'candidate', '')
+        self.assertEqual(auto['base']['id'], 'analysis-base')
+        self.assertEqual(auto['base_mode'], 'analysis')
+        self.assertEqual(manual['base']['id'], 'chosen')
+        self.assertIsNone(none['base'])
+
+    def test_auto_comparison_without_analysis_does_not_guess(self):
+        def fake(repo, argv, **kwargs):
+            if 'brief' in argv: return {'run': {'id': argv[2], 'state': 'complete'}}
+            return {'rows': []}
+        with patch.object(board_data, 'command_json', fake):
+            result = board_data.detail(self.repo, self.cfg, 'candidate', 'auto')
+        self.assertIsNone(result['base'])
 
     def test_board_detail_resolves_ids_and_keeps_scout_queries_small(self):
         calls = []

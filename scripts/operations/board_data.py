@@ -36,6 +36,10 @@ def detail(repo, cfg, run, base='', limit=50):
     result = {'latest': candidate, 'brief': brief, 'base': None, 'sections': {},
               'collected_at': time.time(), 'current_commit': git(repo, 'rev-parse', 'HEAD'),
               'dirty': bool(git(repo, 'status', '--porcelain'))}
+    analysis = (brief.get('review') or {}).get('latest_analysis') or {}
+    result['base_mode'] = 'analysis' if base == 'auto' else 'manual'
+    if base == 'auto':
+        base = analysis.get('base_run_id') or ''
     if base:
         baseline = read(['brief', base, '--limit', '1'])
         if 'error' in baseline or baseline.get('run', {}).get('state') not in ('complete', 'degraded', 'failed', 'aborted'):

@@ -50,7 +50,10 @@
     "config/environment.example.env",
     "docs/roles/connection-check.md",
     "scripts/operations/board-workspace.js",
-    "tests/board-workspace.test.js"
+    "tests/board-workspace.test.js",
+    "scripts/operations/activity.py",
+    "docs/roles/scout-prompt.txt",
+    "tests/board-details.test.js"
   ],
   "remove_files": [
     "docs/roles/operator.md",
