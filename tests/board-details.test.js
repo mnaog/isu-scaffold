@@ -41,8 +41,9 @@ test('stale run and deploy records never claim liveness; actual operation is sep
 
 function scoreChart(runs){
  const make=(tag,text,cls)=>({tag,text,cls,attrs:{},style:{},children:[],events:{},append(...xs){this.children.push(...xs)},replaceChildren(...xs){this.children=xs},setAttribute(k,v){this.attrs[k]=v},addEventListener(k,fn){this.events[k]=fn}});
- const root=make('div'),context=vm.createContext({document:{querySelector:()=>root},el:make,svgEl:(tag,attrs,text)=>Object.assign(make(tag,text),{attrs}),num:v=>String(v),short:v=>v?.slice(0,8),selectedRun:null,chooseRun:id=>context.chosen=id});
+ const root=make('div'),context=vm.createContext({document:{querySelector:selector=>selector==='#run-select'?{value:''}:root},el:make,svgEl:(tag,attrs,text)=>Object.assign(make(tag,text),{attrs}),num:v=>String(v),short:v=>v?.slice(0,8),selectedRun:null,chooseRun:id=>context.chosen=id});
  const html=fs.readFileSync(__dirname+'/../scripts/operations/board.html','utf8');
+ vm.runInContext(html.slice(html.indexOf('function resultBadge'),html.indexOf('function overviewSelection')),context);
  vm.runInContext(html.slice(html.indexOf('function renderScoreHistory'),html.indexOf('function renderScouts')),context);
  context.renderScoreHistory({score_history:runs});
  const flatten=n=>[n,...n.children.flatMap(flatten)];
@@ -67,4 +68,16 @@ test('single score point and dense history retain usable geometry',()=>{
  const points=nodes.filter(n=>n.attrs.class==='score-point');
  assert.ok(points[1].children[0].attrs.cx-points[0].children[0].attrs.cx>=28);
  assert.equal(points.length,100);
+});
+
+test('chart detail follows selection instead of hover and omits numeric x-axis labels',()=>{
+ const run={id:'one',started_at:'2026-01-01T00:00:00Z',score:100,passed:true,state:'complete',hypothesis:'inspect one change'};
+ const {nodes}=scoreChart([run]);
+ const point=nodes.find(n=>n.attrs.class==='score-point');
+ assert.equal(point.attrs['aria-pressed'],'true');
+ assert.equal(point.events.mouseenter,undefined);
+ assert.equal(point.events.focus,undefined);
+ assert.ok(nodes.some(n=>n.text==='inspect one change'));
+ assert.equal(nodes.filter(n=>n.attrs.class==='score-axis'&&n.attrs.y===204).length,0);
+ assert.ok(nodes.some(n=>n.attrs.class==='score-axis'&&n.attrs.y===208&&String(n.text).includes(':')));
 });

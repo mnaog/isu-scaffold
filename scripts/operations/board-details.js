@@ -87,9 +87,10 @@ async function loadDetails(force=false){
  detailController?.abort();const controller=new AbortController();detailController=controller;
  if(!background){
  detailState=null;
+ if(boardState)renderScoreHistory(boardState.metrics||{});
  document.querySelector('#metrics').replaceChildren(el('p','選択したrunの計測を取得しています…','empty'));
  document.querySelector('#metric-time').textContent='取得中';
- if(boardState)renderOverview({...boardState,metrics:{}});
+ if(boardState)renderOverview({...boardState,metrics:overviewSelection(boardState)});
  }
  try{
   const params=new URLSearchParams({run,base,limit});
