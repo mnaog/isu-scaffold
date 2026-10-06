@@ -19,6 +19,13 @@
     "scripts/kickoff.sh",
     "scripts/local-build.py",
     "scripts/operations/board.html",
+    "scripts/operations/board-details.js",
+    "scripts/operations/board-insights.js",
+    "scripts/operations/board-scenario.js",
+    "scripts/operations/vendor/mermaid.tiny.js",
+    "scripts/operations/vendor/mermaid.LICENSE",
+    "scripts/operations/vendor/README.md",
+    "scripts/operations/board_data.py",
     "scripts/operations/main.py",
     "scripts/operations/schema.sql",
     "scripts/operations/store.py",
@@ -41,7 +48,9 @@
     "docs/phases/Phase2.md",
     "docs/local-development.md",
     "config/environment.example.env",
-    "docs/roles/connection-check.md"
+    "docs/roles/connection-check.md",
+    "scripts/operations/board-workspace.js",
+    "tests/board-workspace.test.js"
   ],
   "remove_files": [
     "docs/roles/operator.md",

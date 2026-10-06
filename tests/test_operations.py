@@ -17,6 +17,7 @@ import urllib.request
 SOURCE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SOURCE / 'scripts/operations'))
 import inputs
+import board_data
 import runner
 import store
 
@@ -186,6 +187,79 @@ class OperationsTests(unittest.TestCase):
         self.assertIsNone(data['score_history'][2]['score'])
         self.assertNotIn('hypothesis',data['score_history'][0])
 
+    def test_board_detail_resolves_ids_and_keeps_scout_queries_small(self):
+        calls = []
+        def fake(repo, argv, **kwargs):
+            calls.append((argv, kwargs))
+            if 'sql' in argv: return {'rows': [{'id': 'initial-survey'}]}
+            if 'series' in argv: return {'rows': [], 'window': {'name': 'load'}, 'truncated': False}
+            if 'brief' in argv:
+                return {'run': {'id': 'resolved-' + argv[2], 'state': 'complete', 'score': 0},
+                        'review': {'latest_analysis': {'body': 'evidence'}}}
+            return {'rows': [{'presence': 'removed', 'base': {'total_ms': 12}, 'candidate': None}],
+                    'total_count': 101, 'truncated': True}
+        with patch.object(board_data, 'command_json', fake):
+            data = board_data.detail(self.repo, self.cfg, 'candidate', 'baseline', 100)
+        self.assertEqual(data['latest']['id'], 'resolved-candidate')
+        self.assertEqual(data['base']['score'], 0)
+        self.assertEqual(data['brief']['review']['latest_analysis']['body'], 'evidence')
+        queries = [c for c, _ in calls if 'query' in c and '--base' in c]
+        self.assertEqual(len(queries), 2)
+        self.assertTrue(all(c[2] == 'resolved-candidate' and c[-1] == 'resolved-baseline' for c in queries))
+        self.assertIn('--window', queries[1])
+        self.assertNotIn('--group-by', queries[1])
+        self.assertTrue(data['sections']['sql']['data']['truncated'])
+        self.assertIsNone(data['sections']['sql']['data']['rows'][0]['candidate'])
+        self.assertTrue(all(options['max_bytes'] == 2_000_000 for _, options in calls))
+        self.assertIsNone(self.cfg.get('base_run'))
+        self.assertEqual(data['survey']['run']['id'], 'resolved-initial-survey')
+        self.assertIn(self.cfg['isuscope'] + ['query', 'resolved-candidate', '--view', 'http', '--limit', '500'], [c for c, _ in calls])
+        self.assertIn(self.cfg['isuscope'] + ['query', 'initial-survey', '--metric-prefix', 'transition.', '--limit', '1000'], [c for c, _ in calls])
+        series = [c for c, _ in calls if 'series' in c]
+        self.assertEqual(len(series), 2)
+        self.assertTrue(all(c[2] == 'resolved-candidate' and '--limit' in c and '--window' in c for c in series))
+        self.assertTrue(all(c[1] in ('brief', 'query', 'series', 'sql') for c, _ in calls))
+
+    def test_board_detail_rejects_invalid_base_without_silent_fallback(self):
+        def fake(repo, argv, **kwargs):
+            if argv[2] == 'bad': return {'error': 'unknown run'}
+            return {'run': {'id': 'ok', 'state': 'complete'}}
+        with patch.object(board_data, 'command_json', fake):
+            self.assertEqual(board_data.detail(self.repo, self.cfg, 'ok', 'bad')['error'], 'unknown run')
+        with patch.object(board_data, 'command_json', return_value={'run': {'id': 'active', 'state': 'running'}}):
+            self.assertIn('error', board_data.detail(self.repo, self.cfg, 'active'))
+
+    def test_board_optional_measurements_fail_independently(self):
+        def fake(repo, argv, **kwargs):
+            if 'brief' in argv: return {'run': {'id': 'candidate', 'state': 'complete'}}
+            if 'series' in argv: return {'error': 'load window unavailable'}
+            if 'sql' in argv: return {'rows': []}
+            return {'rows': [], 'total_count': 0}
+        with patch.object(board_data, 'command_json', fake):
+            data = board_data.detail(self.repo, self.cfg, 'candidate')
+        self.assertEqual(data['latest']['id'], 'candidate')
+        self.assertNotIn('error', data['sections']['http']['data'])
+        self.assertEqual(data['timeline']['error'], 'load window unavailable')
+        self.assertIsNone(data['survey']['run'])
+
+    def test_board_selection_is_bounded_and_cannot_inject_cli_options(self):
+        for params in ({}, {'run': ['--help']}, {'run': ['a', 'b']}, {'run': ['a'], 'limit': ['9999']},
+                       {'run': ['a'], 'command': ['run']}, {'run': ['a/b']}):
+            with self.assertRaises(ValueError): board_data.selection(params)
+        self.assertEqual(board_data.selection({'run': ['abc-123'], 'base': [''], 'limit': ['25']}), ('abc-123', '', 25))
+
+    def test_board_cache_expires_and_bounds_memory(self):
+        cache = board_data.DetailCache()
+        with patch.object(board_data, 'detail', return_value={'latest': {'id': 'a'}}) as fetch, patch.object(board_data.time, 'monotonic', return_value=0):
+            cache.get(self.repo, self.cfg, 'a', '', 50)
+            cache.get(self.repo, self.cfg, 'a', '', 50)
+            self.assertEqual(fetch.call_count, 1)
+        with patch.object(board_data, 'detail', return_value={}) as fetch, patch.object(board_data.time, 'monotonic', return_value=31):
+            cache.get(self.repo, self.cfg, 'a', '', 50)
+            self.assertEqual(fetch.call_count, 1)
+            for i in range(12): cache.get(self.repo, self.cfg, str(i), '', 50)
+        self.assertEqual(len(cache.items), 8)
+
     def test_daemon_restart_preserves_deadline_and_multiple_start_stops(self):
         runner.start(self.repo)
         self.wait_for(lambda: all(r['state']=='waiting' for r in self.query('SELECT state FROM scouts')))
@@ -274,10 +348,23 @@ class OperationsTests(unittest.TestCase):
                 self.assertEqual(len(data['scouts']),4)
             with urllib.request.urlopen(url) as r:
                 page=r.read().decode()
-                self.assertNotIn('<button',page)
+                self.assertIn('id="run-select"',page)
+                self.assertIn('id="base-select"',page)
                 self.assertIn('textContent',page)
+            with urllib.request.urlopen(url+'/board-workspace.js') as r:
+                self.assertIn('workspaceData', r.read().decode())
+            with urllib.request.urlopen(url+'/board-details.js') as r:
+                self.assertIn('openMetric', r.read().decode())
+            with urllib.request.urlopen(url+'/board-scenario.js') as r:
+                self.assertIn('buildScenario', r.read().decode())
+            with urllib.request.urlopen(url+'/mermaid.tiny.js') as r:
+                self.assertGreater(len(r.read()), 100000)
+            with self.assertRaises(urllib.error.HTTPError) as invalid:
+                urllib.request.urlopen(url+'/api/metrics?run=--help')
+            self.assertEqual(invalid.exception.code,400)
+            invalid.exception.close()
             with self.assertRaises(urllib.error.HTTPError) as caught:
-                urllib.request.urlopen(urllib.request.Request(url+'/api/board',data=b'{}'))
+                urllib.request.urlopen(urllib.request.Request(url+'/api/metrics?run=a',data=b'{}'))
             self.assertEqual(caught.exception.code,501)
             caught.exception.close()
         finally:

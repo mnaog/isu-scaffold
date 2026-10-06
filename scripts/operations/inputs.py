@@ -6,13 +6,13 @@ import time
 from store import connect, git, rows
 
 
-def command_json(repo, argv):
+def command_json(repo, argv, max_bytes=200000):
     try:
         p = subprocess.run(argv, cwd=repo, capture_output=True, text=True, timeout=30)
         if p.returncode:
             return {'error': p.stderr.strip()[:500] or f'exit {p.returncode}', 'command': argv}
-        if len(p.stdout) > 200000:
-            return {'error': '取得結果が200KBを超えました。selectorを絞ってください', 'command': argv}
+        if len(p.stdout.encode('utf-8')) > max_bytes:
+            return {'error': f'取得結果が{max_bytes // 1000}KBを超えました。取得件数を減らしてください', 'command': argv}
         return json.loads(p.stdout)
     except (OSError, ValueError, subprocess.TimeoutExpired) as e:
         return {'error': str(e)[:500], 'command': argv}

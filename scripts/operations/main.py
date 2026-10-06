@@ -11,6 +11,8 @@ import sys
 import threading
 import time
 from inputs import generate, metrics
+from board_data import DetailCache, selection
+from urllib.parse import urlsplit, parse_qs
 from runner import active, attempt, daemon, export_board, initialize, start, stop_daemon
 from store import config, connect, local, root, rows
 
@@ -21,6 +23,7 @@ def status(repo):
                 'conversations': rows(db, 'SELECT * FROM conversation_sources ORDER BY agent')}
 
 def serve(repo, port):
+    details = DetailCache()
     cached = {'value': {'error': '計測を取得中です'}}
     shutdown = threading.Event()
     def refresh():
@@ -37,7 +40,21 @@ def serve(repo, port):
     signal.signal(signal.SIGTERM, stop_server)
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            if self.path == '/':
+            path = urlsplit(self.path)
+            if path.path == '/api/metrics':
+                try:
+                    args = selection(parse_qs(path.query, keep_blank_values=True))
+                    result = details.get(repo, config(repo), *args)
+                except ValueError as exc:
+                    self.send_error(400, str(exc).encode('ascii', 'replace').decode())
+                    return
+                body = json.dumps(result, ensure_ascii=False).encode()
+                content_type = 'application/json; charset=utf-8'
+            elif self.path in ('/board-workspace.js', '/board-details.js', '/board-insights.js', '/board-scenario.js', '/mermaid.tiny.js'):
+                asset = Path(__file__).parent / ('vendor/mermaid.tiny.js' if self.path == '/mermaid.tiny.js' else self.path[1:])
+                body = asset.read_bytes()
+                content_type = 'text/javascript; charset=utf-8'
+            elif self.path == '/':
                 body = Path(__file__).with_name('board.html').read_bytes()
                 content_type = 'text/html; charset=utf-8'
             elif self.path == '/api/board':
@@ -55,7 +72,7 @@ def serve(repo, port):
             self.send_header('Content-Type', content_type)
             self.send_header('Cache-Control', 'no-store')
             self.send_header('X-Content-Type-Options', 'nosniff')
-            self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
+            self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
             self.end_headers()
             self.wfile.write(body)
         def log_message(self, *_):
