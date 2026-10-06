@@ -19,7 +19,7 @@
 | `docs/` | `official/`へ一次情報、`phases/`へ進行手順、`agent-history/`へCodex・Claude Code・OpenCodeの会話・操作履歴（自動生成）を保存する。調査やシナリオ分析もここへ残す。 |
 | `.claude/` | Claude Codeがこの`AGENTS.md`を起動時に読み込むためのrule symlink。`CLAUDE.md`は作成しない。 |
 | `.isuscope/` | node、collector、route正規化、ベンチ実行方法など、isuscopeの計測設定。 |
-| `isuscope-data/` | スコア、仮説、分析、Git状態など、isuscopeのrun。生ログは既定で除外し、重要なrunだけpinする。 |
+| `isuscope-data/` | スコア、仮説、分析、Git状態など、isuscopeのrun。生ログは既定で除外し、重要なrunだけ強制追加する。 |
 | `.local/` | Public IP、秘密情報、AWSの一時出力など、環境固有の情報。Git管理しない。 |
 
 ## 過去の記録の手がかり
@@ -40,7 +40,7 @@
 - 秘密情報は`.local/`へ置く。再現に必要な定義は`webapp/`、`config/`、`infra/`、`scripts/`へ残す。
 - 公式情報は要約だけで済ませず、可能な限り原文を`docs/official/`へ保存する。
 - 現在のPhaseと完了条件は`docs/phases/`に従い、Phaseの移行は人間が決定する。
-- isuscopeの軽量なrun履歴は通常のコミットへ含める。重要なrunの生ログを残す場合は`isuscope pin <run-id>`を使う。
+- isuscopeの軽量なrun履歴は通常のコミットへ含める。重要なrunの生ログを残す場合は`git add -f isuscope-data/runs/<run-id>`でstageする。
 - `.local/operation.lock`を変更系操作の共通排他とする。実行中のlockは基本的に手作業で消さず、別セッションの終了を待つ。status・checkなどのread-only操作は並行してよい。
 
 ## 作業の進め方
@@ -125,7 +125,7 @@ FAILしたrunの理由とエラーの実例は、`.isuscope/parse-benchmark.sh`�
 
 `survey-run`はPhase 1の初回調査だけに使い、その後は構成やroutingを大きく変えた場合も`run`を使う。時間が最大の制約なので、同じ変更の比較のためにベンチを重ねない。終了前はprofilerや重いログを外した構成へ切り替え、確認のベンチは通常の`run`で一度だけ行う。
 
-isucopeの取得データについてより自由度の高い分析や比較にはsqliteを用いて内容を確認する。
+isuscopeの取得データについてより自由度の高い分析や比較には、`isuscope-data/isuscope.sqlite3`を`sqlite3 -readonly`で開いて確認する。
 
 初回runのHTTP routeに動的IDが残っている場合は、`isuscope routes suggest <run-id> --output .local/route-suggestions.toml`で`.local/route-suggestions.toml`を作る。候補を確認したものだけ`.isuscope/routes.toml`へ移し、再計測する。
 
