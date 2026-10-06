@@ -24,7 +24,7 @@ make local-down
 LOCAL_RESET=yes make local-reset
 ```
 
-`local-up`は未commitのコードも含む現在の`webapp/`をread-onlyでmountし、RustをLinuxのnative CPUでbuildして起動する。編集後は再度`local-up`でアプリを作り直す。`local-down`はデータとcacheを保持する。操作はworktree内の専用lockで直列化され、remote操作のlockは取らない。
+`local-up`は未commitのコードも含む現在の`webapp/`をread-onlyでmountし、RustをLinuxのnative CPUでbuildして起動する。編集後は再度`local-up`でアプリを作り直す。他のserviceが依存し`build`を持たないservice（DB・cacheなど）は作り直さず、healthyになるまで待ってから残りを作り直す。Composeの設定を変えればCompose自身が作り直すが、bind mountした設定fileの中身を変えたときは`local-down`してから`local-up`する。`local-down`はデータとcacheを保持する。操作はworktree内の専用lockで直列化され、remote操作のlockは取らない。
 
 DB・Cargo・target volumeとnetworkはworktreeの絶対pathから作るCompose projectごとに分離する。固定container名、external resource、host network、privileged実行、書込み可能なbind mount、固定公開portを拒否する。アプリの公開portは127.0.0.1上で自動割当され、URLは標準出力と`.local/local-runtime/status.json`に残る。DBはhostへ公開しない。worktreeを削除する前に、そのworktreeで`local-down`（不要データも消すなら`local-reset`）を実行する。
 

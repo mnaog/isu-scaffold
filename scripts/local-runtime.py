@@ -36,6 +36,15 @@ def validate(config, project):
                 raise ValueError("bind mounts must be read-only; use project volumes for mutable data")
 
 
+def split_services(config):
+    """Image-only services that others depend on (DB, cache) are kept across `up`; Compose still
+    recreates them when their own config changes. The rest carry worktree code and are rebuilt."""
+    services = config["services"]
+    dependencies = {name for service in services.values() for name in (service.get("depends_on") or {})}
+    kept = [name for name, service in services.items() if name in dependencies and "build" not in service]
+    return kept, [name for name in services if name not in kept]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["up", "check", "down", "logs", "reset"])
@@ -86,8 +95,17 @@ def main():
         config = json.loads(invoke("config", "--format", "json", capture=True).stdout)
         validate(config, project)
         if args.action == "up":
-            invoke("up", "-d", "--build", "--force-recreate", "--remove-orphans")
-            deadline = time.monotonic() + int(os.environ.get("LOCAL_START_TIMEOUT", "600"))
+            timeout = int(os.environ.get("LOCAL_START_TIMEOUT", "600"))
+            deadline = time.monotonic() + timeout
+            kept, rebuilt = split_services(config)
+            if kept:
+                # Recreating these every time waited for a DB restart and healthcheck on each edit.
+                try:
+                    invoke("up", "-d", "--wait", "--wait-timeout", str(timeout), "--remove-orphans", *kept)
+                except subprocess.CalledProcessError:
+                    invoke("logs", "--tail", "60", *kept)
+                    raise ValueError("local dependencies did not become healthy; inspect make local-logs")
+            invoke("up", "-d", "--build", "--force-recreate", "--no-deps", "--remove-orphans", *rebuilt)
             while True:
                 try:
                     url = check()

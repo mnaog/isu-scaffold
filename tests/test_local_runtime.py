@@ -28,6 +28,13 @@ class LocalRuntimeTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 runtime.validate(config, self.project)
 
+    def test_up_keeps_image_dependencies_and_rebuilds_the_rest(self):
+        config = {"services": {"db": {"image": "mysql"}, "cache": {"image": "memcached"},
+                               "app": {"build": {}, "depends_on": {"db": {}, "cache": {}}},
+                               "nginx": {"image": "nginx", "depends_on": {"app": {}}},
+                               "tool": {"image": "busybox"}}}
+        self.assertEqual(runtime.split_services(config), (["db", "cache"], ["app", "nginx", "tool"]))
+
     def test_reject_unsafe_service_settings(self):
         for key, value in (("container_name", "shared"), ("network_mode", "host"), ("privileged", True),
                            ("ports", [{"host_ip": "0.0.0.0"}]),
