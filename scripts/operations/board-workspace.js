@@ -22,7 +22,7 @@ function applyWorkspace(){
 function renderHistory(root){
  const panel=metricPanel('ベンチ走行履歴','直近100件の終了したベンチ');panel.id='detail-history';panel.classList.add('history-table');root.append(panel);
  panel.append(el('p','ベンチを選ぶと、各グラフ・表が切り替わります。','panel-note'));
- table(panel,['ベンチ','試したこと','状態','分析','スコア','開始','commit'],[...(boardState?.metrics?.score_history||[])].reverse().map(r=>{const a=el('button',r.short_id||r.id.slice(-8),'detail-link');a.addEventListener('click',()=>chooseRun(r.id));const hypothesis=el('div',r.hypothesis||'記録なし','history-hypothesis');return [a,hypothesis,resultBadge(r),analysisLabel(r),num(r.score),new Date(r.started_at).toLocaleString('ja-JP'),(r.commit_hash||'不明').slice(0,8)+(r.dirty?' dirty':'')]}));
+ table(panel,['ベンチ','試したこと','状態','分析','スコア','開始','commit'],[...(boardState?.metrics?.score_history||[])].reverse().map(r=>{const a=el('button',r.short_id||r.id.slice(-8),'detail-link');a.addEventListener('click',()=>chooseRun(r.id));const hypothesis=el('div',r.hypothesis||'記録なし','history-hypothesis');return [a,hypothesis,resultBadge(r),analysisLabel(r),scoreValue(r),new Date(r.started_at).toLocaleString('ja-JP'),(r.commit_hash||'不明').slice(0,8)+(r.dirty?' dirty':'')]}));
 }
 function initWorkspace(){
  document.querySelector('#node-select').addEventListener('change',e=>{workspace.node=e.target.value;if(detailState)renderDetail(detailState)});

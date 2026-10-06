@@ -126,7 +126,7 @@ function renderDetail(q){
  for(const x of review.changes||[]){const decision=x.latest_decision;dataList(content,[['変更',`${x.change.id} · ${x.change.description}`],['現在の採否',decision?.status||'未判断'],['理由',decision?.reason],['再検討',decision?.revisit]]);}
  if(review.changes?.length)content.append(el('p','採否は関連する変更の現在の判断です。この計測当時の判断やdeploy済みを表すものではありません。','note'));
  if(review.changes_truncated)content.append(el('p','変更の採否は一部のみ表示されています。','note'));
- if(q.base){comparisonTable(summary,[['スコア',...valueDiff(q.base.score,run.score)]]);content.append(el('p','差分は対象 − 比較元。FAILのスコアや要求回数の増減だけで改善とは判断しません。','note'));}
+ if(q.base){const [, ,delta,percent]=valueDiff(q.base.score,run.score);table(summary,['項目','比較元','対象','差分','変化率'],[['スコア',scoreValue(q.base),scoreValue(run),signed(delta),percent==null?'—':signed(percent)+'%']]);content.append(el('p','差分は対象 − 比較元。FAILのスコアや要求回数の増減だけで改善とは判断しません。','note'));}
  const messages=[...(b.benchmark_messages?.failure||[]),...(b.benchmark_messages?.errors||[]).flatMap(x=>x.samples||[]),...(b.warnings||[])];
  for(const message of messages)root.append(el('p',message,'metrics-error'));
  renderExpandedMetrics(root,q,'before');

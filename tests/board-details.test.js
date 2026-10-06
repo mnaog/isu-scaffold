@@ -70,14 +70,14 @@ test('single score point and dense history retain usable geometry',()=>{
  assert.equal(points.length,100);
 });
 
-test('chart detail follows selection instead of hover and omits numeric x-axis labels',()=>{
+test('chart highlights selection without duplicating details or numeric x-axis labels',()=>{
  const run={id:'one',started_at:'2026-01-01T00:00:00Z',score:100,passed:true,state:'complete',hypothesis:'inspect one change'};
  const {nodes}=scoreChart([run]);
  const point=nodes.find(n=>n.attrs.class==='score-point');
  assert.equal(point.attrs['aria-pressed'],'true');
  assert.equal(point.events.mouseenter,undefined);
  assert.equal(point.events.focus,undefined);
- assert.ok(nodes.some(n=>n.text==='inspect one change'));
+ assert.ok(!nodes.some(n=>n.text==='inspect one change'));
  assert.equal(nodes.filter(n=>n.attrs.class==='score-axis'&&n.attrs.y===204).length,0);
  assert.ok(nodes.some(n=>n.attrs.class==='score-axis'&&n.attrs.y===208&&String(n.text).includes(':')));
 });
