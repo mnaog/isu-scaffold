@@ -32,13 +32,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/isuscope
-          key: isuscope-${{ runner.os }}-${{ steps.isuscope.outputs.rev }}
+          key: isuscope-rust-1.99.0-${{ runner.os }}-${{ steps.isuscope.outputs.rev }}
 
       - name: Build isuscope
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          rustup toolchain install stable --profile minimal
-          cargo +stable install --locked --git https://github.com/mnaog/isuscope --rev "${{ steps.isuscope.outputs.rev }}" isuscope
+          rustup toolchain install 1.99.0 --profile minimal
+          cargo +1.99.0 install --locked --git https://github.com/mnaog/isuscope --rev "${{ steps.isuscope.outputs.rev }}" isuscope
 
       # Whitespace is checked only in the pushed changes: imported contest files and generated
       # conversation snapshots may legitimately contain trailing spaces.

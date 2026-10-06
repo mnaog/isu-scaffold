@@ -29,4 +29,8 @@ isuscope survey-run --hypothesis "初期状態の負荷構造を記録する"
 
 コード回収後、`config/local/compose.example.yaml`を当日のアプリに合わせて`compose.yaml`へコピーし、`make local-up` / `make local-check` / `make local-down`で検証します。DB・network・portはworktreeごとに分離し、初回baselineの開始を待たせません。[ローカル実行環境](docs/local-development.md)と[Phase 1](docs/phases/Phase1.md)を参照してください。
 
-配布用Rustは`make build`でローカルからLinux向けにbuildし、`make deploy`が同じ成果物を全対象nodeへ配ります。Docker cacheを再利用し、配布サーバーでのコンパイルを既定から外しています。Rust版・target・実行時依存は当日の環境に合わせて設定してください。
+配布用Rustは`make build`でローカルからLinux向けにbuildし、`make deploy`が同じ成果物を全対象nodeへ配ります。Docker cacheを再利用し、配布サーバーでのコンパイルを既定から外しています。Rustは1.99.0を標準とし、target・OS・実行時依存は当日の環境に合わせて設定してください。
+
+## Rust toolchain
+
+通常開発・CI・LinuxビルダーはRust 1.99.0を使用する。Macはrustup経由のcargo/rustcを使用し、`rustup show active-toolchain`で確認する。Linuxビルダーは配布先と互換性のあるOS/glibcを維持し、コンパイラだけを更新する。Editionと各アプリのMSRVは変更しない。隔離されたAI比較実験の旧toolchainは再現用に保持する。

@@ -5,7 +5,7 @@
 ## 構成する
 
 1. `config/local/compose.example.yaml`を`config/local/compose.yaml`へコピーする。
-2. Rust版、DB版、追加service、アプリの環境変数、SQL投入元を実アプリに合わせる。`LOCAL_DB_IMAGE`と`LOCAL_RUST_IMAGE`は未設定なら起動を拒否する。Phase 1で当日の環境を確認して設定する。
+2. 標準Rust版は1.99.0に固定する。OS/glibc、DB版、追加service、アプリの環境変数、SQL投入元を実アプリに合わせる。`LOCAL_DB_IMAGE`と`LOCAL_RUST_IMAGE`は未設定なら起動を拒否する。Phase 1で当日の環境を確認して設定する。`LOCAL_RUST_IMAGE`は互換OSの選択であり、Dockerfileが公式rustupからRust 1.99.0を導入する。
 3. 許可されたschema・初期データを設定する。例では`.local/local-runtime/init/`のSQLをMySQLの初回起動時に投入する。`LOCAL_INIT_DIR`で別ディレクトリも指定できる。DB volumeが既存なら自動で再投入しない。
 4. 必要なOS依存はDockerfileへ宣言する。`EXTRA_PACKAGES` build argも使える。初期化scriptが必要とするDB client・ファイル配置・権限も確認する。
 5. 構成をcommitする。秘密情報はtrackedなComposeへ書かず、ローカル専用の値か`.local/`からの注入を使う。
