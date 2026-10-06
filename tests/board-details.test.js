@@ -38,3 +38,33 @@ test('stale run and deploy records never claim liveness; actual operation is sep
  assert.match(ctx.operationLines(d).join('\n'),/ベンチ実行中/);
  assert.doesNotMatch(ctx.operationLines(d).join('\n'),/実行継続は未確認/);
 });
+
+function scoreChart(runs){
+ const make=(tag,text,cls)=>({tag,text,cls,attrs:{},style:{},children:[],events:{},append(...xs){this.children.push(...xs)},replaceChildren(...xs){this.children=xs},setAttribute(k,v){this.attrs[k]=v},addEventListener(k,fn){this.events[k]=fn}});
+ const root=make('div'),context=vm.createContext({document:{querySelector:()=>root},el:make,svgEl:(tag,attrs,text)=>Object.assign(make(tag,text),{attrs}),num:v=>String(v),short:v=>v?.slice(0,8),selectedRun:null,chooseRun:id=>context.chosen=id});
+ const html=fs.readFileSync(__dirname+'/../scripts/operations/board.html','utf8');
+ vm.runInContext(html.slice(html.indexOf('function renderScoreHistory'),html.indexOf('function renderScouts')),context);
+ context.renderScoreHistory({score_history:runs});
+ const flatten=n=>[n,...n.children.flatMap(flatten)];
+ return {nodes:flatten(root),context};
+}
+test('score history spaces irregular and simultaneous runs equally, including failures',()=>{
+ const runs=[['a','2026-01-01T00:00:00Z',100,true],['b','2026-01-01T00:00:00Z',null,false],['c','2026-02-01T00:00:00Z',200,true]].map(([id,started_at,score,passed])=>({id,started_at,score,passed,state:passed?'complete':'failed'}));
+ const {nodes,context}=scoreChart(runs);
+ const points=nodes.filter(n=>n.attrs.class==='score-point');
+ const xs=points.map(n=>n.children[0].attrs.cx);
+ assert.equal(xs[1]-xs[0],xs[2]-xs[1]);
+ assert.equal(points.length,3);
+ assert.match(points[1].attrs['aria-label'],/2回目.*FAIL/);
+ points[2].events.click();assert.equal(context.chosen,'c');
+ assert.ok(nodes.some(n=>n.text==='2/1 00:00'||String(n.text).includes('2/1')));
+});
+test('single score point and dense history retain usable geometry',()=>{
+ const run={id:'one',started_at:'2026-01-01T00:00:00Z',score:0,passed:true,state:'complete'};
+ const single=scoreChart([run]).nodes.find(n=>n.attrs.class==='score-point');
+ assert.ok(Number.isFinite(single.children[0].attrs.cx));
+ const {nodes}=scoreChart(Array.from({length:100},(_,i)=>({...run,id:String(i)})));
+ const points=nodes.filter(n=>n.attrs.class==='score-point');
+ assert.ok(points[1].children[0].attrs.cx-points[0].children[0].attrs.cx>=28);
+ assert.equal(points.length,100);
+});
