@@ -7,11 +7,11 @@ const source=fs.readFileSync(__dirname+'/../scripts/operations/board-details.js'
 vm.runInContext(source.slice(0,source.indexOf("document.querySelector('#previous-run').addEventListener")),ctx);
 
 test('saved analysis is explicitly distinguished from an unrelated manual comparison',()=>{
- const q={brief:{review:{latest_analysis:{base_short_id:'12345678'}}},base:{id:'run-87654321'}};
+ const q={brief:{review:{latest_analysis:{base:'12345678'}}},base:{short_id:'87654321'}};
  assert.match(ctx.analysisComparisonNote(q),/12345678/);
- q.base={id:'run-12345678'};assert.equal(ctx.analysisComparisonNote(q),'');
+ q.base={short_id:'12345678'};assert.equal(ctx.analysisComparisonNote(q),'');
  q.base=null;assert.match(ctx.analysisComparisonNote(q),/異なります/);
- q.brief.review.latest_analysis={body:'no base'};q.base={id:'chosen'};
+ q.brief.review.latest_analysis={body:'no base'};q.base={short_id:'chosen'};
  assert.match(ctx.analysisComparisonNote(q),/比較元の記録がありません/);
 });
 test('analysis auto mode reports missing analysis without inventing a baseline',()=>{

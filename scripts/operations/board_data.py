@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 import re
 import threading
 import time
-from inputs import command_json, records
+from inputs import brief_run, command_json, records, table_rows
 from store import git
 
 
@@ -36,13 +36,14 @@ def restore_full_text(read, brief):
     the board shows the saved text in full."""
     review = brief.get('review') or {}
     analysis = review.get('latest_analysis') or {}
-    run_id = (brief.get('run') or {}).get('id', '')
-    if analysis.get('full_text') and re.fullmatch(r'[0-9a-f-]{36}', run_id):
-        rows = read(['sql', f"SELECT body FROM run_analyses WHERE run_id='{run_id}' "
+    # brief names the run by the last 8 characters of its ID.
+    short_id = brief.get('run') or ''
+    if analysis.get('full_text') and re.fullmatch(r'[0-9a-f]{8}', short_id):
+        rows = read(['sql', f"SELECT body FROM run_analyses WHERE run_id LIKE '%{short_id}' "
                      "ORDER BY created_at DESC, id DESC LIMIT 1"]).get('rows') or []
         if rows:
             analysis['body'] = rows[0]['body']
-    for change in review.get('changes') or []:
+    for change in (review.get('changes') or {}).get('items') or []:
         if not change.get('full_text'):
             continue
         history = read(['change', 'show', change['id']])
@@ -50,15 +51,15 @@ def restore_full_text(read, brief):
             continue
         change['description'] = history['change']['description']
         # Decisions are oldest first; brief shows the latest one.
-        decisions = history.get('decisions') or []
+        decisions = table_rows(history.get('decisions'))
         if decisions and not change.get('reason_same_as_analysis'):
             change['reason'] = decisions[-1]['reason']
 
 
 def nested_comparison(result):
-    """A comparison row is flat: identity, presence, and per value `x_base`, `x`, `x_delta`,
-    `x_delta_percent`. The board reads it as key / base / candidate / changes."""
-    if not isinstance(result, dict) or 'candidate_run_id' not in result:
+    """A comparison row (`query --base --all-columns`) is flat: identity, presence, and per value
+    `x_base`, `x`, `x_delta`, `x_delta_percent`. The board reads it as key / base / candidate / changes."""
+    if not isinstance(result, dict) or 'base' not in result:
         return result
     rows = []
     for row in result.get('rows') or []:
@@ -79,12 +80,14 @@ def nested_comparison(result):
 
 
 def brief_items(result):
-    """brief sections hold their table in `items`, with values shared by every row in `common`."""
+    """brief tables (its sections, hosts, clients, and review's changes and conditions) hold their rows
+    in `items`, with values shared by every row in `common`."""
     if isinstance(result, dict):
-        for section in result.values():
-            if isinstance(section, dict) and 'total_count' in section and 'rows' in section:
-                with_common(section)
-                section['items'] = section.pop('rows')
+        if 'total_count' in result and isinstance(result.get('rows'), list):
+            with_common(result)
+            result['items'] = result.pop('rows')
+        for value in result.values():
+            brief_items(value)
     return result
 
 
@@ -113,7 +116,7 @@ def detail(repo, cfg, run, base='', limit=50, measured=None):
     brief = read(['brief', run, '--limit', '25'])
     if 'error' in brief:
         return {'error': brief['error']}
-    candidate = brief.get('run', {})
+    candidate = brief_run(brief)
     if candidate.get('state') not in ('complete', 'degraded', 'failed', 'aborted'):
         return {'error': '終了したrunを選んでください'}
     result = {'latest': candidate, 'brief': brief, 'base': None,
@@ -123,17 +126,17 @@ def detail(repo, cfg, run, base='', limit=50, measured=None):
     analysis = (brief.get('review') or {}).get('latest_analysis') or {}
     result['base_mode'] = 'analysis' if base == 'auto' else 'manual'
     if base == 'auto':
-        base = analysis.get('base_short_id') or ''
+        base = analysis.get('base') or ''
     if base:
         baseline = read(['brief', base, '--limit', '1'])
-        if 'error' in baseline or baseline.get('run', {}).get('state') not in ('complete', 'degraded', 'failed', 'aborted'):
+        if 'error' in baseline or (baseline.get('summary') or {}).get('state') not in ('complete', 'degraded', 'failed', 'aborted'):
             return {'error': baseline.get('error', '終了した比較元runを選んでください')}
-        result['base'] = baseline['run']
+        result['base'] = brief_run(baseline)
     # A finished run's measurements never change; only the brief (analysis, notes) is re-read.
-    key = (tuple(cfg['isuscope']), candidate['id'], result['base']['id'] if result['base'] else '', limit)
+    key = (tuple(cfg['isuscope']), candidate['short_id'], result['base']['short_id'] if result['base'] else '', limit)
     measurements = measured.get(key) if measured is not None else None
     if measurements is None:
-        measurements = measure(read, cfg['isuscope'], candidate['id'], result['base'], limit, brief)
+        measurements = measure(read, cfg['isuscope'], candidate['short_id'], result['base'], limit, brief)
         if measured is not None and complete(measurements):
             measured.put(key, measurements)
     result.update(measurements)
@@ -142,14 +145,15 @@ def detail(repo, cfg, run, base='', limit=50, measured=None):
 
 def measure(read, prefix, run_id, base, limit, brief):
     # A run that did not record the end of initialize has only a `whole` window; brief says which.
-    database_window = brief.get('database_window') or 'whole'
-    series_window = brief.get('hosts_window') or 'whole'
+    database_window = (brief.get('database') or {}).get('window') or 'whole'
+    series_window = (brief.get('hosts') or {}).get('window') or 'whole'
     sections = {}
     for name, args in (('http', ['--view', 'http']),
                        ('sql', ['--view', 'database', '--window', database_window])):
         argv = ['query', run_id, *args, '--limit', str(limit)]
         if base:
-            argv += ['--base', base['id']]
+            # The board shows both sides of every value, not only the columns AI judges by.
+            argv += ['--base', base['short_id'], '--all-columns']
         sections[name] = argv
     mysql_args = ['series', run_id, '--window', series_window, '--bucket', '5', '--limit', '3000']
     for metric in MYSQL_METRICS:

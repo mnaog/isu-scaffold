@@ -25,6 +25,21 @@ def records(value):
     return value
 
 
+def table_rows(value):
+    """Rows of a table read by `records`: a bare list, or `rows` next to `total_count` and `truncated`."""
+    return (value.get('rows') or []) if isinstance(value, dict) else (value or [])
+
+
+def listed_runs(listing):
+    """`list` rows, naming the short ID `short_id` as the board does for every run."""
+    return [{**run, 'short_id': run.get('run')} for run in table_rows(listing.get('runs'))]
+
+
+def brief_run(brief):
+    """brief names its run by short ID in `run` and puts the run's details in `summary`."""
+    return {'short_id': brief['run'], **(brief.get('summary') or {})}
+
+
 def command_json(repo, argv, max_bytes=200000, uncapped=False):
     # isuscope trims row output to fit an AI tool limit; the board draws every requested row.
     env = {**os.environ, 'ISUSCOPE_OUTPUT_BYTES': '0'} if uncapped else None
@@ -51,8 +66,9 @@ def metrics(repo, cfg, stop=None):
     if 'error' in listing:
         result['error'] = listing['error']
         return result
-    result['running'] = [r for r in listing.get('runs', []) if r['state'] == 'running']
-    completed = [r for r in listing.get('runs', []) if r['state'] in ('complete', 'degraded', 'failed', 'aborted')]
+    runs = listed_runs(listing)
+    result['running'] = [r for r in runs if r['state'] == 'running']
+    completed = [r for r in runs if r['state'] in ('complete', 'degraded', 'failed', 'aborted')]
     if not completed:
         result['error'] = '直近100件に完了runがありません'
         return result
@@ -64,16 +80,16 @@ def metrics(repo, cfg, stop=None):
     base = cfg.get('base_run')
     if base:
         brief = read(prefix + ['brief', base, '--limit', '5'])
-        if 'error' in brief or brief.get('run', {}).get('state') == 'running':
+        if 'error' in brief or (brief.get('summary') or {}).get('state') == 'running':
             result['base_error'] = brief.get('error', '比較元runが実行中です')
             base = None
         else:
-            result['base'] = brief['run']
-            base = brief['run']['id']
+            result['base'] = brief_run(brief)
+            base = brief['run']
     # A run that did not record the end of initialize has only a `whole` window; brief says which.
     brief = result['brief'] if isinstance(result['brief'], dict) else {}
-    database_window = brief.get('database_window') or 'whole'
-    series_window = brief.get('hosts_window') or 'whole'
+    database_window = (brief.get('database') or {}).get('window') or 'whole'
+    series_window = (brief.get('hosts') or {}).get('window') or 'whole'
     selectors = {
         'benchmark': ['--metric-prefix', 'benchmark.'],
         'http': ['--view', 'http'],
@@ -122,7 +138,7 @@ def current(repo, cfg):
     """Final scout check in the same session; no input/log/DB writes or other scouts."""
     prefix = cfg['isuscope']
     listing = records(command_json(repo, prefix + ['list', '--limit', '100']))
-    completed = [r for r in listing.get('runs', [])
+    completed = [r for r in listed_runs(listing)
                  if r.get('state') in ('complete', 'degraded', 'failed', 'aborted')]
     latest = completed[0] if completed else None
     database = repo / '.local' / 'operations' / 'state.sqlite3'

@@ -12,9 +12,9 @@ function analysisLabel(run){
 }
 function metricPair(base,candidate,digits=0){return num(base,digits)+' → '+num(candidate,digits);}
 function analysisComparisonNote(q){
- const analysis=q.brief?.review?.latest_analysis,base=analysis?.base_short_id;
+ const analysis=q.brief?.review?.latest_analysis,base=analysis?.base;
  if(!analysis)return q.base_mode==='analysis'?'分析の比較元はまだ記録されていません。':'';
- if((base||null)===(q.base?.id?.slice(-8)||null))return '';
+ if((base||null)===(q.base?.short_id||null))return '';
  if(!base)return '保存済み分析には比較元の記録がありません。表示中の比較についての分析とは限りません。';
  return `保存済み分析は ${base} との比較です。表示中の比較とは異なります。`;
 }
@@ -98,7 +98,7 @@ async function loadDetails(force=false){
   if(!response.ok)throw Error(`HTTP ${response.status}`);
   const q=await response.json();if(version!==requestVersion)return;
   if(q.error)throw Error(q.error);
-  console.debug('[ISUCON board] 取得コマンド・計測の根拠',{run:q.latest?.id,base:q.base?.id,collected_at:q.collected_at,sections:q.sections,coverage_issues:q.brief?.coverage_issues,review:q.brief?.review});
+  console.debug('[ISUCON board] 取得コマンド・計測の根拠',{run:q.latest?.short_id,base:q.base?.short_id,collected_at:q.collected_at,sections:q.sections,coverage_issues:q.brief?.coverage_issues,review:q.brief?.review});
   const scroll=window.scrollY;
   detailState=q;detailFetched=Date.now();renderDetail(q);updateMeasurementHeader();
   for(const node of document.querySelectorAll('#metrics details[data-key]'))node.open=openDetailKeys.includes(node.dataset.key);
@@ -121,16 +121,16 @@ function renderDetail(q){
  const comparisonNote=analysisComparisonNote(q);if(comparisonNote)summary.append(el('p',comparisonNote,'panel-note'));
  const info=disclosure(summary,'分析・変更の現在の採否・コードの情報','run-info');info.className='run-info';
  const content=el('div',null,'detail-padding');info.append(content);
- dataList(content,[['対象',run.short_id||run.id],['比較元',q.base?.short_id||q.base?.id||'なし'],['状態',`${run.state} · ${run.passed===true?'PASS':run.passed===false?'FAIL':'判定なし'}`],['仮説',run.hypothesis],['判定',analysis?.verdict||run.analysis_status],['分析',analysis?.body],['分析の比較元',analysis?.base_short_id||'未指定'],['計測commit',(run.commit_hash||'不明')+(run.dirty?' (dirty)':'')],['現在commit',(q.current_commit||'不明')+(q.dirty?' (dirty)':'')]]);
+ dataList(content,[['対象',run.short_id||run.id],['比較元',q.base?.short_id||q.base?.id||'なし'],['状態',`${run.state} · ${run.passed===true?'PASS':run.passed===false?'FAIL':'判定なし'}`],['仮説',run.hypothesis],['判定',analysis?.verdict||run.analysis_status],['分析',analysis?.body],['分析の比較元',analysis?.base||'未指定'],['計測commit',(run.commit_hash||'不明')+(run.dirty?' (dirty)':'')],['現在commit',(q.current_commit||'不明')+(q.dirty?' (dirty)':'')]]);
  if(run.commit_hash!==q.current_commit||run.dirty||q.dirty)content.append(el('p','現在のコードと計測時のコードが一致するとは限りません。commitとdirtyを確認してください。','note'));
- for(const x of review.changes||[])dataList(content,[['変更',`${x.id} · ${x.description}`],['現在の採否',x.status||'未判断'],['理由',x.reason_same_as_analysis?'分析と同じ':x.reason],['再検討',x.revisit]]);
- if(review.changes?.length)content.append(el('p','採否は関連する変更の現在の判断です。この計測当時の判断やdeploy済みを表すものではありません。','note'));
- if(review.changes_truncated)content.append(el('p','変更の採否は一部のみ表示されています。','note'));
+ for(const x of review.changes?.items||[])dataList(content,[['変更',`${x.id} · ${x.description}`],['現在の採否',x.status||'未判断'],['理由',x.reason_same_as_analysis?'分析と同じ':x.reason],['再検討',x.revisit]]);
+ if(review.changes?.items?.length)content.append(el('p','採否は関連する変更の現在の判断です。この計測当時の判断やdeploy済みを表すものではありません。','note'));
+ if(review.changes?.truncated)content.append(el('p','変更の採否は一部のみ表示されています。','note'));
  if(q.base){const [, ,delta,percent]=valueDiff(q.base.score,run.score);table(summary,['項目','比較元','対象','差分','変化率'],[['スコア',scoreValue(q.base),scoreValue(run),signed(delta),percent==null?'—':signed(percent)+'%']]);content.append(el('p','差分は対象 − 比較元。FAILのスコアや要求回数の増減だけで改善とは判断しません。','note'));}
  const messages=[...(b.benchmark_messages?.failure||[]),...(b.benchmark_messages?.errors||[]).flatMap(x=>x.samples||[]),...(b.warnings||[])];
  for(const message of messages)root.append(el('p',message,'metrics-error'));
  renderExpandedMetrics(root,q,'before');
- for(const kind of ['http','sql'])renderMetricTable(root,kind,q.sections?.[kind]?.data||{},!!q.base,b.database_window);
+ for(const kind of ['http','sql'])renderMetricTable(root,kind,q.sections?.[kind]?.data||{},!!q.base,b.database?.window);
  renderExpandedMetrics(root,q,'after');
  renderHistory(root);applyWorkspace(q);
 }

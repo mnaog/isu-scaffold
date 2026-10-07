@@ -8,11 +8,11 @@ function workspaceData(q,node){
  const items=data=>data?{...data,items:(data.items||[]).filter(r=>r.node===node)}:data;
  return {...q,sections:Object.fromEntries(Object.entries(q.sections||{}).map(([k,s])=>[k,{...s,data:scopedRows(s.data||{},node)}])),
   timeline:scopedRows(q.timeline||{},node),mysql:scopedRows(q.mysql||{},node),graph_http:scopedRows(q.graph_http||{},node),
-  brief:{...b,hosts:(b.hosts||[]).filter(r=>r.node===node),quiet_hosts:b.quiet_hosts?.nodes?.includes(node)?{...b.quiet_hosts,nodes:[node]}:null,clients:(b.clients||[]).filter(r=>r.node===node),upstreams:items(b.upstreams),cpu:items(b.cpu)}};
+  brief:{...b,hosts:items(b.hosts),quiet_hosts:b.quiet_hosts?.nodes?.includes(node)?{...b.quiet_hosts,nodes:[node]}:null,clients:items(b.clients),upstreams:items(b.upstreams),cpu:items(b.cpu)}};
 }
 function prepareWorkspace(q){
  const select=document.querySelector('#node-select'),nodes=new Set();
- for(const h of q.brief?.hosts||[])nodes.add(h.node);
+ for(const h of q.brief?.hosts?.items||[])nodes.add(h.node);
  for(const n of q.brief?.quiet_hosts?.nodes||[])nodes.add(n);
  for(const section of Object.values(q.sections||{}))for(const r of section.data?.rows||[]){const node=rowNode(section.data,r);if(node)nodes.add(node);}
  const values=[...nodes].filter(Boolean).sort();if(workspace.node&&!nodes.has(workspace.node))values.push(workspace.node);
@@ -21,7 +21,7 @@ function prepareWorkspace(q){
 function windowLabel(name){return name==='load'?'負荷走行中':'ベンチ全体';}
 function applyWorkspace(q){
  const b=q?.brief||{};
- document.querySelector('#workspace-context').textContent=`${workspace.node||'全サーバー'} · HTTPは計測全体、SQLは${windowLabel(b.database_window)}、時系列は${windowLabel(b.hosts_window)}。スコア・採否・計測の不足は全サーバー共通。`;
+ document.querySelector('#workspace-context').textContent=`${workspace.node||'全サーバー'} · HTTPは計測全体、SQLは${windowLabel(b.database?.window)}、時系列は${windowLabel(b.hosts?.window)}。スコア・採否・計測の不足は全サーバー共通。`;
 }
 function renderHistory(root){
  const panel=metricPanel('ベンチ走行履歴','直近100件の終了したベンチ');panel.id='detail-history';panel.classList.add('history-table');root.append(panel);

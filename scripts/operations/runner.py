@@ -51,7 +51,7 @@ def save_report(repo, name, report, bundle, ref, session, now=None):
     with connect(repo) as db:
         db.execute('''UPDATE scouts SET report=?,posted_at=?,input_ref=?,code_commit=?,run_id=?,base_run_id=?,session_id=?,failures=0,error=NULL WHERE name=?''',
                    (report, time.time() if now is None else now, str(ref), m['current_commit'],
-                    (m.get('latest') or {}).get('id'), (m.get('base') or {}).get('id'), session, name))
+                    (m.get('latest') or {}).get('short_id'), (m.get('base') or {}).get('short_id'), session, name))
     export_board(repo)
 
 

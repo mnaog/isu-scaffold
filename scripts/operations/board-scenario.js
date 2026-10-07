@@ -11,7 +11,7 @@ function buildScenario(q,showCounts=false){
  for(const row of q.graph_http?.rows||[]){const route=`${row.method} ${row.route}`;if(metrics.has(route))metrics.get(route).push(row);}
  const qualities=survey.quality?.rows||[],version=qualities.some(r=>r.metric==='transition.ordering_version'&&r.value>=2);
  const peak=Math.max(1,...[...metrics.values()].flat().map(r=>r.total_ms??0));
- const lines=['flowchart LR',`%% Structure: ${mermaidText(survey.run?.id||'unknown')}`,`%% HTTP values: ${mermaidText(q.latest?.id||'unknown')}`];
+ const lines=['flowchart LR',`%% Structure: ${mermaidText(survey.run||'unknown')}`,`%% HTTP values: ${mermaidText(q.latest?.short_id||'unknown')}`];
  for(const route of routes){const rows=metrics.get(route),max=Math.max(0,...rows.map(r=>r.total_ms??0));
   const label=[mermaidText(route),...rows.slice(0,4).flatMap(r=>[mermaidText(`${r.node} | ${num(r.count)}回 | error ${num(r.errors)}`),mermaidText(`avg ${num(r.avg_ms,2)}ms | p95 ${num(r.p95_ms,2)}ms`),mermaidText(`合計 ${num(r.total_ms,1)}ms`)])];
   if(rows.length>4)label.push(`ほか ${rows.length-4} node（クリックで詳細）`);
@@ -31,7 +31,7 @@ function buildScenario(q,showCounts=false){
 }
 function openScenarioRoute(route,rows,q){
  const dialog=document.querySelector('#metric-dialog'),body=document.querySelector('#metric-dialog-body');body.replaceChildren(el('h2',route));
- body.append(el('p',`計測run ${q.latest.short_id||q.latest.id} · nodeごとの値（p95は合算していません）`,'note'));
+ body.append(el('p',`計測run ${q.latest.short_id} · nodeごとの値（p95は合算していません）`,'note'));
  if(!rows.length)body.append(el('p','選択runで対応するHTTP計測が取得できていません。0回とは判断しません。','note'));
  for(const row of rows){const button=el('button',`${row.node} · ${num(row.count)}回 · HTTP詳細`);button.type='button';button.addEventListener('click',()=>{dialog.close();openMetric('http',{candidate:row,base:null,changes:{}},false)});body.append(button);}
  if(!dialog.open)dialog.showModal();
@@ -88,7 +88,7 @@ function drawScenarioSvg(canvas,graph,q){
  canvas.replaceChildren(svg);
 }
 function renderScenarioGraph(parent,q){
- const survey=q.survey||{},panel=insightPanel(parent,'transitions','APIの流れと処理時間',survey.run?`構造 ${survey.run.short_id||survey.run.id.slice(-8)}`:'未計測');
+ const survey=q.survey||{},panel=insightPanel(parent,'transitions','APIの流れと処理時間',survey.run?`構造 ${survey.run}`:'未計測');
  if(!survey.transitions?.items?.length){renderScenarioPlaceholder(panel);return;}
  sectionNotice(panel,survey);sectionNotice(panel,q.graph_http);sectionNotice(panel,survey.quality);
  panel.append(el('p',`矢印の太さ・回数は初回surveyの遷移頻度、カードの処理時間は選択run ${q.latest?.short_id||q.latest?.id||'—'}。並行処理の合計時間はベンチ全体の待ち時間ではありません。`,'panel-note'));

@@ -163,13 +163,13 @@ class OperationsTests(unittest.TestCase):
             if 'list' in argv:
                 return {'runs': [{'id':'active','state':'running'}, {'id':'done','state':'complete','commit_hash':'abc'}]}
             if 'brief' in argv:
-                return {'run': {'id':argv[2], 'state':'complete'}}
+                return {'run': argv[2], 'summary': {'state':'complete'}}
             return {'rows': []}
         cfg = dict(self.cfg, base_run='baseline')
         with patch.object(inputs, 'command_json', fake):
             data = inputs.metrics(self.repo, cfg)
         self.assertEqual(data['latest']['id'],'done')
-        self.assertEqual(data['base']['id'],'baseline')
+        self.assertEqual(data['base']['short_id'],'baseline')
         queries=[c for c in calls if 'query' in c]
         self.assertEqual(len(queries),4)
         self.assertTrue(all('--base' in c and '--limit' in c for c in queries))
@@ -247,41 +247,42 @@ class OperationsTests(unittest.TestCase):
     def test_auto_comparison_tracks_analysis_and_manual_none_stays_none(self):
         def fake(repo, argv, **kwargs):
             if 'brief' in argv:
-                return {'run': {'id': argv[2], 'state': 'complete'},
-                        'review': {'latest_analysis': {'base_short_id': 'analysis-base'}}}
+                return {'run': argv[2], 'summary': {'state': 'complete'},
+                        'review': {'latest_analysis': {'base': 'analysis-base'}}}
             return {'rows': []}
         with patch.object(board_data, 'command_json', fake):
             auto = board_data.detail(self.repo, self.cfg, 'candidate', 'auto')
             manual = board_data.detail(self.repo, self.cfg, 'candidate', 'chosen')
             none = board_data.detail(self.repo, self.cfg, 'candidate', '')
-        self.assertEqual(auto['base']['id'], 'analysis-base')
+        self.assertEqual(auto['base']['short_id'], 'analysis-base')
         self.assertEqual(auto['base_mode'], 'analysis')
-        self.assertEqual(manual['base']['id'], 'chosen')
+        self.assertEqual(manual['base']['short_id'], 'chosen')
         self.assertIsNone(none['base'])
 
     def test_board_restores_text_that_brief_cut_for_ai(self):
-        run = '01a1017e-d070-71c2-a89f-0835b7c5d88e'
+        run = 'b7c5d88e'
         calls = []
         def fake(repo, argv, **kwargs):
             calls.append(argv)
             if 'brief' in argv:
-                return {'run': {'id': run, 'state': 'complete'}, 'review': {
+                return {'run': run, 'summary': {'state': 'complete'}, 'review': {
                     'latest_analysis': {'body': '冒頭…', 'full_text': 'isuscope sql ...'},
-                    'changes': [{'id': 'cut', 'description': '説明…', 'reason': '理由…', 'full_text': 'x'},
-                                {'id': 'same', 'description': '短い', 'reason_same_as_analysis': True,
-                                 'full_text': 'x'},
-                                {'id': 'short', 'description': '短い', 'reason': '短い理由'}]}}
-            if 'sql' in argv and 'run_analyses' in argv[-1]:
+                    'changes': {'total_count': 3, 'truncated': False, 'rows': [
+                        {'id': 'cut', 'description': '説明…', 'reason': '理由…', 'full_text': 'x'},
+                        {'id': 'same', 'description': '短い', 'reason_same_as_analysis': True, 'full_text': 'x'},
+                        {'id': 'short', 'description': '短い', 'reason': '短い理由'}]}}}
+            if 'sql' in argv and f"LIKE '%{run}'" in argv[-1]:
                 return {'rows': [{'body': '分析の全文'}]}
             if argv[-3:-1] == ['change', 'show']:
                 return {'change': {'description': f'{argv[-1]}の全文'},
-                        'decisions': [{'reason': '古い理由'}, {'reason': '最新の理由'}]}
+                        'decisions': {'total_count': 2, 'truncated': False,
+                                      'rows': [{'reason': '古い理由'}, {'reason': '最新の理由'}]}}
             return {'rows': []}
         with patch.object(board_data, 'command_json', fake):
             result = board_data.detail(self.repo, self.cfg, run, '')
         review = result['brief']['review']
         self.assertEqual(review['latest_analysis']['body'], '分析の全文')
-        cut, same, short = review['changes']
+        cut, same, short = review['changes']['items']
         self.assertEqual((cut['description'], cut['reason']), ('cutの全文', '最新の理由'))
         self.assertNotIn('reason', same)
         self.assertEqual(short['reason'], '短い理由')
@@ -289,13 +290,13 @@ class OperationsTests(unittest.TestCase):
         self.assertNotIn(['change', 'show', 'short'], [argv[-3:] for argv in calls])
 
     def test_board_reads_the_windows_the_brief_chose(self):
-        for windows, expected in (({'database_window': 'load', 'hosts_window': 'load'}, 'load'),
-                                  ({'database_window': 'whole', 'hosts_window': 'whole'}, 'whole'),
+        for windows, expected in (({'database': {'window': 'load'}, 'hosts': {'window': 'load'}}, 'load'),
+                                  ({'database': {'window': 'whole'}, 'hosts': {'window': 'whole'}}, 'whole'),
                                   ({}, 'whole')):
             calls = []
             def fake(repo, argv, **kwargs):
                 calls.append(argv)
-                if 'brief' in argv: return {'run': {'id': argv[2], 'state': 'complete'}, **windows}
+                if 'brief' in argv: return {'run': argv[2], 'summary': {'state': 'complete'}, **windows}
                 return {'rows': []}
             with patch.object(board_data, 'command_json', fake):
                 board_data.detail(self.repo, self.cfg, 'candidate', '')
@@ -307,7 +308,7 @@ class OperationsTests(unittest.TestCase):
         def fake_run(argv, **kwargs):
             if argv[0] == 'isuscope':
                 seen.append(kwargs.get('env') or {})
-            class Done: returncode = 0; stdout = '{"run": {"id": "r", "state": "complete"}}'; stderr = ''
+            class Done: returncode = 0; stdout = '{"run": "r", "summary": {"state": "complete"}}'; stderr = ''
             return Done()
         with patch.object(inputs.subprocess, 'run', fake_run):
             board_data.detail(self.repo, self.cfg, 'r', '')
@@ -331,7 +332,7 @@ class OperationsTests(unittest.TestCase):
         def fake(repo, argv, **kwargs):
             calls.append(argv)
             if 'list' in argv: return {'runs': [{'id': 'r', 'state': 'complete', 'passed': True}]}
-            if 'brief' in argv: return {'run': {'id': 'r'}, 'database_window': 'whole', 'hosts_window': 'whole'}
+            if 'brief' in argv: return {'run': 'r', 'database': {'window': 'whole'}, 'hosts': {'window': 'whole'}}
             return {'rows': []}
         with patch.object(inputs, 'command_json', fake):
             inputs.metrics(self.repo, self.cfg)
@@ -344,7 +345,7 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(table['rows'], [{'node': 'app1', 'calls': 3}])
         self.assertEqual(table['hosts'], [{'node': 'app1'}, {'node': 'app2'}])
         self.assertNotIn('columns', table)
-        diff = board_data.nested_comparison({'candidate_run_id': 'c', 'rows': [
+        diff = board_data.nested_comparison({'run': 'c', 'base': 'b', 'rows': [
             {'digest': 'select 1', 'presence': 'added', 'calls_base': None, 'calls': 3, 'calls_delta': None,
              'calls_delta_percent': None, 'p99_ms_base': None, 'p99_ms': 2}]})
         row = diff['rows'][0]
@@ -359,7 +360,7 @@ class OperationsTests(unittest.TestCase):
 
     def test_auto_comparison_without_analysis_does_not_guess(self):
         def fake(repo, argv, **kwargs):
-            if 'brief' in argv: return {'run': {'id': argv[2], 'state': 'complete'}}
+            if 'brief' in argv: return {'run': argv[2], 'summary': {'state': 'complete'}}
             return {'rows': []}
         with patch.object(board_data, 'command_json', fake):
             result = board_data.detail(self.repo, self.cfg, 'candidate', 'auto')
@@ -370,27 +371,28 @@ class OperationsTests(unittest.TestCase):
         def fake(repo, argv, **kwargs):
             calls.append((argv, kwargs))
             if 'sql' in argv: return {'rows': [{'id': 'initial-survey'}]}
-            if 'series' in argv: return {'rows': [], 'window': {'name': 'load'}, 'truncated': False}
+            if 'series' in argv: return {'rows': [], 'window': 'load', 'truncated': False}
             if 'brief' in argv:
-                return {'run': {'id': 'resolved-' + argv[2], 'state': 'complete', 'score': 0},
+                return {'run': 'resolved-' + argv[2], 'summary': {'state': 'complete', 'score': 0},
                         'review': {'latest_analysis': {'body': 'evidence'}}}
             return {'rows': [{'presence': 'removed', 'base': {'total_ms': 12}, 'candidate': None}],
                     'total_count': 101, 'truncated': True}
         with patch.object(board_data, 'command_json', fake):
             data = board_data.detail(self.repo, self.cfg, 'candidate', 'baseline', 100)
-        self.assertEqual(data['latest']['id'], 'resolved-candidate')
+        self.assertEqual(data['latest']['short_id'], 'resolved-candidate')
         self.assertEqual(data['base']['score'], 0)
         self.assertEqual(data['brief']['review']['latest_analysis']['body'], 'evidence')
         queries = [c for c, _ in calls if 'query' in c and '--base' in c]
         self.assertEqual(len(queries), 2)
-        self.assertTrue(all(c[2] == 'resolved-candidate' and c[-1] == 'resolved-baseline' for c in queries))
+        self.assertTrue(all(c[2] == 'resolved-candidate' and c[c.index('--base') + 1] == 'resolved-baseline'
+                            and '--all-columns' in c for c in queries))
         self.assertIn('--window', queries[1])
         self.assertNotIn('--group-by', queries[1])
         self.assertTrue(data['sections']['sql']['data']['truncated'])
         self.assertIsNone(data['sections']['sql']['data']['rows'][0]['candidate'])
         self.assertTrue(all(options['max_bytes'] == 2_000_000 for _, options in calls))
         self.assertIsNone(self.cfg.get('base_run'))
-        self.assertEqual(data['survey']['run']['id'], 'resolved-initial-survey')
+        self.assertEqual(data['survey']['run'], 'resolved-initial-survey')
         self.assertIn(self.cfg['isuscope'] + ['query', 'resolved-candidate', '--view', 'http', '--limit', '500'], [c for c, _ in calls])
         self.assertIn(self.cfg['isuscope'] + ['query', 'initial-survey', '--metric-prefix', 'transition.', '--limit', '1000'], [c for c, _ in calls])
         series = [c for c, _ in calls if 'series' in c]
@@ -401,21 +403,21 @@ class OperationsTests(unittest.TestCase):
     def test_board_detail_rejects_invalid_base_without_silent_fallback(self):
         def fake(repo, argv, **kwargs):
             if argv[2] == 'bad': return {'error': 'unknown run'}
-            return {'run': {'id': 'ok', 'state': 'complete'}}
+            return {'run': 'ok', 'summary': {'state': 'complete'}}
         with patch.object(board_data, 'command_json', fake):
             self.assertEqual(board_data.detail(self.repo, self.cfg, 'ok', 'bad')['error'], 'unknown run')
-        with patch.object(board_data, 'command_json', return_value={'run': {'id': 'active', 'state': 'running'}}):
+        with patch.object(board_data, 'command_json', return_value={'run': 'active', 'summary': {'state': 'running'}}):
             self.assertIn('error', board_data.detail(self.repo, self.cfg, 'active'))
 
     def test_board_optional_measurements_fail_independently(self):
         def fake(repo, argv, **kwargs):
-            if 'brief' in argv: return {'run': {'id': 'candidate', 'state': 'complete'}}
+            if 'brief' in argv: return {'run': 'candidate', 'summary': {'state': 'complete'}}
             if 'series' in argv: return {'error': 'load window unavailable'}
             if 'sql' in argv: return {'rows': []}
             return {'rows': [], 'total_count': 0}
         with patch.object(board_data, 'command_json', fake):
             data = board_data.detail(self.repo, self.cfg, 'candidate')
-        self.assertEqual(data['latest']['id'], 'candidate')
+        self.assertEqual(data['latest']['short_id'], 'candidate')
         self.assertNotIn('error', data['sections']['http']['data'])
         self.assertEqual(data['timeline']['error'], 'load window unavailable')
         self.assertIsNone(data['survey']['run'])
@@ -445,7 +447,7 @@ class OperationsTests(unittest.TestCase):
             calls.append(argv)
             if 'sql' in argv: return {'rows': [{'id': 'survey'}]}
             if 'brief' in argv:
-                return {'run': {'id': argv[2], 'state': 'complete'}, 'review': {'latest_analysis': dict(analysis)}}
+                return {'run': argv[2], 'summary': {'state': 'complete'}, 'review': {'latest_analysis': dict(analysis)}}
             return {'rows': []}
         measured = board_data.BoundedCache(8)
         with patch.object(board_data, 'command_json', fake):
@@ -456,13 +458,13 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual([c[1] for c in calls], ['brief', 'brief'])
         self.assertEqual(second['brief']['review']['latest_analysis']['body'], 'second')
         self.assertEqual(second['sections'], first['sections'])
-        self.assertEqual(second['survey']['run']['id'], 'survey')
+        self.assertEqual(second['survey']['run'], 'survey')
 
     def test_board_detail_retries_measurements_that_failed(self):
         calls = []
         def fake(repo, argv, **kwargs):
             calls.append(argv)
-            if 'brief' in argv: return {'run': {'id': 'candidate', 'state': 'complete'}}
+            if 'brief' in argv: return {'run': 'candidate', 'summary': {'state': 'complete'}}
             if 'series' in argv: return {'error': 'isuscope busy'}
             return {'rows': []}
         measured = board_data.BoundedCache(8)
@@ -476,7 +478,7 @@ class OperationsTests(unittest.TestCase):
         calls = []
         def fake(repo, argv, **kwargs):
             calls.append(argv)
-            if 'brief' in argv: return {'run': {'id': 'candidate', 'state': 'complete'}}
+            if 'brief' in argv: return {'run': 'candidate', 'summary': {'state': 'complete'}}
             return {'rows': []}
         measured = board_data.BoundedCache(8)
         with patch.object(board_data, 'command_json', fake):
@@ -488,7 +490,7 @@ class OperationsTests(unittest.TestCase):
     def test_board_detail_reads_measurements_in_parallel(self):
         barrier = threading.Barrier(2, timeout=5)
         def fake(repo, argv, **kwargs):
-            if 'brief' in argv: return {'run': {'id': 'candidate', 'state': 'complete'}}
+            if 'brief' in argv: return {'run': 'candidate', 'summary': {'state': 'complete'}}
             if '--view' in argv and '--limit' in argv and argv[argv.index('--limit') + 1] == '50':
                 barrier.wait()
             return {'rows': []}
@@ -632,6 +634,39 @@ class OperationsTests(unittest.TestCase):
             if test():return
             time.sleep(.05)
         self.fail('condition timeout')
+
+
+
+@unittest.skipUnless(os.environ.get('ISUSCOPE_BOARD_REPO'), 'set ISUSCOPE_BOARD_REPO to a repository with finished runs')
+class BoardReadsRealIsuscopeTests(unittest.TestCase):
+    """The fakes above follow isuscope's output by hand; this reads a real run with the installed isuscope."""
+    def test_board_reads_every_part_of_a_real_run(self):
+        repo = Path(os.environ['ISUSCOPE_BOARD_REPO'])
+        cfg = {'isuscope': ['isuscope']}
+        metrics = inputs.metrics(repo, cfg)
+        self.assertNotIn('error', metrics)
+        latest = metrics['latest']
+        self.assertRegex(latest['short_id'], r'^[0-9a-f]{8}$')
+        self.assertTrue(all('error' not in section['data'] for section in metrics['sections'].values()))
+        data = board_data.detail(repo, cfg, latest['id'], 'auto', 25)
+        self.assertNotIn('error', data)
+        self.assertEqual(data['latest']['short_id'], latest['short_id'])
+        brief = data['brief']
+        self.assertIn('items', brief['hosts'])
+        self.assertIn(brief['hosts']['window'], ('whole', 'load'))
+        analysis = (brief.get('review') or {}).get('latest_analysis') or {}
+        if analysis.get('full_text'):
+            self.assertNotIn('…', analysis['body'][-1:])
+        parts = [data['graph_http'], data['timeline'], data['mysql'],
+                 *(section['data'] for section in data['sections'].values())]
+        self.assertTrue(all('error' not in part for part in parts))
+        self.assertIn('bucket_seconds', data['timeline']['range'])
+        if data['base']:
+            for section in data['sections'].values():
+                for row in section['data']['rows']:
+                    side = row['candidate'] or row['base']
+                    self.assertIn('total_ms', side)
+                    self.assertNotIn('total_ms', row['key'])
 
 
 if __name__=='__main__': unittest.main()
