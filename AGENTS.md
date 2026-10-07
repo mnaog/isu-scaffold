@@ -121,6 +121,8 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 
 変更を残すか戻すかを決めたら、分析と同時に`--change <変更ID> --decision <accepted|provisional|rejected|deferred>`で記録する（`provisional`は`--revisit`必須）。仮説の判定と変更の採否は別に扱い、本文に「採用」と書くだけで済ませない。
 
+初期化の失敗やエラー・遅延の原因は、SSHで手調べする前に`brief`の次の欄を見る。`logs`はベンチの間にアプリ・nginxのerror log・kernelが出したエラーを型ごとに数えたもの、`database_io`はMySQLがfileの読み書きで待った時間、`database_memory`はbuffer poolとtableの大きさで、どれもinitializeを含む。DBの比較では`query --base`の`total_ms_delta_by_calls`（回数の増減による分）と`total_ms_delta_by_avg`（1回あたりの時間による分）で、合計時間の変化の理由を分ける。
+
 FAILしたrunの理由とエラーの実例は、`.isuscope/parse-benchmark.sh`がベンチの出力から`message`として残し、`isuscope list`の`failure`と`brief`の`benchmark_messages`で読む。判断材料とmessageには、適用されるルールで参加者の利用が認められた出力だけを使う。
 
 `survey-run`はPhase 1の初回調査だけに使い、その後は構成やroutingを大きく変えた場合も`run`を使う。時間が最大の制約なので、同じ変更の比較のためにベンチを重ねない。終了前はprofilerや重いログを外した構成へ切り替え、確認のベンチは通常の`run`で一度だけ行う。

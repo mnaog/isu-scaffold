@@ -160,7 +160,7 @@ def application_database_warnings(application_dir: Path) -> list[str]:
     found = sorted(set(NON_MYSQL_CRATES.findall(manifest.read_text(errors="ignore"))))
     if not found:
         return []
-    return [f"the application depends on {', '.join(found)}; isuscope collects database metrics only from the MySQL slow log"]
+    return [f"the application depends on {', '.join(found)}; isuscope collects database metrics only from MySQL (the slow log and Performance Schema)"]
 
 
 def safe_name(value: str) -> str:
@@ -430,7 +430,7 @@ def main() -> int:
     if local_application:
         draft_warnings.extend(application_database_warnings(local_application))
     if any(role == "postgres" for roles in roles_by_node.values() for role in roles):
-        draft_warnings.append("PostgreSQL is running; isuscope collects database metrics only from the MySQL slow log")
+        draft_warnings.append("PostgreSQL is running; isuscope collects database metrics only from MySQL (the slow log and Performance Schema)")
     ansible_vars = {
         "bootstrap_required_services": common_services,
         "isuscope_fingerprint_paths": fingerprint_paths,
