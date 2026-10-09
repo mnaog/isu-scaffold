@@ -8,7 +8,7 @@
 mkdir -p .local
 cp config/environment.example.env .local/environment.env   # provider、SSH、node分類を設定
 
-make kickoff                           # コード先行回収・並行worktree・draft生成と実nodeでの検査
+make kickoff                           # コード先行回収・初期build・draft生成と実nodeでの検査
 CONFIRM_DRAFT=true make kickoff-apply  # .local/draft/review.mdを判断してから反映・完全import
 make deploy
 make phase1-check
