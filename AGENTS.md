@@ -20,6 +20,7 @@
 | `.claude/` | Claude Codeがこの`AGENTS.md`を起動時に読み込むためのrule symlink。`CLAUDE.md`は作成しない。 |
 | `.isuscope/` | node、collector、route正規化、ベンチ実行方法など、isuscopeの計測設定。 |
 | `isuscope-data/` | スコア、仮説、分析、Git状態など、isuscopeのrun。生ログは既定で除外し、重要なrunだけ強制追加する。 |
+| `.local/` | Public IP、秘密情報、AWSの一時出力など、環境固有の情報。Git管理しない。 |
 
 ## 過去の記録の手がかり
 
