@@ -9,6 +9,7 @@
     "config/phase1-build.example.json",
     "config/scaffold-export.json",
     "docs/initial-automation.md",
+    "docs/isuscope.md",
     "docs/phases/Phase1.md",
     "practice.md",
     "scripts/benchmark-contract.py",
