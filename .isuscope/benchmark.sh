@@ -37,6 +37,41 @@ validate_regex() {
   fi
 }
 
+# 運営向けの行（`config/isuscope-policy.json`の`operator_line_pattern`）はscore・合否に使いません。
+exclude_pattern() {
+  if [[ -n "${BENCHMARK_EXCLUDE_REGEX:-}" ]]; then
+    printf '%s\n' "${BENCHMARK_EXCLUDE_REGEX}"
+  elif [[ -f "${project_root}/config/isuscope-policy.json" ]]; then
+    jq -r '.operator_line_pattern // empty' "${project_root}/config/isuscope-policy.json"
+  fi
+}
+
+participant_lines() {
+  local pattern
+  pattern=$(exclude_pattern)
+  if [[ -n "${pattern}" ]]; then
+    grep -Ev -- "${pattern}" "$1" || true
+  else
+    cat -- "$1"
+  fi
+}
+
+# scoreは最後に一致した行の最後の数値、合否はFAILを優先して最終結果の行から決めます。
+# 使った行を残し、別の行（タグ中の数字など）を拾ったときに記録から気付けるようにします。
+extract_result() {
+  local lines
+  lines=$(participant_lines "$1")
+  score_line=$(printf '%s\n' "${lines}" | grep -E -- "${BENCHMARK_SCORE_REGEX}" | tail -n 1 || true)
+  score=$(printf '%s\n' "${score_line}" | grep -Eo -- "${BENCHMARK_SCORE_REGEX}" | tail -n 1 | grep -Eo '[0-9]+' | tail -n 1 || true)
+  result_line=$(printf '%s\n' "${lines}" | grep -Ei -- "${BENCHMARK_FAIL_REGEX}" | tail -n 1 || true)
+  if [[ -n "${result_line}" ]]; then
+    result=false
+  else
+    result_line=$(printf '%s\n' "${lines}" | grep -Ei -- "${BENCHMARK_PASS_REGEX}" | tail -n 1 || true)
+    if [[ -n "${result_line}" ]]; then result=true; else result=none; fi
+  fi
+}
+
 validate_config() {
   load_config
   case "${BENCHMARK_TRANSPORT:-}" in
@@ -96,18 +131,32 @@ validate_config() {
   validate_regex BENCHMARK_SCORE_REGEX "${BENCHMARK_SCORE_REGEX:?}"
   validate_regex BENCHMARK_PASS_REGEX "${BENCHMARK_PASS_REGEX:?}"
   validate_regex BENCHMARK_FAIL_REGEX "${BENCHMARK_FAIL_REGEX:?}"
+  validate_regex "operator line" "$(exclude_pattern)"
 
   sample_file=${BENCHMARK_SAMPLE_FILE:?BENCHMARK_SAMPLE_FILE is required}
   case "${sample_file}" in /*) ;; *) sample_file=${project_root}/${sample_file} ;; esac
   test -f "${sample_file}" || { echo "missing benchmark sample: ${sample_file}" >&2; return 1; }
-  sample_score=$(grep -Eo "${BENCHMARK_SCORE_REGEX}" "${sample_file}" | tail -n 1 | grep -Eo '[0-9]+' | tail -n 1 || true)
-  test -n "${sample_score}" || { echo "benchmark sample does not contain a score" >&2; return 1; }
-  if grep -Eiq "${BENCHMARK_FAIL_REGEX}" "${sample_file}"; then
-    sample_pass=false
-  elif grep -Eiq "${BENCHMARK_PASS_REGEX}" "${sample_file}"; then
-    sample_pass=true
-  else
+  # 実出力で人間が読んだscoreと合否を宣言し、regexが同じ値を取り出すことを確かめます。
+  # 存在するだけでは、タグや途中経過の数字を拾っても検査を通ってしまうためです。
+  case "${BENCHMARK_SAMPLE_SCORE:-}" in
+    ''|*[!0-9]*) echo "BENCHMARK_SAMPLE_SCORE must be the final score read from the sample" >&2; return 1 ;;
+  esac
+  case "${BENCHMARK_SAMPLE_PASS:-}" in
+    true|false) ;;
+    *) echo "BENCHMARK_SAMPLE_PASS must be true or false as read from the sample" >&2; return 1 ;;
+  esac
+  extract_result "${sample_file}"
+  test -n "${score}" || { echo "benchmark sample does not contain a score" >&2; return 1; }
+  if [[ "${score}" != "${BENCHMARK_SAMPLE_SCORE}" ]]; then
+    echo "BENCHMARK_SCORE_REGEX extracted ${score} from the sample, expected ${BENCHMARK_SAMPLE_SCORE}: ${score_line}" >&2
+    return 1
+  fi
+  if [[ "${result}" == none ]]; then
     echo "benchmark sample contains neither final PASS nor FAIL" >&2
+    return 1
+  fi
+  if [[ "${result}" != "${BENCHMARK_SAMPLE_PASS}" ]]; then
+    echo "PASS/FAIL regex judged the sample as pass=${result}, expected ${BENCHMARK_SAMPLE_PASS}: ${result_line}" >&2
     return 1
   fi
 }
@@ -201,25 +250,27 @@ if [[ "${benchmark_exit}" -eq 124 ]]; then
   exit 124
 fi
 
-score_match=$(grep -Eo "${BENCHMARK_SCORE_REGEX}" "${raw_output}" | tail -n 1 || true)
-score=$(printf '%s\n' "${score_match}" | grep -Eo '[0-9]+' | tail -n 1 || true)
+extract_result "${raw_output}"
 test -n "${score}" || {
-  echo "benchmark output did not match BENCHMARK_SCORE_REGEX" >&2
+  echo "benchmark output did not match BENCHMARK_SCORE_REGEX (exit status ${benchmark_exit})" >&2
   exit 1
 }
 
-if [[ "${benchmark_exit}" -ne 0 ]]; then
-  passed=false
-elif grep -Eiq "${BENCHMARK_FAIL_REGEX}" "${raw_output}"; then
-  passed=false
-elif grep -Eiq "${BENCHMARK_PASS_REGEX}" "${raw_output}"; then
-  passed=true
+messages=("benchmark exit status ${benchmark_exit}" "score line: ${score_line}")
+if [[ "${result}" == none ]]; then
+  # 途中で切れた出力は途中経過のscoreしか持たないため、PASSにしません。
+  messages+=("no final PASS/FAIL line matched")
 else
+  messages+=("result line: ${result_line}")
+fi
+if [[ "${benchmark_exit}" -ne 0 || "${result}" != true ]]; then
   passed=false
+else
+  passed=true
 fi
 
 jq -nc \
   --argjson score "${score}" \
   --argjson pass "${passed}" \
-  --arg message "benchmark exit status ${benchmark_exit}" \
-  '{type:"isuscope.result", score:$score, pass:$pass, messages:[$message]}'
+  '{type:"isuscope.result", score:$score, pass:$pass, messages:$ARGS.positional}' \
+  --args "${messages[@]}"

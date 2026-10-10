@@ -194,7 +194,9 @@ transaction IDは既定で`<commit>-<UTC時刻>-<PID>`となり、同じコミ�
 - `BENCHMARK_TRANSPORT=ssh`: inventoryの`BENCHMARK_NODE`でcommandを実行
 - `BENCHMARK_TRANSPORT=http`: APIで開始し、必要ならrun IDを使って完了までpollする
 - `BENCHMARK_PROBE_COMMAND`またはHTTP probe URL: ベンチを開始しない疎通確認
-- `BENCHMARK_SAMPLE_FILE`: 実出力の短いサンプル。scoreと最終PASS/FAILのregexを事前検証する
+- `BENCHMARK_SAMPLE_FILE`: 実出力のサンプル。途中経過・タグ・最終結果の行を含めたまま保存する
+- `BENCHMARK_SAMPLE_SCORE`、`BENCHMARK_SAMPLE_PASS`: sampleを人間が読んで得た最終scoreと合否。`--check`はregexがこの値を取り出すことを確認する
+- `BENCHMARK_EXCLUDE_REGEX`: score・合否に使わない行。空なら`config/isuscope-policy.json`の`operator_line_pattern`（運営向けの行）
 - score、PASS、FAILを見つける正規表現
 - timeout
 
@@ -205,7 +207,7 @@ tokenやcookieだけは`config/benchmark-secrets.example.env`を`.local/benchmar
 .isuscope/benchmark.sh --probe
 ```
 
-どちらの検査もベンチを起動しません。`check`は設定、regex、保存したサンプルを検査し、`probe`は実行ファイルまたはAPI endpointだけを確認します。標準adapterはcommandを一度だけ実行し、出力からscoreとPASS/FAILを取得してisuscope protocolへ変換し、二重起動も拒否します。HTTPのtokenやcookieは`.local/benchmark-secrets.env`またはGit管理外のheader fileへ置きます。
+どちらの検査もベンチを起動しません。`check`は設定、regex、保存したサンプルを検査し、`probe`は実行ファイルまたはAPI endpointだけを確認します。標準adapterはcommandを一度だけ実行し、出力からscoreとPASS/FAILを取得してisuscope protocolへ変換し、二重起動も拒否します。scoreは最後に一致した行の最後の数値です。合否はFAILの行を優先し、終了コードが0でない場合と最終結果の行がない場合（途中で切れた出力）はFAILにします。使ったscoreの行と最終結果の行はrunのmessageに残るため、`isuscope brief`で誤った行を拾っていないか確認できます。別userで実行するときは`sudo -n -u USER sh -c '... && exec ./bench'`とし、`sudo -i`（login shellが入れ子のcommandを再解釈する）や独自のPASS/FAIL行の追加は避けます。adapterの判定は`tests/test_benchmark_adapter.py`のfixtureで回帰を確認します。HTTPのtokenやcookieは`.local/benchmark-secrets.env`またはGit管理外のheader fileへ置きます。
 
 `make discover`はinspection draftで選んだNginx・MySQL log pathも生成済みisuscope設定へ反映します。初回run後、動的IDのためrouteが細分化されていれば次を実行します。
 

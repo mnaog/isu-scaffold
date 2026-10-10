@@ -70,7 +70,8 @@
     "ansible/roles/observability/defaults/main.yml",
     "ansible/roles/observability/tasks/tools.yml",
     "tests/test_ansible_runtime.py",
-    "tests/test_remote_helpers.py"
+    "tests/test_remote_helpers.py",
+    "tests/test_benchmark_adapter.py"
   ],
   "remove_files": [
     "docs/roles/operator.md",
