@@ -10,7 +10,6 @@
     "config/scaffold-export.json",
     "docs/initial-automation.md",
     "docs/phases/Phase1.md",
-    "practice.md",
     "scripts/benchmark-contract.py",
     "scripts/check-deployment.py",
     "scripts/check-phase0.py",
@@ -54,7 +53,24 @@
     "scripts/operations/activity.py",
     "docs/roles/scout-prompt.txt",
     "tests/board-details.test.js",
-    "rust-toolchain.toml"
+    "rust-toolchain.toml",
+    "scripts/ansible-runtime.py",
+    "scripts/ansible-install.sh",
+    "scripts/run-ansible-playbook.sh",
+    "scripts/phase1-check.sh",
+    "scripts/bootstrap.sh",
+    "scripts/configure-apply.sh",
+    "scripts/tree-digest.py",
+    "config/ansible-controller.env",
+    "config/rust-builder/Dockerfile",
+    "ansible/requirements-legacy.txt",
+    "ansible/requirements-modern.txt",
+    "ansible/playbooks/verify.yml",
+    "ansible/playbooks/group_vars/all.yml",
+    "ansible/roles/observability/defaults/main.yml",
+    "ansible/roles/observability/tasks/tools.yml",
+    "tests/test_ansible_runtime.py",
+    "tests/test_remote_helpers.py"
   ],
   "remove_files": [
     "docs/roles/operator.md",
@@ -62,6 +78,7 @@
     "scripts/worker-iterm.py",
     "scripts/worker-db",
     "scripts/operations/handoffs.py",
-    "tests/test_worker_handoffs.py"
+    "tests/test_worker_handoffs.py",
+    "ansible/requirements.txt"
   ]
 }

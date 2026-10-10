@@ -82,6 +82,10 @@ providerの出力は共通形式へ正規化され、次を一度に生成しま
 
 local venvへ固定versionのAnsibleを導入し、SSH接続を確立してから、Linux前提を全nodeへ、計測と運用の土台をapplication nodeへ冪等に適用します（`make kickoff`内でも実行されます）。性能は変えないので、初回baselineより前に入れて固定します。
 
+Ansibleのcontrollerは対象nodeのPythonに合わせて選びます。`bootstrap.sh`はSSH確立後に`scripts/ansible-runtime.py`で全nodeの`/usr/bin/python3`の版を調べ、`legacy`（ansible-core 2.19、target Python 3.8〜3.13）か`modern`（ansible-core 2.21、target Python 3.9〜3.14）を`.local/ansible-runtime.env`へ記録します。両方に収まらない組み合わせはinventoryを分ける必要があるため停止します。依存版は`ansible/requirements-<profile>.txt`、venvは`.local/ansible-venv-<profile>`です。controller自体はPython 3.12または3.13で動かし（`config/ansible-controller.env`の`PYTHON_BIN`）、Phase 0では`./scripts/ansible-install.sh --all`で両方を用意しておきます。Ansibleが対象nodeへ配るhelper（`tree-digest.py`など）は、`tests/test_remote_helpers.py`でPython 3.8でも動くことを確認します。
+
+計測toolの取得（package、alp・slp、FlameGraph）が失敗しても、log・時刻同期・journalなどの土台の設定は続けます。必須toolの欠落は`verify.yml`（`make phase1-check`）が検出します。取得の失敗で止めたい場合は`observability_tools_strict: true`にし、取得だけをやり直すときは`--tags observability_acquire`を使います。perfは`perf stat -e task-clock -- true`で実際にeventを取れるかまで確認します。
+
 | 項目 | 内容 | 無効化する変数 |
 | --- | --- | --- |
 | 計測tool | `sysstat`、実行中kernel用のperf、pin済みの`alp`・`slp`、FlameGraph scripts。off-CPU用の`bpfcc-tools`は既定では入れない | `observability_install_packages`、`observability_download_tools`（`observability_install_offcpu`で有効化） |
@@ -158,7 +162,7 @@ make build SYNC_MANIFEST=.local/draft/sync.json
 
 ローカルにはPython 3と起動済みのDockerが必要です。Linux Docker hostのARM64/AMD64でネイティブにcompilerを動かし、`x86_64-unknown-linux-gnu`または`aarch64-unknown-linux-gnu`を出力します。Docker DesktopのMac共有ディレクトリにtargetを置かず、Linux named volumeへCargo targetと依存取得cacheを保存します。初回だけimage・依存の取得が必要です。既存vendorを使うオフライン検証では`RUST_BUILD_VENDOR_DIR=/absolute/vendor make build`を使えます（imageは事前準備が必要）。vendorは今回のlockfileに対応したものを使います。
 
-入力はcommit済みのitem全体と`Cargo.lock`です。workspaceのpath依存も同じitemに含めてください。ソースが未commitなら停止します。`make build`はDockerfile・manifestの調整中にも使えますが、deploy時はmanifest・Dockerfile・builder scriptもcommit済みであることが必要です。成果物は`.local/rust-build/`、直近の索引は`.local/local-build.json`に置き、Gitには追加しません。
+入力はcommit済みのitem全体と`Cargo.lock`です。配布物がworkspaceの一部で、`Cargo.lock`やpath依存がitemの外（親directory）にある場合は、`local_builds`（と`config/phase1-build.json`）へ`source_root`（`webapp/`配下でitemを含むworkspace root）と`manifest_dir`（itemから見たbinaryのCargo.tomlの位置）を指定します。配布の`Cargo.lock`は再生成しません。標準以外のRust版が必要なら`toolchain`、target向けのCライブラリ（例: `libssl-dev:amd64`）は`packages`へ明示します。builderはtargetのarchitectureを追加し、`pkg-config`がtarget側のライブラリを参照するように設定します。ソースが未commitなら停止します。`make build`はDockerfile・manifestの調整中にも使えますが、deploy時はmanifest・Dockerfile・builder scriptもcommit済みであることが必要です。成果物は`.local/rust-build/`、直近の索引は`.local/local-build.json`に置き、Gitには追加しません。
 
 worktreeからもルートリポジトリのcacheを共用します。専用build lockで同時書込みを直列化し、通常の初動setupは止めません。ソースtree・build設定・image ID・builder scriptが同じならSHA-256検証後に完成済みbinaryを再利用します。ソースやCargo.lockが変わればCargoを再実行し、image・target等が同じなら依存crateのcacheを再利用します。imageやtargetが変われば別cacheになります。Docker image/volumeと`.local/rust-build`は明示的に削除するまで残ります。壊れたartifactは自動配布せず停止するため、該当input IDの成果物ディレクトリを除いて再buildしてください。
 

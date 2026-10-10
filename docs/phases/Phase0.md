@@ -18,7 +18,7 @@
 ## ローカル実行環境
 
 - git、gh、bash、make、SSH、curl、tar、jq、zstd、Python 3.12以上を確認する。
-- `./scripts/ansible-install.sh`を実行し、controllerのlocalhostでAnsible moduleが動くことを確認する。Pythonと解決した依存版を記録する。
+- `./scripts/ansible-install.sh --all`を実行し、legacy・modernの両controllerのlocalhostでAnsible moduleが動くことを確認する。Pythonと解決した依存版を記録する。対象nodeのPythonはPhase 1で`ansible-runtime.py`が調べて選ぶ。
 - 使用版のisuscopeをbuild/installし、`lock`、`pin`、`routes`等の必要なコマンドがあることを確認する。version表示だけで同一buildとは判定しない。
 - Rust、Cargo、linker、採用予定の汎用開発ツールを確認し、問題を使わない小さなRustプログラムでbuild・testする。事前に分かるRust版は準備し、配布アプリの正確なtoolchain・Cargo依存・DB schemaは公開後に合わせる。
 - 配布可能な計測toolの取得元・版を固定する。ローカルへ事前取得する場合はhashと再取得手順を残す。サーバーのOS・architecture・kernelに依存するpackageの選択と導入は公開後に行う。
