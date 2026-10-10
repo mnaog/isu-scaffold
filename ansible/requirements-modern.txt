@@ -1,1 +1,2 @@
 ansible-core==2.21.3
+cryptography==46.0.7
