@@ -215,6 +215,29 @@ class LocalBuildTests(unittest.TestCase):
         self.assertNotIn("'; if sudo test -e", commands)
         self.assertEqual((self.repo / ".local/deploy-transactions/failed-staging.state").read_text(), "failed\n")
 
+    def test_workspace_shared_dependency_invalidates_cache(self):
+        (self.repo / 'webapp/Cargo.lock').write_text('# workspace lock')
+        (self.repo / 'webapp/shared').mkdir()
+        dependency = self.repo / 'webapp/shared/lib.rs'
+        dependency.write_text('pub fn value() {}')
+        self.manifest['local_builds'][0].update(source_root='webapp', toolchain='1.99.0', packages=['libssl-dev:amd64'])
+        self.write_manifest()
+        self.commit()
+        self.build()
+        first = self.record()['input_id']
+        dependency.write_text('pub fn value() { println!("changed"); }')
+        self.commit()
+        self.build()
+        self.assertNotEqual(first, self.record()['input_id'])
+        docker_build = next(c for c in self.calls('docker') if c[0] == 'build')
+        self.assertIn('EXTRA_PACKAGES=libssl-dev:amd64', docker_build)
+        self.assertIn('RUST_TOOLCHAIN=1.99.0', docker_build)
+
+    def test_workspace_cannot_escape_webapp(self):
+        self.manifest['local_builds'][0]['source_root'] = '.local'
+        with self.assertRaises(ValueError):
+            builder.definitions(self.manifest)
+
     def test_unsafe_or_conflicting_definitions(self):
         self.manifest["local_builds"][0]["dockerfile"] = "../outside"
         with self.assertRaises(ValueError):

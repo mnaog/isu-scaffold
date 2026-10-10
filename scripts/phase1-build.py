@@ -63,7 +63,7 @@ def run(node, application):
                         raise TimeoutError('build settings were not supplied within 30 minutes')
                     time.sleep(1)
             config = json.loads(CONFIG.read_text())
-            if set(config) != {'base_image', 'target', 'binary', 'dockerfile'}:
+            if not {'base_image', 'target', 'binary', 'dockerfile'} <= set(config) or set(config) - {'base_image', 'target', 'binary', 'dockerfile', 'source_root', 'manifest_dir', 'toolchain', 'packages'}:
                 raise ValueError('phase1-build.json needs base_image, target, binary, dockerfile')
             expected = {'x86_64': 'x86_64-unknown-linux-gnu', 'aarch64': 'aarch64-unknown-linux-gnu'}.get(result.stdout.splitlines()[0])
             if config['target'] != expected:

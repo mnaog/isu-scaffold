@@ -47,7 +47,7 @@ def definitions(manifest):
     items = {item["name"]: item for item in manifest["items"]}
     seen = set()
     for build in builds:
-        if set(build) != {"item", "dockerfile", "base_image", "target", "binary"}:
+        if not {"item", "dockerfile", "base_image", "target", "binary"} <= set(build) or set(build) - {"item", "dockerfile", "base_image", "target", "binary", "source_root", "manifest_dir", "toolchain", "packages"}:
             raise ValueError("local_builds requires item, dockerfile, base_image, target, binary")
         item = items.get(build["item"])
         if not item or item["type"] != "directory" or build["item"] in seen:
@@ -56,6 +56,17 @@ def definitions(manifest):
         if any(b["item"] == build["item"] for b in manifest.get("build_commands", [])):
             raise ValueError("do not combine local and remote builds for the same item")
         safe_path(item["local"])
+        source_root = safe_path(build.get("source_root", item["local"]))
+        if not source_root.startswith("webapp/") and source_root != "webapp":
+            raise ValueError("source_root must stay under webapp")
+        if not Path(item["local"]).is_relative_to(source_root):
+            raise ValueError("source_root must contain the deployed item")
+        if build.get("manifest_dir", ".") != ".":
+            safe_path(build["manifest_dir"])
+        if "toolchain" in build and not re.fullmatch(r"[A-Za-z0-9_.-]+", build["toolchain"]):
+            raise ValueError("invalid toolchain")
+        if not isinstance(build.get("packages", []), list) or any(not isinstance(p, str) or not re.fullmatch(r"[a-z0-9][a-z0-9+.:=-]*", p) for p in build.get("packages", [])):
+            raise ValueError("packages must be explicit apt package names")
         if not safe_path(build["dockerfile"]).startswith("config/"):
             raise ValueError("builder Dockerfile must be under config/")
         if not re.fullmatch(r"[A-Za-z0-9_-]+", build["binary"]):
@@ -90,23 +101,29 @@ def build_one(build, item, cache, strict):
     if "replace-with" in build["base_image"] or "replace-with" in build["binary"]:
         raise ValueError("Phase 1: configure the Rust image and binary from the imported app before building")
     source = item["local"]
-    clean(source)
+    source_root = build.get("source_root", source)
+    clean(source_root)
     if strict:
         clean(build["dockerfile"])
         clean("scripts/local-build.py")
-    tree = capture("git", "rev-parse", f"HEAD:{source}")
-    capture("git", "cat-file", "-e", f"HEAD:{source}/Cargo.lock")
+    tree = capture("git", "rev-parse", f"HEAD:{source_root}")
+    if subprocess.run(["git", "cat-file", "-e", f"HEAD:{source_root}/Cargo.lock"], cwd=REPO,
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+        raise ValueError(f"missing {source_root}/Cargo.lock: import the workspace root and its path dependencies, then set source_root/manifest_dir; do not regenerate the distribution lockfile")
     recipe = (REPO / build["dockerfile"]).read_bytes()
     platform = capture("docker", "info", "--format", "{{.OSType}}/{{.Architecture}}")
     platform = platform.replace("/aarch64", "/arm64").replace("/x86_64", "/amd64")
     if platform not in ("linux/arm64", "linux/amd64"):
         raise ValueError(f"unsupported Docker host: {platform}")
-    recipe_id = digest(recipe + json.dumps([build["base_image"], build["target"], platform]).encode())
+    build_args = {"BASE_IMAGE": build["base_image"], "TARGET": build["target"], "EXTRA_PACKAGES": " ".join(build.get("packages", []))}
+    if "toolchain" in build:
+        build_args["RUST_TOOLCHAIN"] = build["toolchain"]
+    recipe_id = digest(recipe + json.dumps([build_args, platform], sort_keys=True).encode())
     tag = f"isucon-rust-builder:{recipe_id}"
     if subprocess.run(["docker", "image", "inspect", tag], stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode:
-        run("docker", "build", "--platform", platform, "--build-arg", f"BASE_IMAGE={build['base_image']}",
-            "--build-arg", f"TARGET={build['target']}", "-t", tag, "-", input=recipe,
+        run("docker", "build", "--platform", platform,
+            *[arg for k, v in build_args.items() for arg in ("--build-arg", f"{k}={v}")], "-t", tag, "-", input=recipe,
             stdout=sys.stderr)
     image = capture("docker", "image", "inspect", "--format", "{{.Id}}", tag)
     # Tree/lock changes invalidate the final artifact, but retain dependency caches.
@@ -150,10 +167,10 @@ cargo build --locked --release --target "$2" --bin "$3"
         if not vendor_path.is_dir() or "," in str(vendor_path):
             raise ValueError("invalid RUST_BUILD_VENDOR_DIR")
         command += ["--mount", f"type=bind,src={vendor_path},dst=/vendor,readonly", "--network", "none"]
-    command += [image, "sh", "-c", script, "sh", f"/work/{source}", build["target"], build["binary"]]
+    command += [image, "sh", "-c", script, "sh", f"/work/{source}/{build.get("manifest_dir", ".")}", build["target"], build["binary"]]
     try:
         with tempfile.TemporaryFile() as archive:
-            run("git", "archive", f"--prefix={source}/", tree, cwd=REPO, stdout=archive)
+            run("git", "archive", f"--prefix={source_root}/", tree, cwd=REPO, stdout=archive)
             archive.seek(0)
             run(*command, stdin=archive, stdout=sys.stderr)
         temporary = output / "binary.tmp"

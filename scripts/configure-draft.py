@@ -293,7 +293,12 @@ def main() -> int:
             "owner_group": app_group,
         })
         example = read_json(REPO_DIR / "config/sync.rust.example.json")
-        binary = rust_binary_name(local_application)
+        early_build = REPO_DIR / "config/phase1-build.json"
+        manifest_dir = read_json(early_build).get("manifest_dir", ".") if early_build.exists() else "."
+        manifest_application = (local_application / manifest_dir).resolve()
+        if not manifest_application.is_relative_to(local_application.resolve()):
+            raise ValueError("manifest_dir must remain inside the imported application")
+        binary = rust_binary_name(manifest_application)
         service = rust_service(service_fragment_lines)
         if not binary:
             draft_warnings.append("Rust binary name was not found in Cargo.toml; replace replace-with-binary-name")
@@ -320,7 +325,7 @@ def main() -> int:
         if early_build.exists():
             # Preserve the early compiler/target recipe so later deploy reuses its cache.
             settings = read_json(early_build)
-            if set(settings) != {"base_image", "target", "binary", "dockerfile"}:
+            if not {'base_image', 'target', 'binary', 'dockerfile'} <= set(settings) or set(settings) - {'base_image', 'target', 'binary', 'dockerfile', 'source_root', 'manifest_dir', 'toolchain', 'packages'}:
                 raise ValueError("invalid config/phase1-build.json")
             if binary and settings["binary"] != binary:
                 raise ValueError("early build binary differs from imported Cargo manifest")
