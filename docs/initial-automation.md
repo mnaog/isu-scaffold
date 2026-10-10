@@ -72,7 +72,7 @@ providerの出力は共通形式へ正規化され、次を一度に生成しま
 
 `.isuscope/config.toml`にはIPとSSH identityが入るためGit管理しません。collectorの正本はisuscope側（`isuscope init`が配る設定）で、`make discover`が`isuscope init --print config`にlog pathとservice unitを渡して生成し、`[lock]`・`[ssh]`・`[[nodes]]`を追記します。collectorを足すときはisuscopeを更新してinstallし直します。IPやnode数が変わったら手編集せず`make discover`を再実行します。
 
-負荷を担うsystemd unitが判明したら`.local/environment.env`の`ISUSCOPE_SERVICE_UNITS`へ空白区切りで指定します。`configure-draft`はinspectionで関連すると判断したrunning serviceの和集合も`.local/draft/isuscope.json`へ候補として出すため、`configure-apply`前に過不足を確認できます。生成されたservice-samplerはそのunitのcgroup v2だけを1秒間隔で読み、CPU core使用量、memory、read/write帯域、PID数を記録します。空の場合やcgroup v2でない環境では`unavailable`となります。
+負荷を担うsystemd unitが判明したら`.local/environment.env`の`ISUSCOPE_SERVICE_UNITS`へ空白区切りで指定します。`configure-draft`はinspectionで関連すると判断したrunning serviceの和集合も`.local/draft/isuscope.json`へ候補として出すため、`configure-apply`前に過不足を確認できます。生成されたservice-samplerはそのunitのcgroup v2だけを1秒間隔で読み、CPU core使用量、memory、read/write帯域、PID数を記録します。空の場合やcgroup v2でない環境では`unavailable`となります。同じunitについて、process-samplerは/procから全processのRSS合計・thread数を1秒ごとに読み、MainPIDの変化を再起動として数えます。こちらはcgroup v1でも動き、`brief`の`top_services`にピークと再起動回数が出ます。cgroupの`memory`（page cacheを含む）とRSSは別の値です。
 
 ## 3. SSHと全nodeを揃える
 
@@ -88,7 +88,7 @@ Ansibleのcontrollerは対象nodeのPythonに合わせて選びます。`bootstr
 
 | 項目 | 内容 | 無効化する変数 |
 | --- | --- | --- |
-| 計測tool | `sysstat`、実行中kernel用のperf、pin済みの`alp`・`slp`、FlameGraph scripts。off-CPU用の`bpfcc-tools`は既定では入れない | `observability_install_packages`、`observability_download_tools`（`observability_install_offcpu`で有効化） |
+| 計測tool | `sysstat`、`ethtool`（ENAの上限超過counter）、実行中kernel用のperf、pin済みの`alp`・`slp`、FlameGraph scripts。off-CPU用の`bpfcc-tools`は既定では入れない | `observability_install_packages`、`observability_download_tools`（`observability_install_offcpu`で有効化） |
 | perf権限 | `kernel.perf_event_paranoid=-1`、`kernel.kptr_restrict=0` | — |
 | Nginx access log | `conf.d/00-isuscope-log.conf`でLTSVを`/var/log/nginx/isuscope-access.log`へ追加出力（既存のaccess_logは変えない）。sessionは`observability_nginx_session_source`で問題に合わせる | `observability_nginx_ltsv` |
 | MySQL slow log | `zzz-isuscope-slow.cnf`で`long_query_time=0`を`/var/log/mysql/isuscope-slow.log`へ出力し、MySQLを再起動 | `observability_mysql_slow_log` |

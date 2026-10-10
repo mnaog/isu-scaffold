@@ -1,7 +1,7 @@
 ---
 observability_tools_strict: false
 observability_install_packages: true
-observability_packages: [sysstat, git]
+observability_packages: [sysstat, git, ethtool]
 observability_install_offcpu: false
 observability_offcpu_packages: [bpfcc-tools]
 observability_download_tools: true
