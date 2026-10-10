@@ -1,63 +1,74 @@
 ---
-- name: Install measurement packages on Debian family
-  ansible.builtin.apt:
-    name: "{{ observability_packages + (observability_offcpu_packages if observability_install_offcpu | bool else []) }}"
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
-  when:
-    - ansible_facts.os_family == 'Debian'
-    - observability_install_packages | bool
+- name: Acquire optional measurement tooling without blocking basic log setup
+  tags: [observability_acquire]
+  block:
+    - name: Install measurement packages on Debian family
+      ansible.builtin.apt:
+        name: "{{ observability_packages + (observability_offcpu_packages if observability_install_offcpu | bool else []) }}"
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+      when:
+        - ansible_facts.os_family == 'Debian'
+        - observability_install_packages | bool
 
-- name: Install measurement packages on other systems
-  ansible.builtin.package:
-    name: "{{ observability_packages }}"
-    state: present
-  when:
-    - ansible_facts.os_family != 'Debian'
-    - observability_install_packages | bool
+    - name: Install measurement packages on other systems
+      ansible.builtin.package:
+        name: "{{ observability_packages }}"
+        state: present
+      when:
+        - ansible_facts.os_family != 'Debian'
+        - observability_install_packages | bool
 
-- name: Download pinned alp and slp releases
-  ansible.builtin.unarchive:
-    src: "https://github.com/tkuchiki/{{ item.name }}/releases/download/{{ item.version }}/{{ item.name }}_linux_{{ observability_go_arch[ansible_facts.architecture] }}.tar.gz"
-    dest: /usr/local/bin
-    remote_src: true
-    include: ["{{ item.name }}"]
-    owner: root
-    group: root
-    mode: '0755'
-    creates: "/usr/local/bin/{{ item.name }}"
-  loop: "{{ observability_release_tools }}"
-  loop_control:
-    label: "{{ item.name }} {{ item.version }}"
-  when: observability_download_tools | bool
+    - name: Download pinned alp and slp releases
+      ansible.builtin.unarchive:
+        src: "https://github.com/tkuchiki/{{ item.name }}/releases/download/{{ item.version }}/{{ item.name }}_linux_{{ observability_go_arch[ansible_facts.architecture] }}.tar.gz"
+        dest: /usr/local/bin
+        remote_src: true
+        include: ["{{ item.name }}"]
+        owner: root
+        group: root
+        mode: '0755'
+        creates: "/usr/local/bin/{{ item.name }}"
+      loop: "{{ observability_release_tools }}"
+      loop_control:
+        label: "{{ item.name }} {{ item.version }}"
+      when: observability_download_tools | bool
 
-- name: Fetch FlameGraph scripts
-  ansible.builtin.git:
-    repo: https://github.com/brendangregg/FlameGraph.git
-    dest: /opt/FlameGraph
-    version: "{{ observability_flamegraph_version }}"
-    depth: 1
-  when: observability_download_tools | bool
+    - name: Fetch FlameGraph scripts
+      ansible.builtin.git:
+        repo: https://github.com/brendangregg/FlameGraph.git
+        dest: "{{ observability_flamegraph_directory }}"
+        version: "{{ observability_flamegraph_version }}"
+        depth: 1
+      when: observability_download_tools | bool
 
-- name: Link FlameGraph scripts into PATH
-  ansible.builtin.file:
-    src: "/opt/FlameGraph/{{ item }}"
-    dest: "/usr/local/bin/{{ item }}"
-    state: link
-  loop: [stackcollapse-perf.pl, flamegraph.pl]
-  when: observability_download_tools | bool
+    - name: Link FlameGraph scripts into PATH
+      ansible.builtin.file:
+        src: "{{ observability_flamegraph_directory }}/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        state: link
+      loop: [stackcollapse-perf.pl, flamegraph.pl]
+      when: observability_download_tools | bool
 
-- name: Install explicitly supplied observability tools
-  ansible.builtin.copy:
-    src: "{{ item.source }}"
-    dest: "{{ item.destination }}"
-    owner: root
-    group: root
-    mode: "{{ item.mode | default('0755') }}"
-  loop: "{{ observability_local_tools }}"
-  loop_control:
-    label: "{{ item.destination }}"
+    - name: Install explicitly supplied observability tools
+      ansible.builtin.copy:
+        src: "{{ item.source }}"
+        dest: "{{ item.destination }}"
+        owner: root
+        group: root
+        mode: "{{ item.mode | default('0755') }}"
+      loop: "{{ observability_local_tools }}"
+      loop_control:
+        label: "{{ item.destination }}"
+  rescue:
+    - name: Report incomplete tooling; required tools remain checked by verify.yml
+      ansible.builtin.debug:
+        msg: "Measurement tool setup failed: {{ ansible_failed_result.msg | default('unknown failure') }}. Basic logs will still be configured. Retry with --tags observability_tools; verify.yml will reject missing required tools."
+    - name: Fail when strict tool acquisition was requested
+      ansible.builtin.fail:
+        msg: "Measurement tools could not be installed"
+      when: observability_tools_strict | bool
 
 - name: Allow system-wide perf sampling with kernel symbols
   ansible.builtin.copy:
@@ -93,8 +104,17 @@
   loop_control:
     label: "{{ item.item }}"
 
-- name: Verify perf matches the running kernel
+- name: Probe actual perf event access
   ansible.builtin.command:
-    argv: [perf, --version]
+    argv: [perf, stat, -e, task-clock, --, "true"]
+  register: observability_perf_probe
+  failed_when: false
   changed_when: false
   when: "'perf' in observability_required_commands"
+
+- name: Report unusable perf without hiding the verification failure
+  ansible.builtin.debug:
+    msg: "perf sampling is unavailable: {{ observability_perf_probe.stderr | default('not installed') }}; repair it or explicitly disable its collector before baseline"
+  when:
+    - "'perf' in observability_required_commands"
+    - observability_perf_probe.rc | default(1) != 0
