@@ -242,6 +242,8 @@ isuscope survey-run --hypothesis "初期状態の負荷構造とベンチシナ�
 
 isuscopeは毎回のベンチの前（collectorより前）に、`config/isuscope-policy.json`の`prepare_command`（`scripts/benchmark-prepare.sh`）を実行します。sync.jsonのRust unitを、動いているnodeでだけ再起動し（`try-restart`）、そのunitのprocessがportをlistenするまで待ちます。practice-14では、手動のベンチが途中で切ったrequestのtransactionが接続poolに残り、次のinitializeの`DROP TABLE`がlock待ちで30秒のtimeoutになりました。準備に失敗したrunは、ベンチを始めずにFAILとして残ります。
 
+再起動の前に、`scripts/check-deployed-commit.sh`で、最後に成功したdeployのcommit（`.local/current-deploy-commit`）とHEADを、deployが配るファイル（sync.jsonのitem、local buildのDockerfile、sync.json自身）に限って比べます。違うcommitか、それらのファイルに未commitの変更があれば、ベンチを始めません。isuscopeはrunをHEADのcommitとして記録するため、そのまま回すと、記録上のcommitとサーバーで動いているcommitが違うrunになります（practice-14のeb28e94a）。docsやisuscope-dataだけのcommitでは止まりません。deployの記録がない環境で意図して回す場合だけ、`SKIP_DEPLOYED_COMMIT_CHECK=1`を付けます。
+
 `phase1-check`はAnsibleの構文と全nodeのverify（SSH、disk、role別の必須service、必須command）、sync manifest、benchmark adapterのcheckとprobe、`isuscope doctor`を実行しますが、ベンチは起動しません。shell構文と空白の検査はCIが担当します。`isuscope doctor`は、保存したbenchmark sampleに`initialize_start_marker`・`initialize_finish_marker`の文言が含まれるかを確認し（含まれなければinitializeと負荷の区間分けができないのでWARN）、各collectorの`preflight`（全nodeで`/proc/stat`の1秒sampling、nginx access logの読取、`sudo -n`でのslow log読取など）を対象nodeで実行し、`config/benchmark-sample.log`へ全parserを適用し、最新runに動的IDを含むrouteが残っていないかも確認します。
 
 ### Phase 1の構築完了待ちと計測設定の再生成

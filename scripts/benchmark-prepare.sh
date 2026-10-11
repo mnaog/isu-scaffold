@@ -2,12 +2,15 @@
 set -euo pipefail
 
 # isuscopeの[benchmark] prepare_commandとして、毎回のベンチの前（collectorより前、isuscopeの
-# lockの中）に動きます。動いているアプリのunitを再起動し、そのprocessがportをlistenするまで
+# lockの中）に動きます。deployしたcommitとHEADを照合し（check-deployed-commit.sh）、動いているアプリのunitを再起動し、そのprocessがportをlistenするまで
 # 待ちます。前のベンチが途中で切ったrequestのtransactionが接続poolに残り、次のinitializeの
 # DROP TABLEを止めること（practice-14の初回survey-run）を防ぎます。止めてあるunitは起動しません。
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "${script_dir}/.." && pwd)
+
+# 記録上のcommitとサーバーで動いているcommitがずれたrunを作らないよう、最初に照合する。
+"${script_dir}/check-deployed-commit.sh"
 sync=${SYNC_MANIFEST:-${repo_dir}/config/sync.json}
 inventory=${ANSIBLE_INVENTORY:-${repo_dir}/.local/ansible-inventory.json}
 wait_seconds=${PREPARE_WAIT_SECONDS:-30}

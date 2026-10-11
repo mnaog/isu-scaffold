@@ -44,6 +44,8 @@ esac
         self.listening = self.root / 'ss.out'
         write(self.root / 'ssh-node.sh', f'#!/bin/sh\nNODE="$1" PATH={stubs}:$PATH exec bash -c "$2"\n', 0o755)
         (self.root / 'prepare.sh').chmod(0o755)
+        # The commit check has its own tests below.
+        write(self.root / 'check-deployed-commit.sh', '#!/bin/sh\necho deployed commit matches\n', 0o755)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -74,6 +76,73 @@ esac
         result = self.run_prepare()
         self.assertEqual(result.returncode, 0)
         self.assertFalse(self.calls.exists())
+
+
+class DeployedCommitCheckTest(unittest.TestCase):
+    """The benchmark does not start while the servers may run another commit than HEAD."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        self.git('init', '-q')
+        self.git('config', 'user.email', 't@example.com')
+        self.git('config', 'user.name', 't')
+        write(self.repo / 'config/sync.json', json.dumps({
+            'items': [{'name': 'rust-app', 'local': 'webapp/rust'}],
+            'local_builds': [{'item': 'rust-app', 'dockerfile': 'config/rust-builder/Dockerfile'}]}))
+        write(self.repo / 'webapp/rust/src/main.rs', 'fn main() {}\n')
+        write(self.repo / 'config/rust-builder/Dockerfile', 'FROM rust\n')
+        write(self.repo / 'docs/notes.md', 'notes\n')
+        self.commit('initial')
+        write(self.repo / '.local/current-deploy-commit', self.git('rev-parse', 'HEAD') + '\n')
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def git(self, *args):
+        return subprocess.run(['git', '-C', str(self.repo), *args], check=True, capture_output=True,
+                              text=True).stdout.strip()
+
+    def commit(self, message):
+        self.git('add', '-A', '--', '.', ':!.local')
+        self.git('commit', '-q', '-m', message)
+
+    def check(self, **env):
+        return subprocess.run([str(ROOT / 'scripts/check-deployed-commit.sh')], capture_output=True, text=True,
+                              env={**os.environ, 'REPO_DIR': str(self.repo), **env})
+
+    def test_commits_outside_the_deployed_files_do_not_stop_the_benchmark(self):
+        write(self.repo / 'docs/notes.md', 'run recorded\n')
+        self.commit('Record a run')
+        write(self.repo / 'isuscope-data/new.json', '{}')
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('matches HEAD', result.stdout)
+
+    def test_a_commit_that_was_not_deployed_stops_the_benchmark(self):
+        # practice-14 eb28e94a: the deploy was refused, the run was recorded under the new commit.
+        write(self.repo / 'webapp/rust/src/main.rs', 'fn main() { println!(); }\n')
+        self.commit('Change the app')
+        result = self.check()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('webapp/rust/src/main.rs', result.stderr)
+
+    def test_uncommitted_changes_in_deployed_files_stop_the_benchmark(self):
+        write(self.repo / 'config/rust-builder/Dockerfile', 'FROM rust:1\n')
+        write(self.repo / 'webapp/rust/src/new.rs', '\n')
+        result = self.check()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('config/rust-builder/Dockerfile', result.stderr)
+        self.assertIn('webapp/rust/src/new.rs', result.stderr)
+
+    def test_no_recorded_deploy_stops_the_benchmark_unless_skipped(self):
+        (self.repo / '.local/current-deploy-commit').unlink()
+        result = self.check()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('make deploy', result.stderr)
+        result = self.check(SKIP_DEPLOYED_COMMIT_CHECK='1')
+        self.assertEqual(result.returncode, 0)
+        self.assertIn('WARN', result.stderr)
 
 
 if __name__ == '__main__':
