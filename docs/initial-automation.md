@@ -30,6 +30,10 @@ make phase1-check
 
 Rustを採用しているため、draftは`webapp/`全体ではなく、`webapp/rust`（`sync.rust.example.json`のbuild設定とCargo.tomlのbinary名つき）、Rustのsystemd unit、`webapp/sql`内の1MiB以下の`.sql`・`.sh`、nginx・MySQL設定だけを同期対象に提案します。初期データはnodeに残し、配布しません。初期状態でRust用unitがない場合（他言語のunitだけが動いている場合）はrestart commandを入れずWARNにするので、unitを`config/systemd/`へ作ってitemとcommandを足してから切り替えます。
 
+nginxは`nginx.conf`に加えて、`sites-enabled`のsymlinkが指す実体と`conf.d`の設定（計測用drop-inは除く）を提案し、Rust unitが読む環境変数file（`EnvironmentFile`、例: `/home/isucon/env.sh`）も`config/app/`へ回収します。秘密情報が入っていれば`.local/`へ移してからcommitします。unit fileを置き換えるので、post_deployとrollbackの最初に`sudo systemctl daemon-reload`を入れます。
+
+Rust unitがあるのに、同じアプリの他言語のunit（例: `isuride-go.service`）が動いているnodeでは、切り替えの計画を`.local/draft/service-switch.json`へ出します。reviewはそのnodeのRust unitの停止をWARNにし、`kickoff-apply`が`scripts/switch-language-service.sh`で他言語のunitを止めてRust unitを有効化・起動します。公式マニュアルの切り替え手順と違わないかはWARNを読んで確かめます。
+
 draft reviewはnodeごとに1回のSSHで事実を集め、次をFAILにします。
 
 - 同期itemの配置先が`/`、`/etc`、`/home/isucon`などの広いsystem path、またはitem同士で重なる

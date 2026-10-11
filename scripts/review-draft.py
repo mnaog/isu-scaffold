@@ -161,6 +161,9 @@ def main() -> int:
     if len(drafts) < 4:
         return write(draft_dir, results)
     sync, overrides, isuscope = drafts["sync.json"], drafts["node-overrides.json"], drafts["isuscope.json"]
+    # A planned switch to the Rust implementation (configure-draft.py) starts the unit at apply time.
+    switch_path = draft_dir / "service-switch.json"
+    switch = load(switch_path) if switch_path.is_file() else None
     inventory = load(inventory_path)
     application = sorted(inventory["all"]["children"]["application"]["hosts"])
     roles = {entry["name"]: entry.get("roles", []) for entry in overrides}
@@ -243,7 +246,13 @@ def main() -> int:
                     record("FAIL", f"{node}: {item['name']} owner {label} does not exist: {value}")
         for service in sorted(checks[node]["services"]):
             state = (facts.get(("service", service)) or ["unknown"])[0]
-            record("OK" if state == "active" else "FAIL", f"{node}: service {service} is {state}")
+            switching = (switch and node in switch.get("nodes", [])
+                         and service.removesuffix(".service") == switch["start"].removesuffix(".service"))
+            if state != "active" and switching:
+                record("WARN", f"{node}: service {service} is {state}; kickoff-apply starts it and stops "
+                       f"{', '.join(switch['stop']) or 'nothing'} (service-switch.json)")
+            else:
+                record("OK" if state == "active" else "FAIL", f"{node}: service {service} is {state}")
         if checks[node]["dropins"]:
             for file, value in server_access_logs(nginx_config(ssh_node, node)):
                 record("WARN", f"{node}: server block in {file} sets access_log {value}; its requests are not written to the isuscope LTSV log")

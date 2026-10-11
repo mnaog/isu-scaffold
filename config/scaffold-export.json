@@ -77,7 +77,12 @@
     "tests/test_tool_guard.py",
     "config/tool-guard.json",
     ".claude/settings.json",
-    ".codex/hooks.json"
+    ".codex/hooks.json",
+    "scripts/switch-language-service.sh",
+    "tests/test_language_switch.py",
+    "scripts/kickoff-apply.sh",
+    "scripts/review-draft.py",
+    "config/sync.rust.example.json"
   ],
   "remove_files": [
     "docs/roles/operator.md",

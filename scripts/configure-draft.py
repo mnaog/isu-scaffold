@@ -120,6 +120,72 @@ def rust_service(service_fragments: list[str]) -> tuple[str, str] | None:
     return None
 
 
+# Reference implementations ship one unit per language with a shared prefix (isuride-go.service,
+# isuride-rust.service, isucondition.go.service); helpers such as isuride-matcher keep running.
+LANGUAGE_UNIT = re.compile(
+    r"^(?P<prefix>.+?)[-._](?P<language>go|golang|rust|python|ruby|node|nodejs|php|perl|java|"
+    r"typescript|ts|js|crystal|elixir|csharp|dotnet)\.service$"
+)
+
+
+def running_units(report: dict) -> set[str]:
+    return {name if name.endswith(".service") else name + ".service" for name in report.get("running_services", [])}
+
+
+def language_switch(rust_unit: str, reports: dict, unit_names: set[str]) -> dict | None:
+    """Nodes where another language of the same application runs instead of (or beside) Rust."""
+    match = LANGUAGE_UNIT.match(rust_unit)
+    if not match or match["language"] != "rust":
+        return None
+    siblings = {
+        unit for unit in unit_names
+        if (other := LANGUAGE_UNIT.match(unit)) and other["prefix"] == match["prefix"] and other["language"] != "rust"
+    }
+    nodes, stop = [], set()
+    for node, report in sorted(reports.items()):
+        # Only switch where another language of the same application is running; a node that
+        # runs neither stays a review FAIL for the operator to look at.
+        active = siblings & running_units(report)
+        if active:
+            nodes.append(node)
+            stop |= active
+    return {"start": rust_unit, "stop": sorted(stop), "nodes": nodes} if nodes else None
+
+
+def nginx_site_items(report: dict, source_node: str) -> tuple[list[dict], list[str]]:
+    """Enabled site files and conf.d files, synced at their real path (sites-enabled holds symlinks)."""
+    items, warnings, seen = [], [], set()
+    for line in report.get("nginx_site_files", []):
+        parts = line.split("\t")
+        if len(parts) != 2:
+            continue
+        enabled, real = parts
+        name = Path(real).name
+        # The measurement drop-in belongs to the Ansible bootstrap, not to the application.
+        if name.startswith("00-isuscope") or real in seen:
+            continue
+        seen.add(real)
+        stem = safe_name(name.removesuffix(".conf"))
+        if real.startswith("/etc/nginx/sites-available/"):
+            local, item_name = f"config/nginx/sites-available/{name}", f"nginx-site-{stem}"
+        elif real.startswith("/etc/nginx/conf.d/"):
+            local, item_name = f"config/nginx/conf.d/{name}", f"nginx-confd-{stem}"
+        else:
+            local, item_name = f"config/nginx/other/{name}", f"nginx-file-{stem}"
+            warnings.append(f"Nginx loads {real} (enabled as {enabled}) from outside /etc/nginx; confirm it belongs to the application before syncing it")
+        items.append({
+            "name": item_name,
+            "type": "file",
+            "node_group": "role_nginx",
+            "source_node": source_node,
+            "local": local,
+            "remote": real,
+            "owner": "root",
+            "owner_group": "root",
+        })
+    return items, warnings
+
+
 SESSION_HEADER = re.compile(r'get\(\s*"(x-[a-z0-9-]*session[a-z0-9-]*)"', re.IGNORECASE)
 SESSION_COOKIE_PATTERNS = (
     re.compile(r'Cookie::(?:new|build)\(\s*"([A-Za-z0-9_]+)"'),
@@ -264,6 +330,7 @@ def main() -> int:
         return next((node for node, roles in roles_by_node.items() if role in roles), default_source)
 
     items = []
+    service = None
     build_commands = []
     local_builds = []
     language_commands = []
@@ -345,6 +412,32 @@ def main() -> int:
                 "owner": "root",
                 "owner_group": "root",
             })
+            # An EnvironmentFile outside the application tree (DB host, ports) is part of the
+            # configuration too; practice-14 had to add /home/isucon/env.sh by hand.
+            environment_files = {}
+            for report in reports.values():
+                for line in report.get("service_environment_files", []):
+                    parts = line.split("\t")
+                    if len(parts) == 4 and parts[0] == service[0] + ".service" and parts[2] != "missing":
+                        environment_files.setdefault(parts[1], (parts[2], parts[3]))
+            inside_app = [path for path in environment_files if path == remote_application or path.startswith(remote_application + "/")]
+            for path in inside_app:
+                environment_files.pop(path)
+            for path, (owner, group) in sorted(environment_files.items()):
+                name = Path(path).name
+                items.append({
+                    "name": "app-env" if len(environment_files) == 1 else f"app-env-{safe_name(name)}",
+                    "type": "file",
+                    "node_group": "role_app",
+                    "local": f"config/app/{name}",
+                    "remote": path,
+                    "owner": owner,
+                    "owner_group": group,
+                })
+                draft_warnings.append(
+                    f"{service[0]}.service reads {path}; it is synced as config/app/{name}. "
+                    "Move secrets to .local/ instead of committing them"
+                )
         sql_dir = REPO_DIR / "webapp/sql"
         if sql_dir.is_dir():
             for path in sorted(sql_dir.rglob("*")):
@@ -373,6 +466,11 @@ def main() -> int:
             "owner": "root",
             "owner_group": "root",
         })
+    nginx_source = source_for_role("nginx")
+    if nginx_source in reports:
+        site_items, site_warnings = nginx_site_items(reports[nginx_source], nginx_source)
+        items.extend(site_items)
+        draft_warnings.extend(site_warnings)
     mysql_root = most_common([path for path in config_paths if path in ("/etc/mysql", "/etc/my.cnf")])
     if mysql_root:
         mysql_source = source_for_role("mysql")
@@ -380,6 +478,23 @@ def main() -> int:
         items.extend(mysql_items)
         if not mysql_items:
             draft_warnings.append("No shared MySQL configuration files found; rerun inspection and review explicit paths (never copy /etc/mysql wholesale)")
+
+    switch = None
+    if root and local_application and local_application.is_dir() and service:
+        unit_names = {line.split("\t", 1)[0] for line in service_fragment_lines}
+        switch = language_switch(service[0] + ".service", reports, unit_names)
+    if switch:
+        stopped = {unit.removesuffix(".service") for unit in switch["stop"]}
+        common_services = [name for name in common_services if name not in stopped]
+        observable_service_units = sorted(
+            {unit for unit in observable_service_units if unit.removesuffix(".service") not in stopped}
+            | {switch["start"]}
+        )
+        draft_warnings.append(
+            f"{switch['start']} is not the running implementation on {', '.join(switch['nodes'])}; "
+            f"kickoff-apply stops {', '.join(switch['stop']) or 'nothing'} and starts it there. "
+            "Check the official manual's procedure for switching implementations"
+        )
 
     post_commands = []
     if any("nginx" in roles for roles in roles_by_node.values()):
@@ -479,9 +594,14 @@ def main() -> int:
             "available_tools_by_node": available_tools_by_node,
             "missing_tools_by_node": missing_tools_by_node,
             "session_source_candidates": session_names,
+            "service_switch": switch,
             "warnings": warnings,
         },
     }
+    if switch:
+        outputs["service-switch.json"] = switch
+    else:
+        (output_dir / "service-switch.json").unlink(missing_ok=True)
     for name, value in outputs.items():
         with (output_dir / name).open("w") as destination:
             json.dump(value, destination, ensure_ascii=False, indent=2, sort_keys=True)

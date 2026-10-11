@@ -271,6 +271,20 @@ grep -q 'FAIL app2: webapp remote path does not exist' "${review_dir}/draft/revi
 grep -q 'FAIL app2: service isu.service is inactive' "${review_dir}/draft/review.md"
 grep -q 'FAIL app2: measurement drop-in is missing: /etc/nginx/conf.d/00-isuscope-log.conf' "${review_dir}/draft/review.md"
 
+# 他言語の実装が動いていてRust unitへ切り替える計画があれば、停止中のRust unitはapply時に起動するのでWARNにします。
+write_sync /home/isucon/webapp/rust
+write_facts app1 directory 2048 inactive
+write_facts app2 directory 2048 inactive
+printf '{"start":"isu.service","stop":["isu-go.service"],"nodes":["app1"]}\n' >"${review_dir}/draft/service-switch.json"
+set +e
+run_review >/dev/null
+review_exit=$?
+set -e
+test "${review_exit}" -eq 1
+grep -q 'WARN app1: service isu.service is inactive; kickoff-apply starts it and stops isu-go.service' "${review_dir}/draft/review.md"
+grep -q 'FAIL app2: service isu.service is inactive' "${review_dir}/draft/review.md"
+rm -f "${review_dir}/draft/service-switch.json"
+
 # importは全nodeのdigest一致を確認してからsource nodeを回収します。
 fake_remote=${fixture_repo}/.local/fake-remote
 for node in app1 app2; do
@@ -585,6 +599,8 @@ cat >"${fixture_repo}/.local/inspection/app1.json" <<'EOF'
   "application_candidate_ownership":["/home/isucon/webapp/go.mod\tisucon\tisucon"],
   "configuration_paths":["/etc/nginx/nginx.conf","/etc/mysql","/etc/mysql/mysql.cnf","/etc/mysql/conf.d","/etc/mysql/mysql.conf.d"],
   "service_fragments":["nginx.service\t/etc/systemd/system/nginx.service","isu-rust.service\t/etc/systemd/system/isu-rust.service"],
+  "nginx_site_files":["/etc/nginx/sites-enabled/isu.conf\t/etc/nginx/sites-available/isu.conf","/etc/nginx/conf.d/00-isuscope-log.conf\t/etc/nginx/conf.d/00-isuscope-log.conf"],
+  "service_environment_files":["isu-rust.service\t/home/isucon/env.sh\tisucon\tisucon"],
   "nginx_access_logs":["/var/log/nginx/custom.log","/var/log/nginx/isuscope-access.log"],
   "mysql_slow_logs":["/var/log/mysql/slow.log"],
   "versions":{"nginx":"nginx/1","mysql":"mysql 8","perf":"perf 6","sar":"sar 12","alp":"alp 1","slp":"slp 1"}
@@ -632,6 +648,18 @@ jq -e '.build_commands == [] and .local_builds[0].item == "rust-app" and .local_
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
 jq -e '.post_deploy_commands | any(.command == "sudo systemctl restart isu-rust")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
+# unit fileを置き換えるので、再起動の前にdaemon-reloadします。
+jq -e '[.post_deploy_commands[] | objects | .command] | index("sudo systemctl daemon-reload") < index("sudo systemctl restart isu-rust")' \
+  "${fixture_repo}/.local/draft/sync.json" >/dev/null
+# sites-enabledのsymlinkが指す実体と、unitが読む環境変数fileも配布候補にします。計測用drop-inは含めません。
+jq -e '.items | any(.name == "nginx-site-isu" and .local == "config/nginx/sites-available/isu.conf" and .remote == "/etc/nginx/sites-available/isu.conf" and .node_group == "role_nginx")' \
+  "${fixture_repo}/.local/draft/sync.json" >/dev/null
+jq -e '.items | all(.remote != "/etc/nginx/conf.d/00-isuscope-log.conf")' "${fixture_repo}/.local/draft/sync.json" >/dev/null
+jq -e '.items | any(.name == "app-env" and .local == "config/app/env.sh" and .remote == "/home/isucon/env.sh" and .owner == "isucon")' \
+  "${fixture_repo}/.local/draft/sync.json" >/dev/null
+jq -e '.warnings | any(test("reads /home/isucon/env.sh"))' "${fixture_repo}/.local/draft/summary.json" >/dev/null
+# 他言語の実装が動いていなければ切り替えの計画は作りません。
+test ! -e "${fixture_repo}/.local/draft/service-switch.json"
 # sessionを識別するnginx変数をコードから推定し、確認を促します。
 jq -e '.observability_nginx_session_source == "$cookie_app_session$cookie_owner_session"' \
   "${fixture_repo}/.local/draft/ansible-vars.json" >/dev/null

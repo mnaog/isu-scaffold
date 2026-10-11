@@ -17,6 +17,10 @@
   "post_deploy_commands": [
     {
       "node_group": "application",
+      "command": "sudo systemctl daemon-reload"
+    },
+    {
+      "node_group": "application",
       "command": "sudo systemctl restart replace-with-service-name"
     },
     {
@@ -25,6 +29,10 @@
     }
   ],
   "rollback_commands": [
+    {
+      "node_group": "application",
+      "command": "sudo systemctl daemon-reload"
+    },
     {
       "node_group": "application",
       "command": "sudo systemctl restart replace-with-service-name"

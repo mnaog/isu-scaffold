@@ -82,6 +82,40 @@
       register: inspection_service_fragments
       changed_when: false
 
+    # sites-enabled is usually a symlink into sites-available; the real file is what deploy replaces.
+    - name: Find enabled Nginx site files
+      ansible.builtin.shell: |
+        for dir in /etc/nginx/sites-enabled /etc/nginx/conf.d; do
+          test -d "$dir" || continue
+          for entry in "$dir"/*; do
+            test -f "$entry" || continue
+            printf '%s\t%s\n' "$entry" "$(readlink -f "$entry")"
+          done
+        done
+      args:
+        executable: /bin/bash
+      register: inspection_nginx_site_files
+      changed_when: false
+
+    # Units defined for this machine often read an environment file (DB host, ports) outside the app tree.
+    - name: Find environment files of locally defined services
+      ansible.builtin.shell: |
+        systemctl list-unit-files --type=service --no-legend --no-pager 2>/dev/null |
+        awk '$1 ~ /\.service$/ {print $1}' | sort -u | while IFS= read -r unit; do
+          fragment=$(systemctl show "$unit" -p FragmentPath --value 2>/dev/null || true)
+          case "$fragment" in /etc/systemd/system/*) ;; *) continue ;; esac
+          systemctl cat "$unit" 2>/dev/null | sed -n 's/^[[:space:]]*EnvironmentFile=-\{0,1\}//p' |
+            while IFS= read -r file; do
+              case "$file" in /*) ;; *) continue ;; esac
+              owner=$(sudo -n stat --printf='%U\t%G' "$file" 2>/dev/null || printf 'missing\tmissing')
+              printf '%s\t%s\t%s\n' "$unit" "$file" "$owner"
+            done
+        done
+      args:
+        executable: /bin/bash
+      register: inspection_service_environment_files
+      changed_when: false
+
     - name: Find Nginx access log paths
       ansible.builtin.shell: |
         command -v nginx >/dev/null 2>&1 || exit 0
@@ -155,6 +189,8 @@
             'configuration_paths': inspection_configuration_paths.stdout_lines,
             'service_fragments': inspection_service_fragments.stdout_lines,
             'nginx_access_logs': inspection_nginx_access_logs.stdout_lines,
+            'nginx_site_files': inspection_nginx_site_files.stdout_lines,
+            'service_environment_files': inspection_service_environment_files.stdout_lines,
             'mysql_slow_logs': inspection_mysql_slow_logs.stdout_lines,
             'versions': dict(inspection_versions.results | map(attribute='item') | zip(inspection_versions.results | map(attribute='stdout')))
           } | to_nice_json }}

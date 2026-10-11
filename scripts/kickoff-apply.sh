@@ -17,6 +17,8 @@ source "${repo_dir}/config/application.env"
 # The draft may have been edited since kickoff; review it again before applying.
 python3 "${script_dir}/review-draft.py"
 "${script_dir}/configure-apply.sh"
+# Start the Rust implementation where the draft found another language running.
+"${script_dir}/switch-language-service.sh"
 "${script_dir}/discover.sh"
 # The applied draft may set the session source for the measurement log; rewrite only that drop-in.
 "${script_dir}/run-ansible-playbook.sh" bootstrap.yml --tags observability_nginx_log
