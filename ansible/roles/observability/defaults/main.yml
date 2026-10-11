@@ -21,7 +21,7 @@ observability_stop_auto_updates: true
 observability_nginx_ltsv: true
 observability_nginx_ltsv_path: /var/log/nginx/isuscope-access.log
 observability_nginx_session_source: '$cookie_session'
-observability_mysql_slow_log: true
+observability_mysql_slow_log: false
 observability_mysql_slow_log_path: /var/log/mysql/isuscope-slow.log
 observability_log_max_size: 512M
 observability_rust_user: isucon

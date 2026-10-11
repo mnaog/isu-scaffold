@@ -215,7 +215,7 @@ def main() -> int:
                 for node in group_nodes(group, application, roles):
                     checks[node]["services"].add(service)
     nginx_log = isuscope.get("ISUSCOPE_NGINX_ACCESS_LOG")
-    slow_log = isuscope.get("ISUSCOPE_MYSQL_SLOW_LOG")
+    slow_log = isuscope.get("ISUSCOPE_MYSQL_SLOW_LOG") if slow_log_enabled(repo, drafts["ansible-vars.json"]) else None
     for node in application:
         if nginx_log and ("nginx" in roles.get(node, []) or "edge" in roles.get(node, [])):
             checks[node]["logs"].add(nginx_log)
@@ -263,6 +263,18 @@ def main() -> int:
             readable = (facts.get(("log", log)) or ["no"])[0] == "yes"
             record("OK" if readable else "WARN", f"{node}: log {'readable' if readable else 'not readable'}: {log}")
     return write(draft_dir, results)
+
+
+def slow_log_enabled(repo: Path, ansible_vars: dict) -> bool:
+    """Whether bootstrap turns the MySQL slow log on (the draft's vars override group_vars)."""
+    if "observability_mysql_slow_log" in ansible_vars:
+        return bool(ansible_vars["observability_mysql_slow_log"])
+    try:
+        text = (repo / "ansible/playbooks/group_vars/all.yml").read_text()
+    except OSError:
+        return False
+    match = re.search(r"^observability_mysql_slow_log:\s*(\S+)", text, re.M)
+    return bool(match) and match.group(1).lower() in ("true", "yes")
 
 
 def write(draft_dir: Path, results: list[tuple[str, str]]) -> int:

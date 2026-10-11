@@ -95,7 +95,7 @@ Ansibleのcontrollerは対象nodeのPythonに合わせて選びます。`bootstr
 | 計測tool | `sysstat`、`ethtool`（ENAの上限超過counter）、実行中kernel用のperf、pin済みの`alp`・`slp`、FlameGraph scripts。off-CPU用の`bpfcc-tools`は既定では入れない | `observability_install_packages`、`observability_download_tools`（`observability_install_offcpu`で有効化） |
 | perf権限 | `kernel.perf_event_paranoid=-1`、`kernel.kptr_restrict=0` | — |
 | Nginx access log | `conf.d/00-isuscope-log.conf`でLTSVを`/var/log/nginx/isuscope-access.log`へ追加出力（既存のaccess_logは変えない）。sessionは`observability_nginx_session_source`で問題に合わせる | `observability_nginx_ltsv` |
-| MySQL slow log | `zzz-isuscope-slow.cnf`で`long_query_time=0`を`/var/log/mysql/isuscope-slow.log`へ出力し、MySQLを再起動 | `observability_mysql_slow_log` |
+| MySQL slow log | 既定は無効。SQLはisuscopeがperformance_schemaのstatement digestから取る（`mysql-digest`）。digestが使えないMariaDBなどでだけtrueにし、`zzz-isuscope-slow.cnf`で`long_query_time=0`を`/var/log/mysql/isuscope-slow.log`へ出力する | `observability_mysql_slow_log`（既定false） |
 | log rotation | 上記2つを512MiBで世代交代し、logrotateを1時間ごとに実行 | — |
 | 時刻同期 | chronyを有効化 | `observability_time_sync` |
 | journal | 永続化し、512MiBで上限 | `observability_persistent_journal` |

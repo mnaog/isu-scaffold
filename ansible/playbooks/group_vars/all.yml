@@ -44,7 +44,9 @@ observability_nginx_ltsv: true
 observability_nginx_ltsv_path: /var/log/nginx/isuscope-access.log
 # 行動遷移に使うsessionのnginx変数。問題に合わせて$http_x_sessionなどへ変えます。
 observability_nginx_session_source: '$cookie_session'
-observability_mysql_slow_log: true
+# SQLはisuscopeがperformance_schemaのstatement digestから取る（mysql-digest collector）。slow log
+# （long_query_time=0）は全文を書いてベンチ中のDBの負荷になるので、digestが使えないMariaDBなどでだけtrueにする。
+observability_mysql_slow_log: false
 observability_mysql_slow_log_path: /var/log/mysql/isuscope-slow.log
 observability_log_max_size: 512M
 

@@ -89,7 +89,8 @@
     "scripts/benchmark-prepare.sh",
     "tests/test_benchmark_prepare.py",
     "config/isuscope-policy.json",
-    "tests/test_phase1_setup.py"
+    "tests/test_phase1_setup.py",
+    "docs/phases/Phase3.md"
   ],
   "remove_files": [
     "docs/roles/operator.md",

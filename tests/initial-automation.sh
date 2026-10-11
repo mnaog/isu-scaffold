@@ -215,7 +215,8 @@ EOF
 chmod +x "${review_dir}/ssh-node"
 printf '[{"name":"app1","roles":["app","nginx","db"]},{"name":"app2","roles":["app","nginx","db"]}]\n' \
   >"${review_dir}/draft/node-overrides.json"
-printf '{}\n' >"${review_dir}/draft/ansible-vars.json"
+# slow logは既定で無効（SQLはstatement digestから）。ここではslow logを使う設定で読み取りの検査を確かめる。
+printf '{"observability_mysql_slow_log":true}\n' >"${review_dir}/draft/ansible-vars.json"
 printf '{"ISUSCOPE_NGINX_ACCESS_LOG":"/var/log/nginx/access.log","ISUSCOPE_MYSQL_SLOW_LOG":"/var/log/mysql/mysql-slow.log"}\n' \
   >"${review_dir}/draft/isuscope.json"
 write_facts() {

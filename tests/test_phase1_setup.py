@@ -40,6 +40,20 @@ class Phase1SetupTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             policy.check(rendered.replace('scripts/benchmark-prepare.sh', 'other.sh'), settings)
 
+    def test_review_checks_the_slow_log_only_when_bootstrap_turns_it_on(self):
+        spec = importlib.util.spec_from_file_location('review', ROOT / 'scripts/review-draft.py')
+        review = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(review)
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            self.assertFalse(review.slow_log_enabled(repo, {}))
+            (repo / 'ansible/playbooks/group_vars').mkdir(parents=True)
+            (repo / 'ansible/playbooks/group_vars/all.yml').write_text('observability_mysql_slow_log: false\n')
+            self.assertFalse(review.slow_log_enabled(repo, {}))
+            self.assertTrue(review.slow_log_enabled(repo, {'observability_mysql_slow_log': True}))
+        self.assertIn('observability_mysql_slow_log: false',
+                      (ROOT / 'ansible/playbooks/group_vars/all.yml').read_text())
+
     def run_guard(self, cloud_exit):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
