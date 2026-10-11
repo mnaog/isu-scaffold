@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
 const ctx=vm.createContext({num:(v,d=0)=>v==null?'—':Number(v).toLocaleString('en-US',{maximumFractionDigits:d}),time:()=> '12:00'});
-const source=fs.readFileSync(__dirname+'/../scripts/operations/board-details.js','utf8');
+const source=fs.readFileSync(__dirname+'/../scripts/board/board-details.js','utf8');
 vm.runInContext(source.slice(0,source.indexOf("document.querySelector('#previous-run').addEventListener")),ctx);
 
 test('saved analysis is explicitly distinguished from an unrelated manual comparison',()=>{
@@ -42,9 +42,9 @@ test('stale run and deploy records never claim liveness; actual operation is sep
 function scoreChart(runs){
  const make=(tag,text,cls)=>({tag,text,cls,attrs:{},style:{},children:[],events:{},append(...xs){this.children.push(...xs)},replaceChildren(...xs){this.children=xs},setAttribute(k,v){this.attrs[k]=v},addEventListener(k,fn){this.events[k]=fn}});
  const root=make('div'),context=vm.createContext({document:{querySelector:selector=>selector==='#run-select'?{value:''}:root},el:make,svgEl:(tag,attrs,text)=>Object.assign(make(tag,text),{attrs}),num:v=>String(v),short:v=>v?.slice(0,8),selectedRun:null,chooseRun:id=>context.chosen=id});
- const html=fs.readFileSync(__dirname+'/../scripts/operations/board.html','utf8');
+ const html=fs.readFileSync(__dirname+'/../scripts/board/board.html','utf8');
  vm.runInContext(html.slice(html.indexOf('function resultBadge'),html.indexOf('function overviewSelection')),context);
- vm.runInContext(html.slice(html.indexOf('function renderScoreHistory'),html.indexOf('function renderScouts')),context);
+ vm.runInContext(html.slice(html.indexOf('function renderScoreHistory'),html.indexOf('function table(parent,head')),context);
  context.renderScoreHistory({score_history:runs});
  const flatten=n=>[n,...n.children.flatMap(flatten)];
  return {nodes:flatten(root),context};

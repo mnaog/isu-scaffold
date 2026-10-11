@@ -13,11 +13,8 @@ help:
 		'make status                           全application nodeを検査する' \
 		'make phase1-check                     ベンチ前の全node・isuscope検査を行う' \
 		'make tare                             baseline後に接続・fdの上限を上げる1 commitを作る' \
-		'make operations-init                  共通SQLiteと最新scout boardを初期化する' \
 		'make board                            人間向けボードを開く (127.0.0.1:8765)' \
-		'make scout-start / scout-stop         人間の判断でscout定期実行を開始・停止する' \
-		'make scout-status                     scoutの状態を表示する' \
-		'make operations-test                  ローカル運用の偽CLIテストを実行する'
+		'make test                             問題と実サーバーを使わないテストを実行する'
 
 discover:
 	@./scripts/discover.sh
@@ -52,23 +49,11 @@ tare:
 phase1-check:
 	@./scripts/phase1-check.sh
 
-.PHONY: operations-init scout-start scout-stop scout-status board operations-test
-operations-init:
-	@./scripts/scout init
-
-scout-start:
-	@./scripts/scout start
-
-scout-stop:
-	@./scripts/scout stop
-
-scout-status:
-	@./scripts/scout status
-
+.PHONY: board test
 board:
-	@./scripts/scout board
+	@python3 scripts/board/main.py
 
-operations-test:
+test:
 	@python3 -m unittest discover -s tests -p 'test_*.py' -v
 
 .PHONY: local-up local-check local-down local-logs local-reset

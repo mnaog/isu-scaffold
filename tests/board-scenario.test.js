@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
 const context=vm.createContext({num:v=>v==null?'—':String(v)});
-vm.runInContext(fs.readFileSync(__dirname+'/../scripts/operations/board-scenario.js','utf8'),context);
+vm.runInContext(fs.readFileSync(__dirname+'/../scripts/board/board-scenario.js','utf8'),context);
 const build=(q,counts=false)=>context.buildScenario(q,counts);
 const edge={from_route:'GET /a',to_route:'POST /b',count:17};
 const q=()=>({latest:{id:'selected'},survey:{run:{id:'initial'},transitions:{items:[edge]},quality:{rows:[{metric:'transition.ordering_version',value:2},...['overlap_count','ambiguous_count'].map(name=>({metric:'transition.'+name,value:0,labels:{from:edge.from_route,to:edge.to_route}}))]}},graph_http:{rows:[{method:'GET',route:'/a',node:'n1',count:99,p95_ms:12,total_ms:30},{method:'GET',route:'/a',node:'n2',count:7,p95_ms:80,total_ms:100}]}});

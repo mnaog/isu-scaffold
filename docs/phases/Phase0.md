@@ -22,15 +22,14 @@
 - 使用版のisuscopeをbuild/installし、`lock`、`pin`、`routes`等の必要なコマンドがあることを確認する。version表示だけで同一buildとは判定しない。
 - Rust、Cargo、linker、採用予定の汎用開発ツールを確認し、問題を使わない小さなRustプログラムでbuild・testする。事前に分かるRust版は準備し、配布アプリの正確なtoolchain・Cargo依存・DB schemaは公開後に合わせる。
 - 配布可能な計測toolの取得元・版を固定する。ローカルへ事前取得する場合はhashと再取得手順を残す。サーバーのOS・architecture・kernelに依存するpackageの選択と導入は公開後に行う。
-- `bash tests/initial-automation.sh`と`make operations-test`で、問題や実サーバーを使わずimport/deploy/rollback、worktree、SQLite、ボード、scoutの動作を確認する。
+- `bash tests/initial-automation.sh`と`make test`で、問題や実サーバーを使わずimport/deploy/rollback、worktree、ボードの動作を確認する。
 
 ## AIと運用経路
 
-- 利用予定のAIとscoutについて、CLI導入・認証・利用モデルでの新規セッション応答を確認する。代替モデルへ黙って切り替えない。
-- 各利用予定CLIで会話履歴の保存を確認する。短い接続確認を使い、問題の探索やscout定期実行は開始しない。smokeセッションをscoutの会話入力として登録しない。
-- Kimiは任意のscoutとする。CLI・認証・正確なモデル設定が揃い、接続確認できれば利用する。未導入・未設定・利用不可なら理由を表示したまま他のscoutを動かし、人間への採用・除外判断やPhase 0の完了待ちは追加しない。利用可能になった時点で設定と接続確認を行う。
-- Phase 1のコード先行回収と非同期buildの手順を確認する。scoutの会話入力は実作業セッション開始後に指定する。
-- ボードのローカル表示を確認する。テストデータ・常駐processは開始前に残さない。
+- 利用予定のAIについて、CLI導入・認証・利用モデルでの新規セッション応答を確認する。代替モデルへ黙って切り替えない。
+- 各利用予定CLIで会話履歴の保存を確認する。短い接続確認を使い、問題の探索は開始しない。
+- Phase 1のコード先行回収と非同期buildの手順を確認する。
+- ボード（`make board`）のローカル表示を確認する。テストデータ・常駐processは開始前に残さない。
 - 禁止操作を止めるhookを確認する。Claude Codeは`.claude/settings.json`、Codexは`.codex/hooks.json`から`scripts/tool-guard.py`を呼ぶ。Codexでは初めて開いたときにhookを信頼する。練習では`config/tool-guard.json`に、対象の開催回を表す語（`contest_keywords`、例: `isucon14`。アプリのhost名に含まれる語は入れない）とベンチマーカーの置き場所（`benchmarker_paths`、例: `/home/isucon/bench`）を書く。練習の資料を取得し終えてから書くか、取得してよい資料のURLを`allowed_urls`に入れる。練習が終わったら空に戻す。ベンチnodeへの直接の接続は、設定がなくても止まる。
 
 ## アカウント・接続・参加準備

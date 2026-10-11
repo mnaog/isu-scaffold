@@ -1,4 +1,4 @@
-// Browsing state is local to this tab; never changes scout configuration or run decisions.
+// Browsing state is local to this tab; never changes configuration or run decisions.
 let boardState=null, detailState=null, detailKey='', detailFetched=0, requestVersion=0;
 let detailController=null, openDetailKeys=[];
 const tableSort={http:{key:'total_ms',direction:-1},sql:{key:'total_ms',direction:-1}};

@@ -1,11 +1,10 @@
-"""On-demand, bounded board queries. Never used as scout input."""
+"""On-demand, bounded board queries for the selected run."""
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 import re
 import threading
 import time
-from inputs import brief_run, command_json, records, table_rows
-from store import git
+from reads import brief_run, command_json, git, records, table_rows
 
 
 def selection(params):

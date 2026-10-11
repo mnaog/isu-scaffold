@@ -198,10 +198,6 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 条件を満たしたら作業中のagent（CodexまたはClaude Code）はPhase 2への移行を提案し、人間が移行を決定する。最大の制約がPhase 1の範囲外にある場合は、SQLの項目が残っていてもその時点で移行を提案する（「baselineの後に次の変更を選ぶ」）。旧Phase 2の自明な改善はこのPhaseへ統合済みで、読み取りのメモリ化と台の分離もこのPhaseで始めてよい。現在のPhase 2は、非同期化など整合性や永続化の時機を変える変更を含むアーキテクチャ改善を扱う。
 
-## scoutの準備
-
-参照する会話の実セッションIDを`./scripts/scout conversation <agent> <session-id>`で指定する。シナリオは`docs/benchmark-scenario.md`へ整理する。Phase 1中にscoutは自動起動せず、人間がPhase 2への移行を決めた後に開始する。
-
 ## 非同期buildの開始と確認
 
 `make kickoff`は先行回収・commit後、独立した初期build処理を開始して全台bootstrapを進める。worktreeやAIセッションの作成は行わない。

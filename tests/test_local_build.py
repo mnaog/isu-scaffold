@@ -93,7 +93,7 @@ class LocalBuildTests(unittest.TestCase):
         self.command("git", "config", "user.name", "Test")
         self.command("git", "config", "user.email", "test@example.invalid")
         self.commit()
-        (self.repo / 'scripts/operations').mkdir(exist_ok=True)
+        (self.repo / 'scripts/board').mkdir(exist_ok=True)
 
     def command(self, *args, ok=True, **env):
         result = subprocess.run(args, cwd=self.repo, env=dict(self.env, **env), capture_output=True)

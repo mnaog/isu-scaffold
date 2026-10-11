@@ -39,7 +39,7 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/application-policy.sh \
   "${source_repo}"/scripts/worktree.sh \
   "${fixture_repo}/scripts/"
-mkdir -p "${fixture_repo}/scripts/operations"
+mkdir -p "${fixture_repo}/scripts/board"
 # collectorの正本はisuscopeが配るので、fixtureにはbenchmark adapterだけを置く。
 cp "${source_repo}/.isuscope/benchmark.sh" "${fixture_repo}/.isuscope/"
 cp "${source_repo}/config/environment.example.env" "${fixture_repo}/.local/environment.env"

@@ -53,7 +53,7 @@
 
 作業するAIは、調査・実装・検証・deploy・ベンチ・採否判断まで一貫して進める。固定の役割分担や別セッションの起動を必須にしない。問題を理解したセッションで修正と評価を続ける。
 並行作業が必要な場合のみworktreeを使う。remote変更・deploy・共有ベンチはmain側で既存の共通lockを使い、実行中の操作と競合させない。作業中の他worktreeを変更・削除しない。
-scoutは人間がPhase 2開始を決めてから`make scout-start`で起動し、`make scout-stop`で止める。参照する会話は`./scripts/scout conversation <agent> <実セッションID>`で明示する。更新時刻から推測しない。ボードは`make board`で開く読み取り専用画面。最新報告の`docs/scout-board.md`は通常のコミットに含める。詳細は`docs/roles/scout.md`に従う。
+人間は`make board`で開く読み取り専用の画面（ボード）で、スコアの推移、runの比較と負荷、必ず残す記録を見る。詳細は`docs/board.md`。
 
 ## sfs
 
@@ -92,7 +92,7 @@ isuscope survey-run --hypothesis "..."
   → deployし、通常のisuscope runでbaselineと比較
 ```
 
-採用言語はRustに固定する（`config/application.env`）。先行回収は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は`kickoff-apply`のimportで完了する。`kickoff`は再実行でき、回収済みならimportを飛ばし、初期buildは重複起動しない。draftの判断は`review.md`を読んだ操作者（人間またはこのセッション）が行い、`make`の中で別のAIを呼んで承認させない。`make`は初動・deploy・検査とローカル運用ボード・scout常駐処理の入口に絞っており、個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
+採用言語はRustに固定する（`config/application.env`）。先行回収は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は`kickoff-apply`のimportで完了する。`kickoff`は再実行でき、回収済みならimportを飛ばし、初期buildは重複起動しない。draftの判断は`review.md`を読んだ操作者（人間またはこのセッション）が行い、`make`の中で別のAIを呼んで承認させない。`make`は初動・deploy・検査とボードの入口に絞っており、個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
 
 - 計測と運用の土台（計測tool、LTSV access log、時刻同期、journal、自動更新停止）は初動のAnsibleで固定化し（SQLはisuscopeがperformance_schemaから取るので、slow logは既定で無効）、レギュレーションで禁止された項目だけ変数で外す。性能を変える設定（`config/nginx/tare`、networking sysctl、MySQLの性能設定）は初回baselineの後に1つの変更として入れる。接続・fdの上限（nginxのworker_connections・backlog・keepalive、アプリのLimitNOFILE、sysctl、MySQLのmax_connectionsとbuffer pool）は`make tare`が1つのcommitにするので、baselineの後に早めにdeployして`isuscope run`で測る。
 - ベンチの前には毎回、isuscopeの`prepare_command`（`scripts/benchmark-prepare.sh`）が動いているアプリのunitを再起動し、listenを待つ。前のベンチが途中で切ったrequestのtransactionが、次のinitializeを止めないようにするため。その前に、最後にdeployしたcommitとHEADを、deployが配るファイルに限って照合し、ずれていればベンチを始めない（`scripts/check-deployed-commit.sh`）。止まったら、commitして`make deploy`するか、HEADを戻す。
