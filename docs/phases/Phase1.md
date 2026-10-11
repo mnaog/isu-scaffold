@@ -27,7 +27,7 @@ Phase 0ではDockerと汎用の起動・検証コマンドだけを準備する�
 
 構成をcommitしたら、各worktreeで`make local-up`、`make local-check`、`make local-down`を実行してよい。DB・network・portはworktree単位で分離し、remote変更用lockを取らない。構築は初動と並行し、完成を初回baselineのgateにはしない。
 
-ローカルで初期化、代表API、SQLの実行計画、修正前後の挙動を確認する。schemaのみ・縮小データ・フルデータのどれか、欠けているserviceや検証範囲を記録し、health成功だけをシナリオ検証済みと扱わない。初期データは許可された取得元だけを使い、未回収ならその制限を明示する。性能変更の最終採否は配布サーバーの共有ベンチで決める。
+ローカルで初期化、代表API、SQLの実行計画、修正前後の挙動を確認する。schemaのみ・縮小データ・フルデータのどれか、欠けているserviceや検証範囲を`docs/local-verification.md`へ記録し、health成功だけをシナリオ検証済みと扱わない。初期データは許可された取得元だけを使い、未回収ならその制限を明示する。性能変更の最終採否は配布サーバーの共有ベンチで決める。
 
 ## 公式情報を保存する
 
@@ -58,6 +58,7 @@ Phase 0ではDockerと汎用の起動・検証コマンドだけを準備する�
 - 練習でAWS環境を自分で作る場合は、構成定義を`infra/`へ保存し、停止・再開・削除をコマンドで行えるようにする。認証情報はGitへ保存しない
 - `make kickoff`が出す`.local/draft/review.md`のFAILはすべて直し、WARNは内容を読んで判断してから`make kickoff-apply`へ進む。draftのremote path、owner、service、roleは推測にすぎない
 - nodeの分類が誤っている場合はprovider入力やdraftを直して再生成し、生成物を手作業で直し続けない
+- 台数とrole、CPU・メモリ、OS・kernel・nginx・MySQLの版、配布サーバーの言語の版、開始からの計時を`docs/environment.md`へ残す
 - importで配布先のdigestが一致しない場合は、sourceを確認するまで進めない
 - 初期状態をcommitし、`make deploy`、`make status`、明示的な`make rollback`で稼働プロセスまで旧構成へ戻ることを確認する
 - 計測と運用の土台は初動のAnsibleで固定化される。レギュレーションで禁止された項目だけ変数で外し、性能を変える設定は初回baselineの後に入れる
@@ -104,7 +105,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 ## ベンチマークシナリオを分析する
 
-`AGENTS.md`とそこから指定された追加指示、公式レギュレーション・当日マニュアルに従い、利用が認められた資料と計測結果から次を分かる範囲で整理する。
+`AGENTS.md`とそこから指定された追加指示、公式レギュレーション・当日マニュアルに従い、利用が認められた資料と計測結果から次を分かる範囲で`docs/benchmark-scenario.md`（ベンチの見取り図）へ整理する。
 
 各項目に根拠を残し、確認済みの事実と観測からの推測を区別する。許可された資料から確認できない並列数・繰り返し条件・整合性チェックなどは不明と記録する。
 
@@ -117,7 +118,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - 整合性チェックと失格条件
 - 得点へ直接つながる処理
 
-主要な処理について、次のつながりを整理する。
+主要な処理について、次のつながりを`docs/code-map.md`（コードの地図）へ整理する。コードの先行回収の後、初期buildや全台準備を待つ間に作り始める。
 
 ```text
 シナリオ
@@ -140,13 +141,13 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - transaction内の不要な処理とDB往復
 - 明らかに不要なカラム、全件走査、外部呼び出し
 
-インデックスはSQLと初期化後のデータ量から根拠を残す。読み取りのキャッシュ・メモリ化と、DB・アプリ・nginxを別のnodeへ分ける配置変更は、次節の条件でPhase 1でも入れてよい。整合性条件を変えるもの、非同期化、write-behindなど永続化の時機を変えるものはPhase 1では実装しない。
+インデックスは、対象のSQL、初期化後の行数、効果を確かめたrun IDを`docs/indexes.md`へ残す。読み取りのキャッシュ・メモリ化と、DB・アプリ・nginxを別のnodeへ分ける配置変更は、次節の条件でPhase 1でも入れてよい。整合性条件を変えるもの、非同期化、write-behindなど永続化の時機を変えるものはPhase 1では実装しない。
 
 この一掃は初動の待ち時間と並行して進める作業であり、次の判断を止めるgateではない。初回runから得た上位SQL・HTTP・エラーと候補を照合し、根拠が弱い変更は保留する。変更を反映した最初の`isuscope run`で大きく改善することを確認し、その後はボトルネックごとの短いサイクルに切り替える。
 
 ## baselineの後に次の変更を選ぶ
 
-初回baselineの分析では、SQLの候補を消化する前に、観測された最大の制約を特定する。`isuscope brief`のnode別CPU・iowait・disk util・network、`database_io`、`logs`から、少なくとも次を確認する。
+初回baselineの分析では、SQLの候補を消化する前に、観測された最大の制約を特定し、根拠とともに`docs/baseline.md`へ残す。`isuscope brief`のnode別CPU・iowait・disk util・network、`database_io`、`logs`から、少なくとも次を確認する。
 
 - 負荷が1台に集中し、他のnodeが空いていないか
 - CPUよりI/O待ち（iowait、disk util、COMMITやfile待ち）が支配的でないか
@@ -159,15 +160,23 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - DB・アプリ・nginxを別のnodeへ分ける配置変更
 - 読み取りのキャッシュ・メモリ化
 
-どちらも根拠（run ID、node別の観測値、期待する効果）を残し、1つずつ入れて通常の`isuscope run`で測る。メモリ化は1つの読み取り経路ずつ進め、データの正本、更新時の反映、initialize後の再構築方法を決めてから入れる。非同期化やwrite-behindなど、整合性条件や永続化の時機を変える変更が必要なら、根拠を添えて人間へPhase 2への移行を提案する。提案と移行の判断を待つ間も、Phase 1の範囲の修正は続けてよい。
+どちらも根拠（run ID、node別の観測値、期待する効果）を残し、1つずつ入れて通常の`isuscope run`で測る。メモリ化は1つの読み取り経路ずつ進め、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築方法を`docs/cache-design.md`へ書いてから入れる。非同期化やwrite-behindなど、整合性条件や永続化の時機を変える変更が必要なら、根拠を添えて人間へPhase 2への移行を提案する。提案と移行の判断を待つ間も、Phase 1の範囲の修正は続けてよい。
 
 ## 残すもの
 
-- `docs/official/`
-- `docs/benchmark-scenario.md`
+記録の置き場所は固定で、一覧は`config/records.json`にある。`make board`の「記録」で、人間が一覧と中身を見る。決まった場所以外に書かない。
+
+- `docs/official/`：公式の一次情報
+- `docs/environment.md`：環境
+- `config/benchmark-contract.json`：ベンチの競技条件
+- `docs/benchmark-scenario.md`：ベンチの見取り図
+- `docs/code-map.md`：コードの地図
+- `docs/local-verification.md`：ローカル検証の範囲
+- `docs/baseline.md`：初回baselineの制約
+- `docs/indexes.md`：インデックスの根拠
+- `docs/cache-design.md`：メモリ化の設計（入れた場合）
 - isuscopeによる初回ベンチ結果
 - 初期状態のコードと設定
-- ローカル実行環境の構成・データ範囲・動作検証結果
 - ローカルから実行できるデプロイコマンド
 - 初期状態へ戻せるGitコミット
 

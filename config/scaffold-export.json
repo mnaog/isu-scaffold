@@ -90,6 +90,8 @@
     "scripts/check-deployed-commit.sh",
     "tests/test_benchmark_prepare.py",
     "config/isuscope-policy.json",
+    "config/records.json",
+    "tests/test_records.py",
     "tests/test_phase1_setup.py",
     "docs/phases/Phase3.md",
     "scripts/initial-phase-report.py",
