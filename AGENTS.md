@@ -49,6 +49,10 @@
 並行作業が必要な場合のみworktreeを使う。remote変更・deploy・共有ベンチはmain側で既存の共通lockを使い、実行中の操作と競合させない。作業中の他worktreeを変更・削除しない。
 scoutは人間がPhase 2開始を決めてから`make scout-start`で起動し、`make scout-stop`で止める。参照する会話は`./scripts/scout conversation <agent> <実セッションID>`で明示する。更新時刻から推測しない。ボードは`make board`で開く読み取り専用画面。最新報告の`docs/scout-board.md`は通常のコミットに含める。詳細は`docs/roles/scout.md`に従う。
 
+## sfs
+
+sfs（spawn-forked-session）は、現在の会話履歴と作業状態を引き継ぐ子セッションを、独立したGit worktree上に開くコマンドです。ユーザーが「sfs」と指示したら、対象リポジトリのルートで `/Users/nao/project/spawn-forked-session/spawn-forked-session` を引数なしで実行してください。子には作業指示を送らず、入力待ちにしてください。
+
 ## Phase 0とPhase 1の境界
 
 Phase 0は本番開始前に利用できる情報だけで行える準備をすべて扱う。汎用tool、認証、権限、操作・検証の仕組み、問題に依存しない動作確認はここで済ませる。事前公開された条件はPhase 0で反映する。開始後に初めて分かる配布AMI・台数・構成・コード・schema・依存版の選定と実環境への適用はPhase 1で行う。練習運営側が事前に用意した配布物も、参加者へ渡すのは開始宣言後とする。ファイルをPhase 1と名付けるだけで、開始前の参加者repoへ問題固有情報を入れてはいけない。
