@@ -7,6 +7,9 @@ import re
 import tomllib
 
 
+BENCHMARK_KEYS = ('initialize_start_marker', 'initialize_finish_marker', 'prepare_command', 'rescore_command')
+
+
 def toml_value(value):
     if isinstance(value, dict):
         return '{ ' + ', '.join(f'{json.dumps(k)} = {toml_value(v)}' for k, v in value.items()) + ' }'
@@ -22,6 +25,11 @@ def apply(text, policy):
     }
     if policy.get('benchmark_parsers'):
         settings['benchmark']['parsers'] = policy['benchmark_parsers']
+    # Contest-specific initialize markers, and the commands around each benchmark: the restart
+    # before it (prepare) and the re-read of a pending first result (rescore).
+    for key in BENCHMARK_KEYS:
+        if policy.get(key):
+            settings['benchmark'][key] = policy[key]
     for section, values in settings.items():
         pattern = re.compile(r'^\[' + re.escape(section) + r'\][ \t]*$', re.M)
         match = pattern.search(text)
@@ -49,6 +57,9 @@ def check(text, policy):
     re.compile(policy['operator_line_pattern'])
     if config.get('benchmark', {}).get('parsers', []) != policy.get('benchmark_parsers', []):
         raise ValueError('benchmark parsers differ from repository policy; run make discover')
+    for key in BENCHMARK_KEYS:
+        if policy.get(key) and config.get('benchmark', {}).get(key) != policy[key]:
+            raise ValueError(f'isuscope benchmark {key} differs from config/isuscope-policy.json; run make discover')
 
 
 def main():

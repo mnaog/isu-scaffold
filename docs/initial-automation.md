@@ -211,6 +211,8 @@ tokenやcookieだけは`config/benchmark-secrets.example.env`を`.local/benchmar
 .isuscope/benchmark.sh --probe
 ```
 
+初回はベンチの出力の形が分からないので、`BENCHMARK_SAMPLE_SCORE`と`BENCHMARK_SAMPLE_PASS`は空のままでかまいません。そのとき`--check`はWARNを出して通り、runではadapterが判定を保留（`pending`）して出力を残します。isuscopeはそのrunを`pending`として記録し、全collectorの計測はそのまま使えます。確定するまで次のベンチは始まりません。保存された出力（`isuscope-data/runs/<run>/logs/benchmark-stdout.zst`）を`zstd -dc`で`config/benchmark-sample.log`へ書き出し、scoreと合否を記入して`--check`を通したら、`isuscope rescore <run>`が`.isuscope/benchmark.sh --extract`で同じ出力を読み直して確定します。手動でベンチを回して出力の形を調べる必要はありません。
+
 どちらの検査もベンチを起動しません。`check`は設定、regex、保存したサンプルを検査し、`probe`は実行ファイルまたはAPI endpointだけを確認します。標準adapterはcommandを一度だけ実行し、出力からscoreとPASS/FAILを取得してisuscope protocolへ変換し、二重起動も拒否します。scoreは最後に一致した行の最後の数値です。合否はFAILの行を優先し、終了コードが0でない場合と最終結果の行がない場合（途中で切れた出力）はFAILにします。使ったscoreの行と最終結果の行はrunのmessageに残るため、`isuscope brief`で誤った行を拾っていないか確認できます。別userで実行するときは`sudo -n -u USER sh -c '... && exec ./bench'`とし、`sudo -i`（login shellが入れ子のcommandを再解釈する）や独自のPASS/FAIL行の追加は避けます。adapterの判定は`tests/test_benchmark_adapter.py`のfixtureで回帰を確認します。HTTPのtokenやcookieは`.local/benchmark-secrets.env`またはGit管理外のheader fileへ置きます。
 
 `make discover`はinspection draftで選んだNginx・MySQL log pathも生成済みisuscope設定へ反映します。初回run後、動的IDのためrouteが細分化されていれば次を実行します。
@@ -237,6 +239,8 @@ isuscope routes suggest <run-id> --output .local/route-suggestions.toml
 make phase1-check
 isuscope survey-run --hypothesis "初期状態の負荷構造とベンチシナリオを記録する"
 ```
+
+isuscopeは毎回のベンチの前（collectorより前）に、`config/isuscope-policy.json`の`prepare_command`（`scripts/benchmark-prepare.sh`）を実行します。sync.jsonのRust unitを、動いているnodeでだけ再起動し（`try-restart`）、そのunitのprocessがportをlistenするまで待ちます。practice-14では、手動のベンチが途中で切ったrequestのtransactionが接続poolに残り、次のinitializeの`DROP TABLE`がlock待ちで30秒のtimeoutになりました。準備に失敗したrunは、ベンチを始めずにFAILとして残ります。
 
 `phase1-check`はAnsibleの構文と全nodeのverify（SSH、disk、role別の必須service、必須command）、sync manifest、benchmark adapterのcheckとprobe、`isuscope doctor`を実行しますが、ベンチは起動しません。shell構文と空白の検査はCIが担当します。`isuscope doctor`は、保存したbenchmark sampleに`initialize_start_marker`・`initialize_finish_marker`の文言が含まれるかを確認し（含まれなければinitializeと負荷の区間分けができないのでWARN）、各collectorの`preflight`（全nodeで`/proc/stat`の1秒sampling、nginx access logの読取、`sudo -n`でのslow log読取など）を対象nodeで実行し、`config/benchmark-sample.log`へ全parserを適用し、最新runに動的IDを含むrouteが残っていないかも確認します。
 

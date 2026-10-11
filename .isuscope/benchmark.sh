@@ -133,11 +133,21 @@ validate_config() {
   validate_regex BENCHMARK_FAIL_REGEX "${BENCHMARK_FAIL_REGEX:?}"
   validate_regex "operator line" "$(exclude_pattern)"
 
+  check_sample
+}
+
+# 実出力で人間が読んだscoreと合否を宣言し、regexが同じ値を取り出すことを確かめます。
+# 存在するだけでは、タグや途中経過の数字を拾っても検査を通ってしまうためです。
+# scoreと合否の両方が未記入なら、まだ実出力を見ていない初回として扱い（sample_verified=false）、
+# runは判定を保留します。片方だけの記入や、読み取りの食い違いは設定の誤りです。
+check_sample() {
+  sample_verified=false
+  if [[ -z "${BENCHMARK_SAMPLE_SCORE:-}" && -z "${BENCHMARK_SAMPLE_PASS:-}" ]]; then
+    return 0
+  fi
   sample_file=${BENCHMARK_SAMPLE_FILE:?BENCHMARK_SAMPLE_FILE is required}
   case "${sample_file}" in /*) ;; *) sample_file=${project_root}/${sample_file} ;; esac
   test -f "${sample_file}" || { echo "missing benchmark sample: ${sample_file}" >&2; return 1; }
-  # 実出力で人間が読んだscoreと合否を宣言し、regexが同じ値を取り出すことを確かめます。
-  # 存在するだけでは、タグや途中経過の数字を拾っても検査を通ってしまうためです。
   case "${BENCHMARK_SAMPLE_SCORE:-}" in
     ''|*[!0-9]*) echo "BENCHMARK_SAMPLE_SCORE must be the final score read from the sample" >&2; return 1 ;;
   esac
@@ -159,13 +169,73 @@ validate_config() {
     echo "PASS/FAIL regex judged the sample as pass=${result}, expected ${BENCHMARK_SAMPLE_PASS}: ${result_line}" >&2
     return 1
   fi
+  sample_verified=true
+}
+
+PENDING_HINT='save this run'"'"'s output (isuscope-data/runs/<run>/logs/benchmark-stdout.zst) as BENCHMARK_SAMPLE_FILE, set BENCHMARK_SAMPLE_SCORE and BENCHMARK_SAMPLE_PASS from it, make --check pass, then run isuscope rescore <run>'
+
+# 出力からscoreと合否を読み、isuscope protocolの結果を1行出します。
+emit_result() {
+  local output=$1 exit_status=$2
+  shift 2
+  extract_result "${output}"
+  test -n "${score}" || {
+    echo "benchmark output did not match BENCHMARK_SCORE_REGEX (exit status ${exit_status})" >&2
+    return 1
+  }
+  local messages=("benchmark exit status ${exit_status}" "score line: ${score_line}")
+  if [[ "${result}" == none ]]; then
+    # 途中で切れた出力は途中経過のscoreしか持たないため、PASSにしません。
+    messages+=("no final PASS/FAIL line matched")
+  else
+    messages+=("result line: ${result_line}")
+  fi
+  if [[ "${exit_status}" -ne 0 || "${result}" != true ]]; then
+    passed=false
+  else
+    passed=true
+  fi
+  jq -nc \
+    --argjson score "${score}" \
+    --argjson pass "${passed}" \
+    '{type:"isuscope.result", score:$score, pass:$pass, messages:$ARGS.positional}' \
+    --args "${messages[@]}" "$@"
 }
 
 if [[ "${1:-}" == --check ]]; then
   command -v jq >/dev/null
   validate_config
+  if [[ "${sample_verified}" != true ]]; then
+    echo "WARN: score and PASS/FAIL patterns are not verified against a real output yet; the first run is recorded as pending: ${PENDING_HINT}" >&2
+  fi
   echo "benchmark adapter configuration is valid (${BENCHMARK_TRANSPORT})"
   exit 0
+fi
+
+# 判定を保留したrunの保存済み出力を、確かめた読み取りで読み直します（isuscope rescore）。
+if [[ "${1:-}" == --extract ]]; then
+  command -v jq >/dev/null
+  input=${2:?usage: .isuscope/benchmark.sh --extract BENCHMARK_STDOUT}
+  validate_config
+  [[ "${sample_verified}" == true ]] || {
+    echo "the result patterns are not verified yet: ${PENDING_HINT}" >&2
+    exit 1
+  }
+  saved=$(mktemp)
+  output=$(mktemp)
+  trap 'rm -f -- "${saved}" "${output}"' EXIT
+  case "${input}" in
+    *.zst) zstd -dcq -- "${input}" >"${saved}" ;;
+    *) cat -- "${input}" >"${saved}" ;;
+  esac
+  # 保留したときの結果行はベンチの出力ではない。そこに残したベンチの終了コードだけを使う。
+  status_line=$(grep -F '"type":"isuscope.result"' "${saved}" | tail -n 1 |
+    jq -r '.messages[]? | select(startswith("benchmark exit status "))' 2>/dev/null | head -n 1 || true)
+  benchmark_exit=${status_line#benchmark exit status }
+  [[ "${benchmark_exit}" =~ ^[0-9]+$ ]] || benchmark_exit=0
+  grep -vF '"type":"isuscope.' "${saved}" >"${output}" || true
+  emit_result "${output}" "${benchmark_exit}" "read again from the saved output by --extract"
+  exit $?
 fi
 
 if [[ "${1:-}" == --probe ]]; then
@@ -252,27 +322,20 @@ if [[ "${benchmark_exit}" -eq 124 ]]; then
   exit 124
 fi
 
-extract_result "${raw_output}"
-test -n "${score}" || {
-  echo "benchmark output did not match BENCHMARK_SCORE_REGEX (exit status ${benchmark_exit})" >&2
-  exit 1
-}
-
-messages=("benchmark exit status ${benchmark_exit}" "score line: ${score_line}")
-if [[ "${result}" == none ]]; then
-  # 途中で切れた出力は途中経過のscoreしか持たないため、PASSにしません。
-  messages+=("no final PASS/FAIL line matched")
-else
-  messages+=("result line: ${result_line}")
-fi
-if [[ "${benchmark_exit}" -ne 0 || "${result}" != true ]]; then
-  passed=false
-else
-  passed=true
+if [[ "${sample_verified}" != true ]]; then
+  # 初回は読み取りを確かめていないので判定を保留し、出力を残して後から確定する。
+  # 何も出力しなかったベンチは保留にせず、adapterの失敗として止める。
+  grep -q '[^[:space:]]' "${raw_output}" || {
+    echo "benchmark produced no output (exit status ${benchmark_exit})" >&2
+    exit 1
+  }
+  extract_result "${raw_output}"
+  hints=()
+  [[ -n "${score_line}" ]] && hints+=("unverified score line: ${score_line}")
+  [[ "${result}" != none ]] && hints+=("unverified result line: ${result_line}")
+  jq -nc '{type:"isuscope.result", pending:true, messages:$ARGS.positional}' \
+    --args "benchmark exit status ${benchmark_exit}" "result pending: ${PENDING_HINT}" ${hints[@]+"${hints[@]}"}
+  exit 0
 fi
 
-jq -nc \
-  --argjson score "${score}" \
-  --argjson pass "${passed}" \
-  '{type:"isuscope.result", score:$score, pass:$pass, messages:$ARGS.positional}' \
-  --args "${messages[@]}"
+emit_result "${raw_output}" "${benchmark_exit}"

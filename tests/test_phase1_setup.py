@@ -22,6 +22,24 @@ class Phase1SetupTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             policy.check(template, settings)
 
+    def test_policy_sets_markers_and_the_commands_around_each_benchmark(self):
+        import tomllib
+        settings = {
+            'history_dir': 'docs/agent-history', 'operator_line_pattern': r'\[ADMIN\]',
+            'initialize_start_marker': 'msg=load starts', 'initialize_finish_marker': 'msg=tick',
+            'prepare_command': ['scripts/benchmark-prepare.sh'],
+            'rescore_command': ['.isuscope/benchmark.sh', '--extract', '{benchmark_stdout}'],
+        }
+        template = '[benchmark]\ncommand = ["bench"]\n# prepare_command = ["example"]\n'
+        rendered = policy.apply(template, settings)
+        benchmark = tomllib.loads(rendered)['benchmark']
+        self.assertEqual(benchmark['prepare_command'], ['scripts/benchmark-prepare.sh'])
+        self.assertEqual(benchmark['rescore_command'][-1], '{benchmark_stdout}')
+        self.assertEqual(benchmark['initialize_finish_marker'], 'msg=tick')
+        self.assertEqual(policy.apply(rendered, settings), rendered)
+        with self.assertRaises(ValueError):
+            policy.check(rendered.replace('scripts/benchmark-prepare.sh', 'other.sh'), settings)
+
     def run_guard(self, cloud_exit):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)

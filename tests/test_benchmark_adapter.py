@@ -138,6 +138,58 @@ class AdapterTest(unittest.TestCase):
                 self.assertNotEqual(completed.returncode, 0)
                 self.assertIn(error, completed.stderr)
 
+    # 初回はベンチの出力の形が分からない。scoreと合否が未記入なら判定を保留して出力を残し、
+    # 後から確かめた読み取りで読み直す（practice-14では手動ベンチと設定で約7分止まった）。
+    def unverified(self, output=FINAL_OUTPUT, exit_status=0):
+        self.configure(output, exit_status, BENCHMARK_SAMPLE_SCORE='', BENCHMARK_SAMPLE_PASS='')
+
+    def test_first_run_without_verified_patterns_is_pending(self):
+        self.unverified()
+        check = self.adapter('--check')
+        self.assertEqual(check.returncode, 0, check.stderr)
+        self.assertIn('WARN', check.stderr)
+        completed = self.adapter()
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        result = json.loads(completed.stdout.strip().splitlines()[-1])
+        self.assertTrue(result['pending'])
+        self.assertNotIn('pass', result)
+        self.assertNotIn('score', result)
+        self.assertIn('benchmark exit status 0', result['messages'])
+        self.assertTrue(any('unverified score line' in m and '27845' in m for m in result['messages']))
+
+    def test_benchmark_without_output_is_not_pending(self):
+        self.unverified(output='', exit_status=255)
+        completed = self.adapter()
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn('no output', completed.stderr)
+
+    def saved_pending_output(self, output=FINAL_OUTPUT, exit_status=0):
+        self.unverified(output, exit_status)
+        completed = self.adapter()
+        saved = self.root / 'benchmark-stdout'
+        saved.write_text(completed.stdout)
+        subprocess.run(['zstd', '-q', '-f', '--rm', str(saved), '-o', str(saved) + '.zst'], check=True)
+        return str(saved) + '.zst'
+
+    def test_extract_reads_the_saved_output_after_the_sample_is_verified(self):
+        saved = self.saved_pending_output()
+        refused = self.adapter('--extract', saved)
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn('not verified', refused.stderr)
+        self.configure(FINAL_OUTPUT)  # the sample and its score/verdict are now filled in
+        completed = self.adapter('--extract', saved)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        result = json.loads(completed.stdout.strip())
+        self.assertEqual((result['score'], result['pass']), (27845, True))
+        self.assertIn('read again from the saved output by --extract', result['messages'])
+
+    def test_extract_keeps_the_failed_exit_status_of_the_benchmark(self):
+        saved = self.saved_pending_output(exit_status=1)
+        self.configure(FINAL_OUTPUT)
+        result = json.loads(self.adapter('--extract', saved).stdout.strip())
+        self.assertFalse(result['pass'])
+        self.assertIn('benchmark exit status 1', result['messages'])
+
 
 if __name__ == '__main__':
     unittest.main()
