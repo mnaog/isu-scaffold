@@ -31,6 +31,7 @@
 - Kimiは任意のscoutとする。CLI・認証・正確なモデル設定が揃い、接続確認できれば利用する。未導入・未設定・利用不可なら理由を表示したまま他のscoutを動かし、人間への採用・除外判断やPhase 0の完了待ちは追加しない。利用可能になった時点で設定と接続確認を行う。
 - Phase 1のコード先行回収と非同期buildの手順を確認する。scoutの会話入力は実作業セッション開始後に指定する。
 - ボードのローカル表示を確認する。テストデータ・常駐processは開始前に残さない。
+- 禁止操作を止めるhookを確認する。Claude Codeは`.claude/settings.json`、Codexは`.codex/hooks.json`から`scripts/tool-guard.py`を呼ぶ。Codexでは初めて開いたときにhookを信頼する。練習では`config/tool-guard.json`に、対象の開催回を表す語（`contest_keywords`、例: `isucon14`。アプリのhost名に含まれる語は入れない）とベンチマーカーの置き場所（`benchmarker_paths`、例: `/home/isucon/bench`）を書く。練習の資料を取得し終えてから書くか、取得してよい資料のURLを`allowed_urls`に入れる。練習が終わったら空に戻す。ベンチnodeへの直接の接続は、設定がなくても止まる。
 
 ## アカウント・接続・参加準備
 

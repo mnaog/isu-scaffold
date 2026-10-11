@@ -173,7 +173,7 @@ if [[ "${1:-}" == --probe ]]; then
   validate_config
   case "${BENCHMARK_TRANSPORT}" in
     local) bash -c "${BENCHMARK_PROBE_COMMAND}" ;;
-    ssh) "${project_root}/scripts/ssh-node.sh" "${BENCHMARK_NODE}" "${BENCHMARK_PROBE_COMMAND}" ;;
+    ssh) ISUCON_ALLOW_BENCHMARK_NODE=1 "${project_root}/scripts/ssh-node.sh" "${BENCHMARK_NODE}" "${BENCHMARK_PROBE_COMMAND}" ;;
     http)
       ISUSCOPE_PROJECT_ROOT="${project_root}" \
         "${project_root}/scripts/benchmark-http.sh" --probe
@@ -227,6 +227,8 @@ if [[ "${BENCHMARK_TRANSPORT}" == local ]]; then
     bash -c "${BENCHMARK_COMMAND}" 2>&1 | tee "${raw_output}"
   fi
 elif [[ "${BENCHMARK_TRANSPORT}" == ssh ]]; then
+  # scripts/ssh-node.shはこの変数がないとベンチnodeへの接続を断る。
+  export ISUCON_ALLOW_BENCHMARK_NODE=1
   if [[ "${BENCHMARK_TIMEOUT_SECONDS}" -gt 0 ]]; then
     "${timeout_prefix[@]}" "${project_root}/scripts/ssh-node.sh" \
       "${BENCHMARK_NODE}" "${BENCHMARK_COMMAND}" 2>&1 | tee "${raw_output}"

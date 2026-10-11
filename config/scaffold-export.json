@@ -71,7 +71,13 @@
     "ansible/roles/observability/tasks/tools.yml",
     "tests/test_ansible_runtime.py",
     "tests/test_remote_helpers.py",
-    "tests/test_benchmark_adapter.py"
+    "tests/test_benchmark_adapter.py",
+    "scripts/ssh-node.sh",
+    "scripts/tool-guard.py",
+    "tests/test_tool_guard.py",
+    "config/tool-guard.json",
+    ".claude/settings.json",
+    ".codex/hooks.json"
   ],
   "remove_files": [
     "docs/roles/operator.md",

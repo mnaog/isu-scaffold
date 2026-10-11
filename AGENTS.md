@@ -17,7 +17,8 @@
 | `ansible/` | 全nodeの初期access、toolchain、observability前提を冪等に揃えるplaybookと変数。 |
 | `scripts/` | `import`、`deploy`、`restart`、`status`、`rollback`など、ローカルから環境を操作する処理。通常操作はMakefileから呼び出す。 |
 | `docs/` | `official/`へ一次情報、`phases/`へ進行手順、`agent-history/`へCodex・Claude Code・OpenCodeの会話・操作履歴（自動生成）を保存する。調査やシナリオ分析もここへ残す。 |
-| `.claude/` | Claude Codeがこの`AGENTS.md`を起動時に読み込むためのrule symlink。`CLAUDE.md`は作成しない。 |
+| `.claude/` | Claude Codeがこの`AGENTS.md`を起動時に読み込むためのrule symlinkと、禁止操作を止めるhook（`settings.json`）。`CLAUDE.md`は作成しない。 |
+| `.codex/` | Codexが同じhookを読む`hooks.json`。初めて開いたときにCodexでhookを信頼する。 |
 | `.isuscope/` | node、collector、route正規化、ベンチ実行方法など、isuscopeの計測設定。 |
 | `isuscope-data/` | スコア、仮説、分析、Git状態など、isuscopeのrun。生ログは既定で除外し、重要なrunだけ強制追加する。 |
 | `.local/` | Public IP、秘密情報、AWSの一時出力など、環境固有の情報。Git管理しない。 |
@@ -41,6 +42,7 @@
 - 公式情報は要約だけで済ませず、可能な限り原文を`docs/official/`へ保存する。
 - 現在のPhaseと完了条件は`docs/phases/`に従い、Phaseの移行は人間が決定する。
 - isuscopeの軽量なrun履歴は通常のコミットへ含める。重要なrunの生ログを残す場合は`git add -f isuscope-data/runs/<run-id>`でstageする。
+- ベンチnodeへの直接の接続、ベンチマーカーの閲覧・コピー、現在練習中の開催回のコードの取得と攻略法の検索は、Claude CodeとCodexのPreToolUse hook（`scripts/tool-guard.py`）が止める。対象の開催回とベンチマーカーの置き場所は`config/tool-guard.json`で宣言する。`scripts/ssh-node.sh`も、ベンチadapterと初動の検査が付ける`ISUCON_ALLOW_BENCHMARK_NODE=1`がない限りベンチnodeへ接続しない。止められたら別経路で回避せず、ベンチは`isuscope run`・`survey-run`から動かす。
 - `.local/operation.lock`を変更系操作の共通排他とする。実行中のlockは基本的に手作業で消さず、別セッションの終了を待つ。status・checkなどのread-only操作は並行してよい。
 
 ## 作業の進め方

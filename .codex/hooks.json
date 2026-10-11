@@ -1,0 +1,16 @@
+{
+  "description": "Stop direct access to the benchmark node, reading the benchmarker, and fetching or searching the current contest's solutions (scripts/tool-guard.py).",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/tool-guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -46,9 +46,11 @@ def main():
         raise ValueError('automatic selection requires ANSIBLE_PYTHON_INTERPRETER=/usr/bin/python3')
     versions = {}
     for node in sorted(hosts(data['all'])):
+        # The benchmark node also gets Linux prerequisites, so its Python decides the profile too.
         result = subprocess.run([str(ROOT / 'scripts/ssh-node.sh'), node,
                                  "/usr/bin/python3 -c 'import sys; print(str(sys.version_info[0])+\".\"+str(sys.version_info[1]))'"],
-                                check=True, capture_output=True, text=True, timeout=30)
+                                check=True, capture_output=True, text=True, timeout=30,
+                                env={**os.environ, 'ISUCON_ALLOW_BENCHMARK_NODE': '1'})
         versions[node] = tuple(map(int, result.stdout.strip().split('.')))
     profile = select(list(versions.values()))
     requested = os.environ.get('ANSIBLE_PROFILE')

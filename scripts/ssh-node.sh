@@ -26,6 +26,14 @@ node=$(jq -ce --arg name "${node_name}" '
   exit 1
 }
 
+# ベンチnodeにはベンチadapterと初動の検査だけが入る。練習の規則（ベンチnodeを観測しない、
+# ベンチマーカーを写さない）を、hookで見えないscript経由の接続でも守るため、ここでも断る。
+if [[ "${ISUCON_ALLOW_BENCHMARK_NODE:-}" != 1 ]] &&
+  jq -e --arg name "${node_name}" '.all.children.benchmark.hosts // {} | has($name)' "${inventory_path}" >/dev/null; then
+  echo "refusing to connect to the benchmark node ${node_name}: run benchmarks through isuscope run / survey-run (.isuscope/benchmark.sh)" >&2
+  exit 1
+fi
+
 host=$(jq -r '.ansible_host' <<<"${node}")
 user=$(jq -r '.ansible_user // .default_user' <<<"${node}")
 identity_file=$(jq -r '.identity_file' <<<"${node}")
