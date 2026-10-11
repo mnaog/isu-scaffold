@@ -80,7 +80,7 @@ config/benchmark.envを設定して.isuscope/benchmark.sh --check、--probe
 make phase1-check
   → 全node、同期、ベンチadapterと接続先、isuscope doctorをベンチなしで検査
 isuscope survey-run --hypothesis "..."
-  → 人間が確認した後に初回ベンチを一度だけ実行
+  → phase1-checkが通ったら、人間の確認を待たずに初回ベンチを一度だけ実行
 初回runの分析後に観測に基づいて改善を実装・検証
   → deployし、通常のisuscope runでbaselineと比較
 ```
@@ -88,7 +88,7 @@ isuscope survey-run --hypothesis "..."
 採用言語はRustに固定する（`config/application.env`）。先行回収は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は`kickoff-apply`のimportで完了する。`kickoff`は再実行でき、回収済みならimportを飛ばし、初期buildは重複起動しない。draftの判断は`review.md`を読んだ操作者（人間またはこのセッション）が行い、`make`の中で別のAIを呼んで承認させない。`make`は初動・deploy・検査とローカル運用ボード・scout常駐処理の入口に絞っており、個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
 
 - 計測と運用の土台（計測tool、LTSV access log、slow log、時刻同期、journal、自動更新停止）は初動のAnsibleで固定化し、レギュレーションで禁止された項目だけ変数で外す。性能を変える設定（`config/nginx/tare`、networking sysctl、MySQLの性能設定）は初回baselineの後に1つの変更として入れる。
-- `kickoff`、`bootstrap`、`phase1-check`からベンチを起動しない。`isuscope survey-run`は必ず独立した明示操作にする。
+- `kickoff`、`bootstrap`、`phase1-check`からベンチを起動しない。`isuscope survey-run`は必ず独立した明示操作にし、`phase1-check`が通ったら作業中のAIが人間の確認を待たずに実行する。
 - 並行作業が必要なら`make worktree BRANCH=<name> PURPOSE="..."`で作る。目的はbranchへ記録する。変更目的ごとにcommitを分け、検証結果と評価したcommitを残す。
 - 並行worktreeでも目的に必要なコード・設定・文書を扱ってよい。remote変更、deploy、ベンチ、`.local/operation.lock`を使う操作はmain側だけが行う。
 - Phase 1のローカル実行環境は各worktreeで`make local-up / local-check / local-down`で操作してよい。worktree専用のDB・network・port・lockを使う。初回baselineの開始はローカル環境の完成を待たない。詳細は`docs/local-development.md`を参照する。

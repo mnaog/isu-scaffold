@@ -15,7 +15,7 @@ SSH確立直後に採用言語のコードとDB schemaを先行importし、初�
 1. コードとschemaを先行回収し、初期状態をcommitする。
 2. 非同期buildの調査結果と配布コードを照合し、`config/phase1-build.json`を確定する。
 3. 全台準備・完全import・role・deploy・benchmark adapter・isuscopeを準備する。
-4. `phase1-check`後、初期状態の`survey-run`を明示実行し、スコア・エラー・HTTP・SQL・ホスト負荷を分析する。
+4. `phase1-check`が通ったら、人間の確認を待たずに初期状態の`survey-run`を明示実行し、スコア・エラー・HTTP・SQL・ホスト負荷を分析する。
 5. 観測とコードから改善を選び、実装・ローカル検証・commit・deployを進める。
 6. 通常の`isuscope run`で比較し、仮説の判定と変更の採否を記録する。障害があれば原因調査から修正・再評価まで続ける。
 
@@ -91,7 +91,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 ## 初回ベンチを実行する
 
-初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[初動自動化](../initial-automation.md)の「ベンチ前gateと初回run」を参照する。
+初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。`make phase1-check`が通ったら、人間の確認を待たずに実行する。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[初動自動化](../initial-automation.md)の「ベンチ前gateと初回run」を参照する。
 
 確認するもの：
 
