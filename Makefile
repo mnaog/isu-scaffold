@@ -1,4 +1,4 @@
-.PHONY: help discover kickoff kickoff-apply build deploy rollback status phase1-check
+.PHONY: help discover kickoff kickoff-apply build deploy rollback status phase1-check tare
 
 help:
 	@printf '%s\n' \
@@ -12,6 +12,7 @@ help:
 		'make rollback RELEASE=<id>            deploy前のremote状態へ戻す' \
 		'make status                           全application nodeを検査する' \
 		'make phase1-check                     ベンチ前の全node・isuscope検査を行う' \
+		'make tare                             baseline後に接続・fdの上限を上げる1 commitを作る' \
 		'make operations-init                  共通SQLiteと最新scout boardを初期化する' \
 		'make board                            人間向けボードを開く (127.0.0.1:8765)' \
 		'make scout-start / scout-stop         人間の判断でscout定期実行を開始・停止する' \
@@ -44,6 +45,9 @@ rollback:
 
 status:
 	@./scripts/status.sh
+
+tare:
+	@python3 scripts/tare.py
 
 phase1-check:
 	@./scripts/phase1-check.sh

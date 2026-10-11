@@ -82,7 +82,10 @@
     "tests/test_language_switch.py",
     "scripts/kickoff-apply.sh",
     "scripts/review-draft.py",
-    "config/sync.rust.example.json"
+    "config/sync.rust.example.json",
+    "scripts/tare.py",
+    "tests/test_tare.py",
+    "config/nginx/tare/README.md"
   ],
   "remove_files": [
     "docs/roles/operator.md",

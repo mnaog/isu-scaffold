@@ -2,7 +2,24 @@
 
 初回baselineを未変更で取った後に、1つの変更としてdeployで入れて`isuscope run`で測る。計測用の設定（LTSV access log）はAnsible bootstrapが初動で固定化するので、ここには含めない。
 
+## make tare（baselineの後に1 commitで入れる）
+
+`make tare`（`scripts/tare.py`）が、問題に依存しない接続・fdの上限を1つのcommitにする。初回baselineの後に早めに`make deploy`して`isuscope run`で測る。もう一度実行しても何も変えない。
+
+| 対象 | 変更 |
+| --- | --- |
+| `nginx.conf` | `worker_rlimit_nofile 131072`、`worker_connections 32768`、httpの`keepalive_requests 10000`、mainの`error_log ... warn`（接続の不足はwarnにしか出ない） |
+| siteとconf.dの設定 | address:portごとに1つのlistenへ`backlog=4096`。`proxy_pass http://host:port`をkeepalive付きのupstreamへ移す（`proxy_http_version 1.1`、`Connection ""`。継承していた`proxy_set_header`とHostは保つ） |
+| Rustのunit | `LimitNOFILE=1048576` |
+| `/etc/sysctl.d/99-tare.conf` | somaxconn、SYN backlog、netdev backlog、ephemeral port、TIME_WAITの再利用 |
+| MySQL（`mysql.conf.d/zz-tare.cnf`） | `max_connections 1000`、`innodb_buffer_pool_size`（DB nodeのメモリの40%、MySQLだけのnodeなら70%） |
+| deployのcommand | 先頭に`daemon-reload`と`sysctl --system`、MySQLの`is-active`の前に`restart mysql` |
+
+fsync・binlogなど耐久性を変える設定と、下のB1のsendfileなどは入れない。practice-14ではこれらの既定値（keepalive_requests 1000、アプリのfd 1024、listen backlog 511、worker_connections 4096）で、後からFAILが4回出た。
+
 ## B1. ほぼ常に入れてよい（まとめて1回）
+
+`worker_connections`、`worker_rlimit_nofile`、`keepalive_requests`、upstreamのkeepaliveは`make tare`が入れる。
 
 | ファイル | 配置先 | 内容 |
 | --- | --- | --- |

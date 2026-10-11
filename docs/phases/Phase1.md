@@ -152,6 +152,8 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - CPUよりI/O待ち（iowait、disk util、COMMITやfile待ち）が支配的でないか
 - ネットワーク帯域・接続数・エラーが得点を止めていないか
 
+接続・fdの上限は問題に依存しない既定値なので、baselineの後に早めに`make tare`で1つの変更として入れて測る。practice-14ではこの既定値（keepalive_requests 1000、アプリのfd 1024、listen backlog 511、worker_connections 4096）で、後からFAILが4回出た。
+
 最大の制約がSQL・index・N+1なら、それを次の変更にする。最大の制約が1台への集中や繰り返しの読み取りなら、残りのSQL候補を一掃するまで待たず、次のどちらかをPhase 1のまま入れてよい。
 
 - DB・アプリ・nginxを別のnodeへ分ける配置変更
