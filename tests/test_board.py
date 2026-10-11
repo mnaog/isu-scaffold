@@ -20,6 +20,7 @@ sys.path.insert(0, str(SOURCE / 'scripts/board'))
 import reads
 import board_data
 import activity
+import records
 
 
 class BoardTests(unittest.TestCase):
@@ -365,6 +366,53 @@ class BoardTests(unittest.TestCase):
             self.assertTrue(all(f.result(timeout=5)['latest']['id'] == 'slow' for f in waiting))
         self.assertEqual(calls.count('slow'), 1)
 
+    def write_record(self, path, text):
+        target = self.repo / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+
+    def test_records_follow_the_fixed_list_and_show_what_is_missing(self):
+        self.write_record('docs/benchmark-scenario.md', '# 見取り図\n')
+        self.write_record('docs/official/manual.md', '# manual\n')
+        self.git('add', '.')
+        self.git('commit', '-m', 'Write the scenario')
+        self.write_record('docs/code-map.md', '# 地図\n')
+        listing = records.listing(self.repo)
+        by_path = {record['path']: record for record in listing['records']}
+        declared = [record['path'] for record in json.loads((SOURCE / 'config/records.json').read_text())['records']]
+        self.assertEqual(list(by_path), declared)
+        scenario = by_path['docs/benchmark-scenario.md']
+        self.assertTrue(scenario['exists'])
+        self.assertFalse(scenario['uncommitted'])
+        self.assertEqual(scenario['last_commit']['subject'], 'Write the scenario')
+        self.assertTrue(by_path['docs/code-map.md']['uncommitted'])
+        self.assertIsNone(by_path['docs/code-map.md']['last_commit'])
+        self.assertFalse(by_path['docs/baseline.md']['exists'])
+        official = by_path['docs/official/']
+        self.assertEqual([f['path'] for f in official['files']], ['docs/official/manual.md'])
+
+    def test_record_contents_are_limited_to_the_listed_places(self):
+        self.write_record('docs/official/manual.md', 'manual text')
+        self.write_record('docs/benchmark-scenario.md', 'scenario')
+        self.write_record('AGENTS.md', 'not a record')
+        self.assertEqual(records.content(self.repo, 'docs/benchmark-scenario.md')['text'], 'scenario')
+        self.assertEqual(records.content(self.repo, 'docs/official/manual.md')['text'], 'manual text')
+        self.assertIn('error', records.content(self.repo, 'docs/baseline.md'))
+        for path in ('AGENTS.md', 'docs/official/../../AGENTS.md', '/etc/passwd', 'docs/official/', ''):
+            if path == 'docs/official/':
+                self.assertIn('error', records.content(self.repo, path))
+                continue
+            with self.assertRaises(ValueError, msg=path):
+                records.content(self.repo, path)
+        outside = Path(self.temp.name) / 'secret.txt'
+        outside.write_text('secret')
+        (self.repo / 'docs/official/link.md').symlink_to(outside)
+        with self.assertRaises(ValueError):
+            records.content(self.repo, 'docs/official/link.md')
+        self.write_record('docs/official/image.png', '')
+        (self.repo / 'docs/official/image.png').write_bytes(b'\x89PNG\0\0')
+        self.assertIn('error', records.content(self.repo, 'docs/official/image.png'))
+
     def test_http_board_read_only(self):
         p=subprocess.Popen([sys.executable,str(self.repo/'scripts/board/main.py'),'--port','0'],cwd=self.repo,stdout=subprocess.PIPE,text=True)
         try:
@@ -372,6 +420,14 @@ class BoardTests(unittest.TestCase):
             with urllib.request.urlopen(url+'/api/board') as r:
                 data=json.load(r)
                 self.assertEqual(set(data),{'metrics','activity'})
+            with urllib.request.urlopen(url+'/api/records') as r:
+                self.assertEqual(len(json.load(r)['records']), len(records.declared(SOURCE)))
+            with urllib.request.urlopen(url+'/board-records.js') as r:
+                self.assertIn('renderMarkdown', r.read().decode())
+            with self.assertRaises(urllib.error.HTTPError) as outside:
+                urllib.request.urlopen(url+'/api/record?path=AGENTS.md')
+            self.assertEqual(outside.exception.code,400)
+            outside.exception.close()
             with urllib.request.urlopen(url) as r:
                 page=r.read().decode()
                 self.assertIn('id="run-select"',page)

@@ -15,12 +15,14 @@ from urllib.parse import urlsplit, parse_qs
 from activity import activity
 from board_data import DetailCache, selection
 from reads import ISUSCOPE, metrics, root
+import records
 
 CONFIG = {'isuscope': ISUSCOPE}
 
 
 def serve(repo, port):
     details = DetailCache()
+    record_listing = records.ListingCache()
     here = Path(__file__).parent
     mermaid = (here / 'vendor/mermaid.tiny.js').read_bytes()
     # The versioned URL lets the browser keep the 2.8MB bundle until the vendored file changes.
@@ -52,11 +54,26 @@ def serve(repo, port):
                     return
                 body = json.dumps(result, ensure_ascii=False).encode()
                 content_type = 'application/json; charset=utf-8'
+            elif path.path == '/api/records':
+                body = json.dumps(record_listing.get(repo), ensure_ascii=False).encode()
+                content_type = 'application/json; charset=utf-8'
+            elif path.path == '/api/record':
+                params = parse_qs(path.query)
+                try:
+                    if list(params) != ['path'] or len(params['path']) != 1:
+                        raise ValueError('give one path')
+                    result = records.content(repo, params['path'][0])
+                except ValueError as exc:
+                    self.send_error(400, str(exc).encode('ascii', 'replace').decode())
+                    return
+                body = json.dumps(result, ensure_ascii=False).encode()
+                content_type = 'application/json; charset=utf-8'
             elif self.path == mermaid_url:
                 body = mermaid
                 content_type = 'text/javascript; charset=utf-8'
                 cache_control = 'public, max-age=31536000, immutable'
-            elif self.path in ('/board-workspace.js', '/board-details.js', '/board-insights.js', '/board-scenario.js'):
+            elif self.path in ('/board-workspace.js', '/board-details.js', '/board-insights.js', '/board-scenario.js',
+                               '/board-records.js'):
                 body = (here / self.path[1:]).read_bytes()
                 content_type = 'text/javascript; charset=utf-8'
             elif self.path == '/':

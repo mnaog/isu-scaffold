@@ -91,7 +91,10 @@
     "scripts/board/reads.py",
     "tests/test_board.py",
     "tests/board-scenario.test.js",
-    "docs/board.md"
+    "docs/board.md",
+    "scripts/board/records.py",
+    "scripts/board/board-records.js",
+    "tests/board-records.test.js"
   ],
   "remove_files": [
     "docs/roles/operator.md",
