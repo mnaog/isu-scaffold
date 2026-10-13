@@ -618,7 +618,7 @@ cat >"${fixture_repo}/.local/inspection/app1.json" <<'EOF'
   "application_candidates":["/home/isucon/webapp/go.mod"],
   "application_candidate_ownership":["/home/isucon/webapp/go.mod\tisucon\tisucon"],
   "configuration_paths":["/etc/nginx/nginx.conf","/etc/mysql","/etc/mysql/mysql.cnf","/etc/mysql/conf.d","/etc/mysql/mysql.conf.d"],
-  "service_fragments":["nginx.service\t/etc/systemd/system/nginx.service","isu-rust.service\t/etc/systemd/system/isu-rust.service"],
+  "service_fragments":["nginx.service\t/etc/systemd/system/nginx.service","isu-rust.service\t/etc/systemd/system/isu-rust.service","ssh.service\t/lib/systemd/system/ssh.service"],
   "nginx_site_files":["/etc/nginx/sites-enabled/isu.conf\t/etc/nginx/sites-available/isu.conf","/etc/nginx/conf.d/00-isuscope-log.conf\t/etc/nginx/conf.d/00-isuscope-log.conf"],
   "service_environment_files":["isu-rust.service\t/home/isucon/env.sh\tisucon\tisucon"],
   "nginx_access_logs":["/var/log/nginx/custom.log","/var/log/nginx/isuscope-access.log"],
@@ -682,6 +682,14 @@ jq -e '.warnings | any(test("reads /home/isucon/env.sh"))' "${fixture_repo}/.loc
 test ! -e "${fixture_repo}/.local/draft/service-switch.json"
 # sessionを識別するnginx変数をコードから推定し、確認を促します。
 jq -e '.observability_nginx_session_source == "$cookie_app_session$cookie_owner_session"' \
+  "${fixture_repo}/.local/draft/ansible-vars.json" >/dev/null
+# fingerprintは配った実体（Rustはbinary、単一file、/etc/systemd/systemのunit）だけを比べ、
+# directoryの中身はidentity_commandに任せます。
+jq -e '.isuscope_fingerprint_paths as $p
+  | ($p | index("/home/isucon/webapp/rust/target/release/isu-app")) != null
+  and ($p | index("/home/isucon/env.sh")) != null
+  and ($p | index("/home/isucon/webapp/rust")) == null
+  and ($p | all(startswith("/lib/systemd/") | not))' \
   "${fixture_repo}/.local/draft/ansible-vars.json" >/dev/null
 jq -e '.warnings | any(test("session source guessed"))' "${fixture_repo}/.local/draft/summary.json" >/dev/null
 jq -e '.post_deploy_commands | any(.node_group == "role_nginx" and .command == "sudo nginx -t")' \

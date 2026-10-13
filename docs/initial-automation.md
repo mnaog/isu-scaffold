@@ -146,7 +146,7 @@ alp・slpのreleaseとFlameGraphのscriptは、Phase 0に`./scripts/fetch-observ
 
 nginx.confがhttpの中で`/etc/nginx/conf.d/*.conf`をincludeしていない場合、LTSV logは追加されず、draft検査がFAILにします。レギュレーションで禁止された項目だけ変数をfalseにします。Phase 3で計測を外すときは`observability_nginx_ltsv`と`observability_mysql_slow_log`をfalseにして`./scripts/run-ansible-playbook.sh bootstrap.yml --tags observability_nginx_log,observability_mysql_slow_log`を実行すると、設定を撤去してreload・再起動します。性能のためのNginx設定は[config/nginx/tare](../config/nginx/tare/README.md)にあり、初回baselineの後にdeployで入れます。これら以外に事前に取得したtoolは`.local/tools/`へ置き、`observability_local_tools`で配布できます。
 
-`isuscope_fingerprint_paths`には、app binaryや主要設定など、全nodeで実体を比較したい絶対pathを列挙します。kernel、OS、Nginx、MySQL、running serviceは宣言なしでも記録します。
+`isuscope_fingerprint_paths`には、全nodeで実体を比較したい絶対pathを列挙します。draftは、Rustの配った実行ファイル、sync.jsonの`type: file`のitem、`/etc/systemd/system`のunitを書きます。directoryのitemは入れません（中身は`identity_command`がcommit済みの内容で比べるので、毎回のベンチ前に全nodeで大きなtreeを読み直さない）。kernel、OS、Nginx、MySQL、running serviceは宣言なしでも記録します。
 
 ## 4. 初期構成を調査する
 
@@ -275,7 +275,7 @@ isuscope routes suggest <run-id> --output .local/route-suggestions.toml
 
 - `make discover`が生成する`.isuscope/config.toml`のnode、role、SSH設定は生成物なので、直す場合はprovider入力とdraftを直して再生成する。roleは複数指定でき、collectorの対象nodeを選ぶtagとして使う
 - 負荷を担う少数のsystemd unitだけを`ISUSCOPE_SERVICE_UNITS`へ指定する。アクセスログとslow logのpathと形式（時刻、匿名化session、method、URIなど時系列に使うfield）を実環境へ合わせる
-- app binaryや主要設定のpathを`isuscope_fingerprint_paths`へ指定すると、`fingerprint.sh`と一緒に各nodeへ冪等に配置される
+- app binaryや単一の設定fileのpathを`isuscope_fingerprint_paths`へ指定すると、`fingerprint.sh`と一緒に各nodeへ冪等に配置される
 - 標準のlog collectorは`.1`〜`.5`と各`.gz`から開始時のlogを照合し、保持世代を越えたrotationや欠落は壊れた差分を返さず`unavailable`になる。非空logをalp/slpが1件も解析できない場合は設定不一致として`failed`になる
 - `.isuscope/routes.toml`は1規則から固定のcanonical routeへ置換し、patternにcomma、replaceに`$1`などのcaptureを使わない。初回runで動的URLが残ったら`isuscope routes suggest <run-id> --output .local/route-suggestions.toml`の候補を確認して移す
 - 会話履歴とrunを紐付ける`[context.agent]`を使う場合は、新しいセッションを開始する前に共通hook（`~/.agent-history/agent_history.py`）を有効にしておく
@@ -292,7 +292,7 @@ make first-bench   # 次を続けて実行する（配布状態で測れない�
 
 isuscopeは毎回のベンチの前（collectorより前）に、`config/isuscope-policy.json`の`prepare_command`（`scripts/benchmark-prepare.sh`）を実行します。sync.jsonのRust unitを、動いているnodeでだけ再起動し（`try-restart`）、そのunitのprocessがportをlistenするまで待ちます。再起動するのは、前回のベンチを処理したprocessがまだ動いているunitだけです（systemdの`InvocationID`を`.local/benchmark-invocations.json`へ残して比べます）。deployで前回のベンチの後に起動し直したprocessは、前回のrequestを抱えていないので再起動しません。practice-14では、手動のベンチが途中で切ったrequestのtransactionが接続poolに残り、次のinitializeの`DROP TABLE`がlock待ちで30秒のtimeoutになりました。準備に失敗したrunは、ベンチを始めずにFAILとして残ります。
 
-同じ構成の再測定は、isuscopeが止めます。`config/isuscope-policy.json`の`identity_command`（`scripts/benchmark-identity.py`）は、配る対象のcommit済みの内容（`deployed_files`）、計測設定（`measurement`。`.isuscope/`、`config/isuscope-policy.json`、`config/benchmark.env`、生成済みの`.isuscope/config.toml`）、配布状態かdeploy済みか（`build`）をJSONで出します。isuscopeはこれとnodeのfingerprint（`.isuscope/fingerprint.sh`。配るfile・directory、Rustは配った実行ファイル、nginxとMySQLの設定）を、ベンチを実際に始めた直前のrunと比べ、すべて同じなら始めません。何も変えなかった編集（一致しなかった`sed`など）の後に、同じ構成を1run測り直さないためです。ばらつきの確認など意図した再測定は`isuscope run --repeat "理由" --hypothesis "..."`で明示します。fingerprintの対象は`configure-draft`がsync.jsonのitemから`isuscope_fingerprint_paths`へ書き、`kickoff-apply`が各nodeへ配ります。
+同じ構成の再測定は、isuscopeが止めます。`config/isuscope-policy.json`の`identity_command`（`scripts/benchmark-identity.py`）は、配る対象のcommit済みの内容（`deployed_files`）、計測設定（`measurement`。`.isuscope/`、`config/isuscope-policy.json`、`config/benchmark.env`、生成済みの`.isuscope/config.toml`）、配布状態かdeploy済みか（`build`）をJSONで出します。isuscopeはこれとnodeのfingerprint（`.isuscope/fingerprint.sh`。Rustは配った実行ファイル、配る単一file、`/etc/systemd/system`のunit、nginxとMySQLの設定。directoryの中身はidentityの`deployed_files`だけで比べる）を、ベンチを実際に始めた直前のrunと比べ、すべて同じなら始めません。何も変えなかった編集（一致しなかった`sed`など）の後に、同じ構成を1run測り直さないためです。ばらつきの確認など意図した再測定は`isuscope run --repeat "理由" --hypothesis "..."`で明示します。fingerprintの対象は`configure-draft`がsync.jsonのitemから`isuscope_fingerprint_paths`へ書き、`kickoff-apply`が各nodeへ配ります。
 
 ベンチの期限はisuscopeの`[benchmark] timeout_seconds`で、`isuscope-policy.py`が`config/benchmark.env`の`BENCHMARK_TIMEOUT_SECONDS`から書きます。isuscopeはこれを`ISUSCOPE_BENCHMARK_TIMEOUT_SECONDS`としてadapterへ渡し（adapterは`BENCHMARK_TIMEOUT_SECONDS`よりこちらを使います）、自分はその30秒後に止めます。出力が`idle_timeout_seconds`（policyで300秒）途絶えたときも止めます。`BENCHMARK_TRANSPORT=ssh`では、ローカルのSSHに加えて、ベンチnode側のコマンドも`timeout -k 10 <期限>`で包みます（ローカルはその30秒後に止めます）。pty無しのSSHを止めてもremoteのベンチは走り続け、次のrunと重なり得るためです。isuscopeがベンチを止めたとき（`benchmark.stopped_by`が`timeout`／`idle`／`interrupted`）は、`cleanup_command`の`.isuscope/benchmark.sh --cleanup`が、ベンチnodeに残ったprocess group（run時に`/tmp/isuscope-benchmark.pid`へ残したもの）を止め、持ち主の消えたadapterのlockを外します。
 
