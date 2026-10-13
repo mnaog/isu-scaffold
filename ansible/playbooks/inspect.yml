@@ -31,28 +31,19 @@
       register: inspection_processes
       changed_when: false
 
-    - name: Find likely application roots
-      ansible.builtin.shell: |
-        find /home /opt /srv -maxdepth 4 -type f \
-          \( -name go.mod -o -name Cargo.toml -o -name package.json -o -name Gemfile \
-             -o -name requirements.txt -o -name pom.xml -o -name build.gradle \) \
-          -print 2>/dev/null | sort | head -n 200
-      args:
-        executable: /bin/bash
-      register: inspection_app_candidates
-      changed_when: false
-
-    - name: Read ownership of application candidates
+    # One search gives both the candidates and their owners; the report keeps both fields.
+    - name: Find likely application roots with their owners
       ansible.builtin.shell: |
         find /home /opt /srv -maxdepth 4 -type f \
           \( -name go.mod -o -name Cargo.toml -o -name package.json -o -name Gemfile \
              -o -name requirements.txt -o -name pom.xml -o -name build.gradle \) \
           -print0 2>/dev/null | while IFS= read -r -d '' path; do
             stat --printf='%n\t%U\t%G\n' "$path"
-          done | sort | head -n 200
+          done | sort | head -n 200 |
+          python3 -c 'import json, sys; lines = [line.rstrip("\n") for line in sys.stdin]; print(json.dumps({"candidates": [line.split("\t")[0] for line in lines], "ownership": lines}))'
       args:
         executable: /bin/bash
-      register: inspection_app_candidate_ownership
+      register: inspection_app_candidates
       changed_when: false
 
     - name: Find known configuration paths
@@ -139,34 +130,23 @@
       register: inspection_mysql_slow_logs
       changed_when: false
 
+    # One remote shell instead of a loop: each loop item is a separate module run.
     - name: Probe common commands
       ansible.builtin.shell: |
-        command -v "{{ item }}" >/dev/null 2>&1 || exit 0
-        case "{{ item }}" in
-          nginx) nginx -v ;;
-          go) go version ;;
-          *) "{{ item }}" --version ;;
-        esac 2>&1 | head -n 1
+        for tool in nginx mysql psql redis-server go rustc node ruby python3 java perf sar alp slp \
+            stackcollapse-perf.pl flamegraph.pl offcputime-bpfcc; do
+          version=
+          if command -v "$tool" >/dev/null 2>&1; then
+            version=$(case "$tool" in
+              nginx) nginx -v ;;
+              go) go version ;;
+              *) "$tool" --version ;;
+            esac </dev/null 2>&1 | head -n 1)
+          fi
+          printf '%s\t%s\n' "$tool" "${version//$'\t'/ }"
+        done | python3 -c 'import json, sys; print(json.dumps(dict(line.rstrip("\n").split("\t", 1) for line in sys.stdin)))'
       args:
         executable: /bin/bash
-      loop:
-        - nginx
-        - mysql
-        - psql
-        - redis-server
-        - go
-        - rustc
-        - node
-        - ruby
-        - python3
-        - java
-        - perf
-        - sar
-        - alp
-        - slp
-        - stackcollapse-perf.pl
-        - flamegraph.pl
-        - offcputime-bpfcc
       register: inspection_versions
       changed_when: false
 
@@ -184,15 +164,15 @@
             'running_services': (ansible_facts.services | dict2items | selectattr('value.state', 'equalto', 'running') | map(attribute='key') | sort | list),
             'listening_sockets': inspection_sockets.stdout_lines,
             'processes': inspection_processes.stdout_lines,
-            'application_candidates': inspection_app_candidates.stdout_lines,
-            'application_candidate_ownership': inspection_app_candidate_ownership.stdout_lines,
+            'application_candidates': (inspection_app_candidates.stdout | from_json).candidates,
+            'application_candidate_ownership': (inspection_app_candidates.stdout | from_json).ownership,
             'configuration_paths': inspection_configuration_paths.stdout_lines,
             'service_fragments': inspection_service_fragments.stdout_lines,
             'nginx_access_logs': inspection_nginx_access_logs.stdout_lines,
             'nginx_site_files': inspection_nginx_site_files.stdout_lines,
             'service_environment_files': inspection_service_environment_files.stdout_lines,
             'mysql_slow_logs': inspection_mysql_slow_logs.stdout_lines,
-            'versions': dict(inspection_versions.results | map(attribute='item') | zip(inspection_versions.results | map(attribute='stdout')))
+            'versions': (inspection_versions.stdout | from_json)
           } | to_nice_json }}
         dest: "{{ inspection_output_dir }}/{{ inventory_hostname }}.json"
         mode: '0600'
