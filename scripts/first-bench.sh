@@ -43,7 +43,7 @@ if [[ "${mode}" == auto && ! -s .local/current-deploy-commit ]]; then
   if python3 "${script_dir}/imported-state.py"; then
     git rev-parse HEAD >"${marker}"
     # The check restarts the unit and waits for it to listen, as every benchmark's prepare does.
-    if REQUIRE_ACTIVE=1 "${script_dir}/benchmark-prepare.sh"; then
+    if REQUIRE_ACTIVE=1 PREPARE_CHECK_ONLY=1 "${script_dir}/benchmark-prepare.sh"; then
       distributed=true
     else
       rm -f -- "${marker}"
@@ -72,4 +72,4 @@ else
   stage survey-run isuscope survey-run --hypothesis "${hypothesis}"
   progress baseline-ready "analyze with isuscope brief latest"
 fi
-progress complete "a pending result needs the sample and isuscope rescore"
+progress complete "a pending result needs the sample and isuscope rescore; then set the initialize markers (scripts/benchmark-markers.py)"

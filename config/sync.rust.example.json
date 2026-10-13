@@ -11,18 +11,29 @@
       "remote": "/home/isucon/webapp/rust",
       "owner": "isucon",
       "owner_group": "isucon",
-      "exclude": ["target", ".git"]
+      "exclude": [
+        "target",
+        ".git"
+      ]
     }
   ],
   "build_commands": [],
   "post_deploy_commands": [
     {
       "node_group": "application",
-      "command": "sudo systemctl daemon-reload"
+      "command": "sudo systemctl daemon-reload",
+      "when": [
+        "rust-service"
+      ]
     },
     {
       "node_group": "application",
-      "command": "sudo systemctl restart replace-with-service-name"
+      "command": "sudo systemctl restart replace-with-service-name",
+      "when": [
+        "rust-app",
+        "rust-service",
+        "app-env*"
+      ]
     },
     {
       "node_group": "application",
@@ -32,11 +43,19 @@
   "rollback_commands": [
     {
       "node_group": "application",
-      "command": "sudo systemctl daemon-reload"
+      "command": "sudo systemctl daemon-reload",
+      "when": [
+        "rust-service"
+      ]
     },
     {
       "node_group": "application",
-      "command": "sudo systemctl restart replace-with-service-name"
+      "command": "sudo systemctl restart replace-with-service-name",
+      "when": [
+        "rust-app",
+        "rust-service",
+        "app-env*"
+      ]
     },
     {
       "node_group": "application",

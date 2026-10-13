@@ -114,7 +114,13 @@
     "scripts/environment-report.py",
     "tests/test_environment_report.py",
     "config/lanes/local-env.md",
-    "config/lanes/scenario.md"
+    "config/lanes/scenario.md",
+    "scripts/deploy-plan.py",
+    "scripts/benchmark-identity.py",
+    "scripts/benchmark-markers.py",
+    "scripts/rollback.sh",
+    "tests/test_benchmark_markers.py",
+    "scripts/deploy.sh"
   ],
   "remove_files": [
     "docs/roles/operator.md",

@@ -40,7 +40,9 @@ def check_manifest(requirements, manifest):
                 matches.append(item)
         if len(matches) != 1:
             raise ValueError('missing or wrong deployment mapping: ' + r['path'])
-        if r.get('command') and {'node_group': r['node_group'], 'command': r['command']} not in manifest.get('post_deploy_commands', []):
+        if r.get('command') and not any(isinstance(c, dict) and c.get('node_group') == r['node_group']
+                                        and c.get('command') == r['command']
+                                        for c in manifest.get('post_deploy_commands', [])):
             raise ValueError('missing migration post_deploy_command: ' + r['path'])
 
 

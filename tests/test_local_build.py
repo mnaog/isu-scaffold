@@ -62,7 +62,8 @@ class LocalBuildTests(unittest.TestCase):
         self.repo.mkdir()
         for folder in ("scripts", "config/rust-builder", "webapp/rust/src", ".local", "bin"):
             (self.repo / folder).mkdir(parents=True)
-        for script in ("local-build.py", "deploy.sh", "sync-lib.sh", "check-deployment.py"):
+        for script in ("local-build.py", "deploy.sh", "sync-lib.sh", "check-deployment.py", "deploy-plan.py",
+                       "rollback.sh", "status.sh"):
             shutil.copy2(ROOT / "scripts" / script, self.repo / "scripts" / script)
         (self.repo / "scripts/ssh-node.sh").write_text(FAKE_SSH)
         (self.repo / "scripts/ssh-node.sh").chmod(0o755)
@@ -184,6 +185,76 @@ class LocalBuildTests(unittest.TestCase):
         self.assertIn("sha256sum -c -", commands)
         self.assertIn("uname -m", commands)
         self.assertIn("not found", commands)
+
+    def test_later_deploys_send_only_changed_items_and_their_commands(self):
+        (self.repo / "config/nginx").mkdir(parents=True)
+        (self.repo / "config/nginx/nginx.conf").write_text("worker_processes 1;\n")
+        self.manifest["items"].append({"name": "nginx-conf", "type": "file", "node_group": "application",
+                                       "local": "config/nginx/nginx.conf", "remote": "/etc/nginx/nginx.conf",
+                                       "owner": "root", "owner_group": "root"})
+        self.manifest["post_deploy_commands"] = [
+            {"node_group": "application", "command": "sudo nginx -t", "when": ["nginx-*"]},
+            {"node_group": "application", "command": "sudo systemctl restart app", "when": ["app"]},
+            {"node_group": "application", "command": "echo always"}]
+        self.manifest["rollback_commands"] = self.manifest["post_deploy_commands"]
+        self.write_manifest()
+        self.commit()
+
+        def deploy(release):
+            (self.repo / ".local/ssh.log").unlink(missing_ok=True)
+            return self.command("bash", "scripts/deploy.sh", RELEASE=release).stdout.decode()
+
+        def sessions():
+            return [c[1] for c in self.calls("ssh")]
+
+        # Without a recorded deploy everything goes out and every command runs.
+        deploy("first")
+        with tarfile.open(self.repo / ".local/app1.tar") as t:
+            self.assertIn("config/nginx/nginx.conf", t.getnames())
+            self.assertIn("webapp/rust/target/release/app", t.getnames())
+        commands = [s for s in sessions() if "echo always" in s]
+        # One SSH per node runs all of that node's commands, in order.
+        self.assertEqual(len(commands), 2)
+        self.assertLess(commands[0].index("nginx -t"), commands[0].index("restart app"))
+
+        # An nginx-only change sends nginx.conf, skips the Rust build, and does not restart the app.
+        builds = len([c for c in self.calls("docker") if c[0] == "run"])
+        (self.repo / "config/nginx/nginx.conf").write_text("worker_processes 2;\n")
+        self.commit()
+        output = deploy("nginx-only")
+        self.assertIn("changed items: nginx-conf", output)
+        with tarfile.open(self.repo / ".local/app1.tar") as t:
+            self.assertEqual([m.name for m in t.getmembers() if m.isfile()], ["config/nginx/nginx.conf"])
+        self.assertEqual(len([c for c in self.calls("docker") if c[0] == "run"]), builds)
+        commands = "\n".join(sessions())
+        self.assertIn("nginx -t", commands)
+        self.assertIn("echo always", commands)
+        self.assertNotIn("restart app", commands)
+
+        # Rolling that release back restores nginx.conf only, with its own commands.
+        (self.repo / ".local/ssh.log").unlink()
+        self.command("bash", "scripts/rollback.sh", "nginx-only")
+        restored = "\n".join(sessions())
+        self.assertIn("/etc/nginx/nginx.conf.isuscope-backup.nginx-only", restored)
+        self.assertNotIn("/home/isucon/webapp/rust.isuscope-backup", restored)
+        self.assertNotIn("restart app", restored)
+
+        # A commit outside the synced files sends nothing and only records the commit.
+        self.command("bash", "scripts/deploy.sh", RELEASE="redo-nginx")  # back to the nginx-only state
+        (self.repo / "docs").mkdir(exist_ok=True)
+        (self.repo / "docs/notes.md").write_text("notes\n")
+        self.commit()
+        output = deploy("docs-only")
+        self.assertIn("nothing to send", output)
+        self.assertEqual(sessions(), [])
+        head = self.command("git", "rev-parse", "HEAD").stdout.decode().strip()
+        self.assertEqual((self.repo / ".local/current-deploy-commit").read_text().strip(), head)
+
+        # DEPLOY_ALL=1 sends everything again.
+        (self.repo / ".local/ssh.log").unlink(missing_ok=True)
+        self.command("bash", "scripts/deploy.sh", RELEASE="all", DEPLOY_ALL="1")
+        with tarfile.open(self.repo / ".local/app1.tar") as t:
+            self.assertIn("webapp/rust/target/release/app", t.getnames())
 
     def test_build_failure_never_contacts_nodes(self):
         self.command("bash", "scripts/deploy.sh", ok=False, FAIL_BUILD="1")

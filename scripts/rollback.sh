@@ -15,14 +15,30 @@ transaction_dir=${sync_repo_dir}/.local/deploy-transactions
 previous_release_file=${transaction_dir}/${release}.previous-release
 previous_commit_file=${transaction_dir}/${release}.previous-commit
 
+plan_file=${transaction_dir}/${release}.tsv
+changed_file=${transaction_dir}/${release}.changed
+
 # 対象をnode単位に並べ、確認・復元をそれぞれ1 node 1 SSHで全nodeへ並列に送る。
+# 差分deployのreleaseは送ったitemだけにbackupがあるので、そのreleaseの計画から対象を取る。
 targets=$(mktemp)
 trap 'rm -f -- "${targets}"' EXIT
-while IFS=$'\t' read -r name node_group remote_path <&3; do
-  while IFS= read -r node <&4; do
-    printf '%s\t%s\t%s\n' "${node}" "${name}" "${remote_path}" >>"${targets}"
-  done 4< <(sync_group_nodes "${node_group}")
-done 3< <(jq -r '.items[] | [.name, .node_group, .remote] | @tsv' "${sync_manifest}")
+if [[ -s "${plan_file}" ]]; then
+  awk -F '\t' '{print $3 "\t" $1 "\t" $5}' "${plan_file}" >"${targets}"
+else
+  while IFS=$'\t' read -r name node_group remote_path <&3; do
+    while IFS= read -r node <&4; do
+      printf '%s\t%s\t%s\n' "${node}" "${name}" "${remote_path}" >>"${targets}"
+    done 4< <(sync_group_nodes "${node_group}")
+  done 3< <(jq -r '.items[] | [.name, .node_group, .remote] | @tsv' "${sync_manifest}")
+fi
+rollback_commands() {
+  if [[ -s "${changed_file}" ]]; then
+    python3 "${script_dir}/deploy-plan.py" commands --manifest "${sync_manifest}" \
+      --key rollback_commands --changed "${changed_file}"
+  else
+    sync_commands rollback_commands
+  fi
+}
 
 check_node() {
   local target_node=$1 node name remote_path backup command="missing=''"
@@ -79,7 +95,7 @@ while IFS=$'\t' read -r command_group command <&3; do
     group_nodes+=("${node}")
   done 4< <(sync_group_nodes "${command_group}")
   [[ "${#group_nodes[@]}" -eq 0 ]] || on_nodes run_rollback_command "${group_nodes[@]}" || failed=1
-done 3< <(sync_commands rollback_commands)
+done 3< <(rollback_commands)
 
 "${script_dir}/status.sh" || failed=1
 if [[ "${failed}" -eq 0 ]]; then

@@ -189,6 +189,8 @@ Git commitが存在する場合、`sync-check`はmanifest検証に加えて、Gi
 
 commandは単なる文字列なら全application node、`{"node_group":"role_nginx","command":"..."}`なら指定groupだけで実行します。異なる役割のnodeへ無関係なreloadを送らないよう、分担構成ではgroupを明示します。
 
+commandのobjectには`"when": ["nginx-*"]`のように、そのcommandが扱うitemの名前（fnmatchのpattern）を書けます。deployはそのitemが変わったときだけ実行します（`scripts/deploy-plan.py`）。`when`のないcommandは毎回実行します。draftはnginxの検査とreloadに`nginx-*`、Rustの再起動に`rust-app`・`rust-service`・`app-env*`、daemon-reloadに`rust-service`を付け、`make tare`はMySQLの再起動に`mysql-*`、`sysctl --system`に`tare-sysctl`を付けます。Rustのコードだけを変えたdeployでMySQLを再起動しないので、毎回のベンチがbuffer poolの冷えた状態から始まることもありません。
+
 `build_commands`は`name`、`node_group`、`item`、単一行の`command`を持つobjectです。全itemをstagingした後、live pathを切り替える前に実行されます。commandには次の環境変数が渡されます。
 
 - `ISUCON_DEPLOY_RELEASE`: 今回のrelease ID
@@ -228,7 +230,9 @@ make status
 
 `deploy`は未コミットの同期対象を拒否します。全nodeでsudo、owner/group、空き容量、配置先をpreflightし、全fileをstagingし、build commandを完了してから切り替えます。一台でもbuild、配置、post-deploy検証に失敗すると、そのtransactionで触れた全対象を元へ戻し、live切替後なら`rollback_commands`で稼働プロセスも旧構成へ戻します。rollback自体が失敗した場合、stateは`rollback-failed`になります。
 
-transaction IDは既定で`<commit>-<UTC時刻>-<PID>`となり、同じコミットを繰り返しdeployできます。Gitコミットは`.local/current-commit`、transaction IDは`.local/current-release`へ保存し、明示rollbackが成功した場合は両方を直前の値へ戻します。remoteのrollback backupは既定で各配布先の直近3世代を保持し、`DEPLOY_BACKUP_RETENTION`で変更できます。明示的に戻す場合は、保持中のIDを指定して`make rollback RELEASE=<id>`を使います。rollbackは全対象のbackupが揃っていることを確認してから復元を開始します。manifestへ秘密情報を記録せず、そのようなファイルは`.local/`で別管理します。
+deployは最後に成功したdeployのcommit（`.local/current-deploy-commit`）からの差分だけを送ります。内容（commitのtree）、sync.jsonでの定義、作り方（`local_builds`の設定、builderのDockerfile、`scripts/local-build.py`）のどれも変わっていないitemはstagingも切替もせず、変わったitemの`local_builds`がなければローカルbuildも飛ばします。変わったitemが1つもなければremoteへ何も送らず、HEADをdeploy済みとして記録するだけです。deployの記録がないとき（最初のdeploy、配布状態のbaselineの後）は全itemを送ります。サーバーをdeploy以外で変えた後などは`DEPLOY_ALL=1 make deploy`で全itemを送ります。各nodeのpost-deploy・rollbackのcommandは、順序を保ったまま1回のSSHでまとめて実行します（それぞれ独立したsubshellで動き、最初の失敗で止まります）。`scripts/ssh-node.sh`は同じnodeへの接続を60秒使い回すので（ControlMaster、`/tmp/isucon-ssh-<uid>/`、`SSH_CONTROL_PERSIST=0`で無効）、短いSSHを続けて開く操作がhandshakeを毎回払いません。
+
+transaction IDは既定で`<commit>-<UTC時刻>-<PID>`となり、同じコミットを繰り返しdeployできます。Gitコミットは`.local/current-commit`、transaction IDは`.local/current-release`へ保存し、明示rollbackが成功した場合は両方を直前の値へ戻します。remoteのrollback backupは既定で各配布先の直近3世代を保持し、`DEPLOY_BACKUP_RETENTION`で変更できます。明示的に戻す場合は、保持中のIDを指定して`make rollback RELEASE=<id>`を使います。差分deployのreleaseは、そのreleaseが送ったitemだけを戻し、そのitemに対応する`rollback_commands`だけを実行します。rollbackは全対象のbackupが揃っていることを確認してから復元を開始します。manifestへ秘密情報を記録せず、そのようなファイルは`.local/`で別管理します。
 
 ## 6. isuscopeへベンチを接続する
 
@@ -254,6 +258,8 @@ tokenやcookieだけは`config/benchmark-secrets.example.env`を`.local/benchmar
 ```
 
 初回はベンチの出力の形が分からないので、`BENCHMARK_SAMPLE_SCORE`と`BENCHMARK_SAMPLE_PASS`は空のままでかまいません。そのとき`--check`はWARNを出して通り、runではadapterが判定を保留（`pending`）して出力を残します。isuscopeはそのrunを`pending`として記録し、全collectorの計測はそのまま使えます。確定するまで次のベンチは始まりません。保存された出力（`isuscope-data/runs/<run>/logs/benchmark-stdout.zst`）を`zstd -dc`で`config/benchmark-sample.log`へ書き出し、scoreと合否を記入して`--check`を通したら、`isuscope rescore <run>`が`.isuscope/benchmark.sh --extract`で同じ出力を読み直して確定します。手動でベンチを回して出力の形を調べる必要はありません。
+
+同じsampleから、initializeの始まりと終わりを示す行も設定します。`python3 scripts/benchmark-markers.py suggest`が参加者向けの行（運営向けの行は除く）から候補を時刻なしで出し、`python3 scripts/benchmark-markers.py set "<開始の文言>" "<終了の文言>"`がsampleに順に現れることを確かめて`config/isuscope-policy.json`へ書き、生成済みの`.isuscope/config.toml`へも反映します。isuscopeはこの文言でrunをinitializeと負荷走行に分けます。設定しないと、ホスト・クライアント・SQLの要約にinitializeが混ざります（practice secondは55 runすべてがそうでした）。`phase1-check`は未設定ならWARNを出します。
 
 どちらの検査もベンチを起動しません。`check`は設定、regex、保存したサンプルを検査し、`probe`は実行ファイルまたはAPI endpointだけを確認します。標準adapterはcommandを一度だけ実行し、出力からscoreとPASS/FAILを取得してisuscope protocolへ変換し、二重起動も拒否します。scoreは最後に一致した行の最後の数値です。合否はFAILの行を優先し、終了コードが0でない場合と最終結果の行がない場合（途中で切れた出力）はFAILにします。使ったscoreの行と最終結果の行はrunのmessageに残るため、`isuscope brief`で誤った行を拾っていないか確認できます。別userで実行するときは`sudo -n -u USER sh -c '... && exec ./bench'`とし、`sudo -i`（login shellが入れ子のcommandを再解釈する）や独自のPASS/FAIL行の追加は避けます。adapterの判定は`tests/test_benchmark_adapter.py`のfixtureで回帰を確認します。HTTPのtokenやcookieは`.local/benchmark-secrets.env`またはGit管理外のheader fileへ置きます。
 
@@ -284,7 +290,11 @@ make first-bench   # 次を続けて実行する（配布状態で測れない�
 # make deploy
 ```
 
-isuscopeは毎回のベンチの前（collectorより前）に、`config/isuscope-policy.json`の`prepare_command`（`scripts/benchmark-prepare.sh`）を実行します。sync.jsonのRust unitを、動いているnodeでだけ再起動し（`try-restart`）、そのunitのprocessがportをlistenするまで待ちます。practice-14では、手動のベンチが途中で切ったrequestのtransactionが接続poolに残り、次のinitializeの`DROP TABLE`がlock待ちで30秒のtimeoutになりました。準備に失敗したrunは、ベンチを始めずにFAILとして残ります。
+isuscopeは毎回のベンチの前（collectorより前）に、`config/isuscope-policy.json`の`prepare_command`（`scripts/benchmark-prepare.sh`）を実行します。sync.jsonのRust unitを、動いているnodeでだけ再起動し（`try-restart`）、そのunitのprocessがportをlistenするまで待ちます。再起動するのは、前回のベンチを処理したprocessがまだ動いているunitだけです（systemdの`InvocationID`を`.local/benchmark-invocations.json`へ残して比べます）。deployで前回のベンチの後に起動し直したprocessは、前回のrequestを抱えていないので再起動しません。
+
+prepareは、前回のベンチと同じ配布物・計測設定（`scripts/benchmark-identity.py`。配る対象のcommit済みの内容、`.isuscope/`、`config/isuscope-policy.json`、`config/benchmark.env`、生成済みの`.isuscope/config.toml`、配布状態かdeploy済みか）なら、ベンチを始めません。何も変えなかった編集（一致しなかった`sed`など）の後に、同じ構成を1run測り直さないためです。ばらつきの確認など意図した再測定は`BENCH_REPEAT="理由" isuscope run --hypothesis "..."`で明示します。
+
+`BENCHMARK_TRANSPORT=ssh`では、ローカルのSSHに加えて、ベンチnode側のコマンドも`timeout -k 10 <BENCHMARK_TIMEOUT_SECONDS>`で包みます（ローカルはその30秒後に止めます）。pty無しのSSHを止めてもremoteのベンチは走り続け、次のrunと重なり得るためです。practice-14では、手動のベンチが途中で切ったrequestのtransactionが接続poolに残り、次のinitializeの`DROP TABLE`がlock待ちで30秒のtimeoutになりました。準備に失敗したrunは、ベンチを始めずにFAILとして残ります。
 
 再起動の前に、`scripts/check-deployed-commit.sh`で、最後に成功したdeployのcommit（`.local/current-deploy-commit`）とHEADを、deployが配るファイル（sync.jsonのitem、local buildのDockerfile、sync.json自身）に限って比べます。違うcommitか、それらのファイルに未commitの変更があれば、ベンチを始めません。isuscopeはrunをHEADのcommitとして記録するため、そのまま回すと、記録上のcommitとサーバーで動いているcommitが違うrunになります（practice-14のeb28e94a）。docsやisuscope-dataだけのcommitでは止まりません。deployの記録がない環境で意図して回す場合だけ、`SKIP_DEPLOYED_COMMIT_CHECK=1`を付けます。
 

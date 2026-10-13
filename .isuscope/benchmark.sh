@@ -300,8 +300,12 @@ elif [[ "${BENCHMARK_TRANSPORT}" == ssh ]]; then
   # scripts/ssh-node.shはこの変数がないとベンチnodeへの接続を断る。
   export ISUCON_ALLOW_BENCHMARK_NODE=1
   if [[ "${BENCHMARK_TIMEOUT_SECONDS}" -gt 0 ]]; then
+    # ローカルのSSHを止めても、pty無しのremoteのベンチは走り続け、次のrunと重なり得る。
+    # ベンチnode側でも同じ時間で止め（TERMの10秒後にKILL）、ローカルはその後の30秒を待つ。
+    remote_command="timeout -k 10 ${BENCHMARK_TIMEOUT_SECONDS} sh -c $(python3 -c 'import shlex, sys; print(shlex.quote(sys.argv[1]))' "${BENCHMARK_COMMAND}")"
+    timeout_prefix[${#timeout_prefix[@]}-1]=$((BENCHMARK_TIMEOUT_SECONDS + 30))
     "${timeout_prefix[@]}" "${project_root}/scripts/ssh-node.sh" \
-      "${BENCHMARK_NODE}" "${BENCHMARK_COMMAND}" 2>&1 | tee "${raw_output}"
+      "${BENCHMARK_NODE}" "${remote_command}" 2>&1 | tee "${raw_output}"
   else
     "${project_root}/scripts/ssh-node.sh" \
       "${BENCHMARK_NODE}" "${BENCHMARK_COMMAND}" 2>&1 | tee "${raw_output}"

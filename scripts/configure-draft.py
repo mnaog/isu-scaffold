@@ -512,10 +512,17 @@ def main() -> int:
 
     post_commands = []
     if any("nginx" in roles for roles in roles_by_node.values()):
+        # "when": deploy runs these only when an nginx item changed (scripts/deploy-plan.py).
         post_commands += [
-            {"node_group": "role_nginx", "command": "sudo nginx -t"},
-            {"node_group": "role_nginx", "command": "sudo systemctl reload nginx"},
+            {"node_group": "role_nginx", "command": "sudo nginx -t", "when": ["nginx-*"]},
+            {"node_group": "role_nginx", "command": "sudo systemctl reload nginx", "when": ["nginx-*"]},
         ]
+    for command in language_commands:
+        text = command["command"]
+        if "daemon-reload" in text:
+            command["when"] = ["rust-service"]
+        elif "systemctl restart" in text:
+            command["when"] = ["rust-app", "rust-service", "app-env*"]
     post_commands += language_commands
     post_commands += [f"sudo systemctl is-active --quiet {service}" for service in common_services]
     status_commands = language_status + [

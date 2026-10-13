@@ -23,7 +23,7 @@ class FirstBenchTests(unittest.TestCase):
         for name in ('phase1-check.sh', 'deploy.sh', 'benchmark-prepare.sh'):
             step = name.removesuffix('.sh')
             (self.repo / 'scripts' / name).write_text(
-                f'#!/bin/sh\necho "{step}${{REQUIRE_ACTIVE:+ REQUIRE_ACTIVE=$REQUIRE_ACTIVE}}" >> "$EVENTS"\n'
+                f'#!/bin/sh\necho "{step}${{REQUIRE_ACTIVE:+ REQUIRE_ACTIVE=$REQUIRE_ACTIVE}}${{PREPARE_CHECK_ONLY:+ check-only}}" >> "$EVENTS"\n'
                 f'[ "$FAIL" = {step} ] && exit 1\nexit 0\n')
         (self.repo / 'bin/isuscope').write_text('#!/bin/sh\necho "isuscope $*" >> "$EVENTS"\n')
         for path in [*(self.repo / 'scripts').glob('*.sh'), self.repo / 'bin/isuscope']:
@@ -69,7 +69,7 @@ class FirstBenchTests(unittest.TestCase):
         self.record_import()
         result = self.run_first_bench(HYPOTHESIS='初期状態を記録する')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.lines(), ['phase1-check', 'benchmark-prepare REQUIRE_ACTIVE=1',
+        self.assertEqual(self.lines(), ['phase1-check', 'benchmark-prepare REQUIRE_ACTIVE=1 check-only',
                                         'isuscope survey-run --hypothesis 初期状態を記録する', 'deploy'])
         self.assertEqual((self.repo / '.local/current-import-commit').read_text().strip(), self.head())
         self.assertEqual(self.states(), ['started', 'checked', 'distributed', 'baseline-ready', 'deployed', 'complete'])

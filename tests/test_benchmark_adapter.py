@@ -77,6 +77,22 @@ class AdapterTest(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         return json.loads(completed.stdout.strip().splitlines()[-1])
 
+    def test_ssh_benchmark_is_stopped_on_the_benchmark_node_too(self):
+        # Killing the local ssh leaves a remote command without a pty running; the next run
+        # would overlap it. The node-side timeout ends it, and the local one waits past it.
+        fake = self.root / 'scripts/ssh-node.sh'
+        fake.write_text('#!/bin/bash\nprintf "%s\\n" "$2" > "$(dirname "$0")/../remote-command"\nexec bash -c "$2"\n')
+        fake.chmod(0o755)
+        (self.root / '.local').mkdir(exist_ok=True)
+        (self.root / '.local/ansible-inventory.json').write_text(json.dumps(
+            {'all': {'children': {'benchmark': {'hosts': {'bench': {}}}}}}))
+        self.configure('', BENCHMARK_TRANSPORT='ssh', BENCHMARK_NODE='bench', BENCHMARK_TIMEOUT_SECONDS='1',
+                       BENCHMARK_COMMAND="printf 'started\\n'; sleep 30")
+        completed = self.adapter()
+        self.assertEqual(completed.returncode, 124, completed.stderr)
+        remote = (self.root / 'remote-command').read_text()
+        self.assertTrue(remote.startswith("timeout -k 10 1 sh -c 'printf "), remote)
+
     def test_final_score_is_not_taken_from_trailing_tag_numbers(self):
         self.configure(FINAL_OUTPUT)
         result = self.result()
