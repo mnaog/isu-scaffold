@@ -151,15 +151,17 @@ class KickoffTests(unittest.TestCase):
             for p in (root/'scripts').glob('*.sh'):p.chmod(0o755)
             (root/'scripts/phase1-build.py').write_text('import sys\nopen("events","a").write("build-"+sys.argv[1]+"\\n")\n')
             (root/'scripts/lane.py').write_text('import sys\nopen("events","a").write("lanes-"+sys.argv[1]+"\\n")\n')
+            (root/'scripts/environment-report.py').write_text('open("events","a").write("environment\\n")\n')
             (root/'scripts/review-draft.py').write_text('')
             result=subprocess.run(['bash','scripts/kickoff.sh'],cwd=root,env=dict(os.environ,ISUSCOPE_LOCK_HELD='1'),capture_output=True,text=True)
             self.assertEqual((root/'events').read_text().splitlines(),
-                             ['build-start','lanes-kickoff','bootstrap','inspect','draft','build-status'])
+                             ['build-start','lanes-kickoff','bootstrap','inspect','environment','draft','build-status'])
             self.assertEqual(result.returncode, 0, result.stderr)
             # Nested steps keep their own timing although the outer lock records only kickoff.
             stages = [line.split('\t')[1:3] for line in (root/'.local/stage-timing.tsv').read_text().splitlines()]
             self.assertEqual(stages, [['kickoff.sh', name] for name in
-                                      ('build-dispatch', 'lanes', 'bootstrap', 'inspect', 'configure-draft', 'review-draft')])
+                                      ('build-dispatch', 'lanes', 'bootstrap', 'inspect', 'environment-report',
+                                       'configure-draft', 'review-draft')])
             # The agent following progress.log sees when code can be read and when the draft is ready.
             states = [line.split('\t')[1:3] for line in (root/'.local/progress.log').read_text().splitlines()]
             self.assertEqual(states, [['kickoff', 'started'], ['kickoff', 'code-ready'], ['kickoff', 'draft-ready']])

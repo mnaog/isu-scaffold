@@ -15,8 +15,9 @@ cp config/environment.example.env .local/environment.env
 
 ```bash
 make kickoff   # バックグラウンドで実行し、tail -n +1 -f .local/progress.log を追う
-# 先行回収・commit後に、初期buildの調査とAI lane（code-map、indexes、obvious-fixes）が並行で始まる
-# 実行中に: 公式資料の保存、config/benchmark.env・benchmark-contract、benchmark.sh --check/--probe
+# 先行回収・commit後に、初期buildの調査とAI lane（code-map、indexes、obvious-fixes、local-env）が並行で始まる
+# 実行中に: 公式資料を保存・commitして python3 scripts/lane.py start scenario
+# 実行中に: config/benchmark.env・benchmark-contract、benchmark.sh --check/--probe
 # 実行中に: 自動生成されたbuild設定を確認してcommit（設定待ちなら作る）
 # .local/draft/review.mdのFAILを直し、WARNを判断する
 CONFIRM_DRAFT=true make kickoff-apply
@@ -26,7 +27,7 @@ make first-bench   # phase1-check → 配布状態のままsurvey-run → deploy
 
 `kickoff`はまずnode発見後、回収元の1台（既定では最初のapplication node）だけSSHを確立し、`/home/isucon/webapp/rust`と`/home/isucon/webapp/sql`のDDL・初期化script（`.sql`、`.sh`、`.py`、`.rb`、`.pl`）だけを先行回収します。1ファイル1MiB・合計16MiBを超えるものやそれ以外の初期データは後回しにし、`.local/code-schema-manifest.log`へ`INCLUDED`／`DEFERRED`として記録します。上限は`CODE_SCHEMA_MAX_FILE_BYTES`、`CODE_SCHEMA_MAX_TOTAL_BYTES`で変更できます。生成物の`target`、`node_modules`、`.git`は除外します。pathが異なる場合は`CODE_SOURCE_NODE`、`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`、`CODE_SCHEMA_PATH`を環境変数で明示します。回収した`config/application.env`、`webapp/rust`、`webapp/sql`だけを自動commitし、他の未commit変更は含めません。この回収はコード読解開始用の暫定snapshotであり、全node一致の保証は後続の完全importが担当します。
 
-続いて初期build処理が1台目のCPU・OS・glibc・OpenSSL・Rust版を調査し、回収したCargo.toml・Cargo.lockと合わせてbuild設定を提案します。判断できれば`config/phase1-build.json`を書いてすぐbuildを始め、判断できなければ理由を`.local/phase1-build/proposal.json`へ残して設定を待ちます（`docs/phases/Phase1.md`の「非同期buildの開始と確認」）。同時に`config/lanes.json`の`kickoff`にあるAI laneを起動します。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。
+続いて初期build処理が1台目のCPU・OS・glibc・OpenSSL・Rust版を調査し、回収したCargo.toml・Cargo.lockと合わせてbuild設定を提案します。判断できれば`config/phase1-build.json`を書いてすぐbuildを始め、判断できなければ理由を`.local/phase1-build/proposal.json`へ残して設定を待ちます（`docs/phases/Phase1.md`の「非同期buildの開始と確認」）。同時に`config/lanes.json`の`kickoff`にあるAI laneを起動します。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。inspectionの直後には`scripts/environment-report.py`が、inventory、inspection、初期build処理の調査（`environment.txt`）、`progress.log`から`docs/environment.md`（台数とrole、OS・kernel・CPU・memory、ミドルウェアの版、配布サーバーのRust、kickoffからの計時）をAIを使わずに書きます。1行目の生成markerが残っている間は再実行で上書きし、markerを消した（手で直した）fileは上書きせず`.local/environment-report.md`へ書きます。
 
 ### 進行の通知
 
@@ -58,7 +59,7 @@ git merge lane/code-map                      # 取り込みはmainのセッシ�
 
 - **設定**: `config/lanes.json`の`claude`にcommand、model（既定`claude-opus-5-5`）、effort（既定`high`）、permission mode、`allowed_tools`、時間上限を置きます。permission modeは`dontAsk`で、`allowed_tools`にないtool（Web、remote command、任意のshell）は確認なしで拒否されます。人間が途中で承認しないので、laneが自分の権限を広げられないようにするためです。
 - **remote操作の禁止**: laneは環境変数`ISUCON_LANE`付きで動きます。`scripts/tool-guard.py`はこれを見て、SSH・コピー、Ansible、deploy・import・kickoffなどremoteへ触れるscriptとmake target、ベンチ、isuscopeの記録系command、`.local/operation.lock`、`git push`、laneやAI CLIの起動を拒否します。
-- **起動**: `make kickoff`は先行回収のcommit直後に`kickoff`のlane（既定は`code-map`、`indexes`、`obvious-fixes`）を起動します。`indexes`はschemaと`docs/indexes.md`だけ、`obvious-fixes`はアプリのコードだけを変えるので、互いにmergeで衝突しません。実行中は15秒ごと（`LANE_POLL_SECONDS`）にbranchを見て、新しいcommitを`lane:<名前> commit`として知らせます。完了・実行中のlaneは再実行しません。`KICKOFF_LANES=`で止め、`KICKOFF_LANES=code-map`で選べます。laneの起動に失敗してもkickoffは続きます。
+- **起動**: `make kickoff`は先行回収のcommit直後に`kickoff`のlane（既定は`code-map`、`indexes`、`obvious-fixes`、`local-env`）を起動します。`code-map`は`docs/code-map.md`、`indexes`はschemaと`docs/indexes.md`、`obvious-fixes`はアプリのコード、`local-env`は`config/local/`と`docs/local-verification.md`だけを変えるので、互いにmergeで衝突しません。`scenario`（`docs/benchmark-scenario.md`）は公式資料が要るので、mainが`docs/official/`をcommitした直後に`python3 scripts/lane.py start scenario`で起動します。laneは起動時のbranchから分かれるので、commitの前に起動すると公式資料が見えません。実行中は15秒ごと（`LANE_POLL_SECONDS`）にbranchを見て、新しいcommitを`lane:<名前> commit`として知らせます。完了・実行中のlaneは再実行しません。`KICKOFF_LANES=`で止め、`KICKOFF_LANES=code-map`で選べます。laneの起動に失敗してもkickoffは続きます。
 - **記録**: `.local/lanes/<名前>/`に`status.json`（状態、branch、worktree、commit一覧、秒数、費用）、`stream.jsonl`（stream-json出力）、`result.md`（最後の回答）が残ります。Claudeが最後のcommitの後に書いた会話履歴（`docs/agent-history/`）は、lane.pyがbranchへcommitします。所要時間は`.local/stage-timing.tsv`へ`lane`として入ります。
 - **時間上限**: laneごとの`timeout_minutes`を過ぎるとprocess groupを止めて`timeout`にします。それまでのcommitはbranchに残ります。
 - **後始末**: mergeが済んだlaneは、worktreeで`make local-down`してから`git worktree remove`します。

@@ -110,7 +110,11 @@
     "scripts/first-bench.sh",
     "tests/test_first_bench.py",
     "scripts/imported-state.py",
-    "config/lanes/indexes.md"
+    "config/lanes/indexes.md",
+    "scripts/environment-report.py",
+    "tests/test_environment_report.py",
+    "config/lanes/local-env.md",
+    "config/lanes/scenario.md"
   ],
   "remove_files": [
     "docs/roles/operator.md",

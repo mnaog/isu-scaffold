@@ -62,6 +62,8 @@ echo ">> Phase 1 local environment: adapt config/local/compose.example.yaml; run
 echo "== setup: bootstrap, inspection and configuration draft"
 stage bootstrap "${script_dir}/bootstrap.sh"
 stage inspect "${script_dir}/inspect-environment.sh"
+# docs/environment.md from the inspection, without AI; never stops the setup.
+stage environment-report python3 "${script_dir}/environment-report.py" || true
 stage configure-draft "${script_dir}/configure-draft.sh"
 
 echo "== draft review"

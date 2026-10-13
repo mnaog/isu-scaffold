@@ -72,15 +72,16 @@ Phase 0は本番開始前に利用できる情報だけで行える準備をす�
 make kickoff（バックグラウンドで実行し、.local/progress.logを追う）
   → 回収元1台のSSH確立後、webapp/rustとDDLを先行回収し、その範囲だけ自動commit（code-ready）
   → 並行して1台目のbuild環境を調査。build設定を自動生成できれば即build、できなければ設定待ち
-  → 並行してlane code-map（docs/code-map.md）、indexes（索引を1件1commit）、obvious-fixes（索引以外の自明な修正を1件1commit）を起動
-  → 全nodeのSSH確立、Ansible導入、初期収束、初期構成の調査
+  → 並行してlane code-map（docs/code-map.md）、indexes（索引を1件1commit）、obvious-fixes（索引以外の自明な修正を1件1commit）、
+    local-env（config/local/compose.yamlとdocs/local-verification.md）を起動
+  → 全nodeのSSH確立、Ansible導入、初期収束、初期構成の調査。調査結果からdocs/environment.mdを自動で書く
   → node role、同期対象、Ansible変数、log pathの候補を.local/draftへ生成
   → draftを実nodeと照合し、.local/draft/review.mdを出して停止（draft-ready）
 kickoffの実行中にmainのセッションが並行して進める
-  → 公式資料をdocs/official/へ保存し、config/benchmark.envとbenchmark-contractを用意
-  → .isuscope/benchmark.sh --check、--probe（discoverの後なら実行できる）
+  → 公式資料をdocs/official/へ保存してcommitし、すぐlane scenario（docs/benchmark-scenario.md）を起動
+  → config/benchmark.envとbenchmark-contractを用意し、.isuscope/benchmark.sh --check、--probe（discoverの後なら実行できる）
   → build設定待ちならconfig/phase1-build.jsonを作る。自動生成されたら確認してcommit
-  → ローカル実行環境を構成し、make local-up / local-checkで初期改善に使う
+  → laneが終わったものから結果を読んでmergeする（code-map、local-env、scenarioは文書と構成だけ）
 review.mdのFAILを直し、WARNをすべて判断してからCONFIRM_DRAFT=true make kickoff-apply
   → draftを再検査して反映し、全配布先のdigest一致を確認して完全import
 完全importを確認して初期状態をcommit
@@ -102,8 +103,8 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 - 計測と運用の土台（計測tool、LTSV access log、時刻同期、journal、自動更新停止）は初動のAnsibleで固定化し（SQLはisuscopeがperformance_schemaから取るので、slow logは既定で無効）、レギュレーションで禁止された項目だけ変数で外す。性能を変える設定（`config/nginx/tare`、networking sysctl、MySQLの性能設定）は初回baselineの後に1つの変更として入れる。接続・fdの上限（nginxのworker_connections・backlog・keepalive、アプリのLimitNOFILE、sysctl、MySQLのmax_connectionsとbuffer pool）は`make tare`が1つのcommitにするので、baselineの後に早めにdeployして`isuscope run`で測る。
 - ベンチの前には毎回、isuscopeの`prepare_command`（`scripts/benchmark-prepare.sh`）が動いているアプリのunitを再起動し、listenを待つ。前のベンチが途中で切ったrequestのtransactionが、次のinitializeを止めないようにするため。その前に、最後にdeployしたcommitとHEADを、deployが配るファイルに限って照合し、ずれていればベンチを始めない（`scripts/check-deployed-commit.sh`）。止まったら、commitして`make deploy`するか、HEADを戻す。
 - `kickoff`、`bootstrap`、`phase1-check`、laneからベンチを起動しない。初回ベンチは`make first-bench`（または`isuscope survey-run`）を独立した明示操作としてmainのセッションから実行し、runへその会話を紐付ける。import のcommitが済んだら、作業中のAIが人間の確認を待たずに実行する。
-- kickoffが起動するlaneは`config/lanes.json`の`kickoff`（既定は`code-map`、`indexes`、`obvious-fixes`）。`KICKOFF_LANES=`で止め、`KICKOFF_LANES="code-map"`のように選べる。baseline後に並行させたい調査や実装は、promptを書いて`python3 scripts/lane.py start <名前> --prompt-file <path> --purpose "..."`で起動する。進行は`make lanes`で見る。
-- laneの`code-map`は文書だけなので、終わり次第mainへmergeしてよい。`indexes`と`obvious-fixes`は1件1commitで積み、commitのたびに`.local/progress.log`へ`lane:<名前> commit <hash>`が出る。初回baselineの分析の後、観測と照合して効くcommitから`git cherry-pick`で取り込み（laneの完了は待たない）、deployして`isuscope run`で測る。laneの最後の回答にある「実装しなかった候補」も次の変更を選ぶ材料にする。
+- kickoffが起動するlaneは`config/lanes.json`の`kickoff`（既定は`code-map`、`indexes`、`obvious-fixes`、`local-env`）。`scenario`は公式資料が要るので、mainが`docs/official/`をcommitした直後に`python3 scripts/lane.py start scenario`で起動する。`KICKOFF_LANES=`で止め、`KICKOFF_LANES="code-map"`のように選べる。baseline後に並行させたい調査や実装は、promptを書いて`python3 scripts/lane.py start <名前> --prompt-file <path> --purpose "..."`で起動する。進行は`make lanes`で見る。
+- laneの`code-map`・`scenario`は文書だけ、`local-env`はローカル環境の構成と文書だけなので、結果を読んで終わり次第mainへmergeしてよい。`docs/environment.md`はkickoffが調査結果から自動で書くので、確かめてcommitする（手で補足するときは1行目の生成markerを消す。baseline後に`python3 scripts/environment-report.py`で計時を延ばせる）。`indexes`と`obvious-fixes`は1件1commitで積み、commitのたびに`.local/progress.log`へ`lane:<名前> commit <hash>`が出る。初回baselineの分析の後、観測と照合して効くcommitから`git cherry-pick`で取り込み（laneの完了は待たない）、deployして`isuscope run`で測る。laneの最後の回答にある「実装しなかった候補」も次の変更を選ぶ材料にする。
 - 並行作業を手で行うなら`make worktree BRANCH=<name> PURPOSE="..."`で作る。目的はbranchへ記録する。変更目的ごとにcommitを分け、検証結果と評価したcommitを残す。
 - 並行worktreeでも目的に必要なコード・設定・文書を扱ってよい。remote変更、deploy、ベンチ、`.local/operation.lock`を使う操作はmain側だけが行う。
 - Phase 1のローカル実行環境は各worktreeで`make local-up / local-check / local-down`で操作してよい。worktree専用のDB・network・port・lockを使う。初回baselineの開始はローカル環境の完成を待たない。詳細は`docs/local-development.md`を参照する。

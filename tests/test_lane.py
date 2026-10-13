@@ -31,6 +31,19 @@ print(json.dumps({'type': 'result', 'subtype': 'success', 'is_error': False, 're
 '''
 
 
+class LaneConfigurationTests(unittest.TestCase):
+    def test_every_lane_has_a_prompt_and_kickoff_names_defined_lanes(self):
+        config = json.loads((ROOT / 'config/lanes.json').read_text())
+        for name, lane in config['lanes'].items():
+            with self.subTest(name):
+                self.assertRegex(name, r'^[a-z0-9][a-z0-9-]*$')
+                self.assertTrue((ROOT / lane['prompt']).is_file())
+                self.assertTrue(lane['purpose'])
+        self.assertLessEqual(set(config['kickoff']), set(config['lanes']))
+        # scenario needs the official documents main saves, so main starts it, not kickoff.
+        self.assertNotIn('scenario', config['kickoff'])
+
+
 class LaneTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
