@@ -76,6 +76,29 @@ class Phase1SetupTest(unittest.TestCase):
         self.assertIn('observability_mysql_slow_log: false',
                       (ROOT / 'ansible/playbooks/group_vars/all.yml').read_text())
 
+    def test_review_sizes_a_directory_without_its_excluded_build_output(self):
+        # practice-12-sixth: rust-app warned at 1048 MiB although import and deploy skip target/.
+        spec = importlib.util.spec_from_file_location('review', ROOT / 'scripts/review-draft.py')
+        review = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(review)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'bin').mkdir()
+            (root / 'bin/sudo').write_text('#!/bin/sh\n[ "$1" = -n ] && shift\nexec "$@"\n')
+            (root / 'bin/sudo').chmod(0o755)
+            (root / 'app/target').mkdir(parents=True)
+            (root / 'app/target/cache').write_bytes(b'\0' * 4 * 1024 * 1024)
+            (root / 'app/main.rs').write_text('fn main() {}\n')
+            app = str(root / 'app')
+            checks = {'paths': {app}, 'excludes': {app: ('target',)}, 'users': set(), 'groups': set(),
+                      'services': set(), 'dropins': set(), 'logs': set()}
+            output = subprocess.run(['bash'], input=review.remote_script(checks), capture_output=True, text=True,
+                                    env={**os.environ, 'PATH': str(root / 'bin') + ':' + os.environ['PATH']},
+                                    check=True).stdout
+            kind, size = output.strip().split('\t')[2:]
+            self.assertEqual(kind, 'directory')
+            self.assertLess(int(size), 1024)
+
     def run_guard(self, cloud_exit):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)

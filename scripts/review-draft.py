@@ -52,8 +52,12 @@ def remote_script(checks: dict) -> str:
         quoted = shlex.quote(path)
         lines.append(
             f"if sudo -n test -d {quoted}; then t=directory; elif sudo -n test -f {quoted}; then t=file; "
-            f"else t=missing; fi; kb=$(sudo -n du -sk {quoted} 2>/dev/null | cut -f1); "
-            f"printf 'path\\t%s\\t%s\\t%s\\n' {quoted} \"$t\" \"${{kb:-0}}\""
+            f"else t=missing; fi; kb=$(sudo -n du -sk {quoted} 2>/dev/null | cut -f1); kb=${{kb:-0}}; "
+            # The item's exclude (Rust target/, .git) is neither imported nor deployed, so it does
+            # not count toward the size warning either.
+            + "".join(f"x=$(sudo -n du -sk {shlex.quote(path + '/' + excluded)} 2>/dev/null | cut -f1); kb=$((kb - ${{x:-0}})); "
+                      for excluded in sorted(checks["excludes"].get(path, ())))
+            + f"printf 'path\\t%s\\t%s\\t%s\\n' {quoted} \"$t\" \"$kb\""
         )
     for user in sorted(checks["users"]):
         quoted = shlex.quote(user)
@@ -183,7 +187,7 @@ def main() -> int:
             record("WARN", f"no node has the `{role}` role; its collectors and commands will target nothing")
 
     items = sync.get("items", [])
-    checks = {node: {"paths": set(), "users": set(), "groups": set(), "services": set(), "logs": set(), "dropins": set()} for node in application}
+    checks = {node: {"paths": set(), "users": set(), "groups": set(), "services": set(), "logs": set(), "dropins": set(), "excludes": {}} for node in application}
     names = [item.get("name") for item in items]
     if len(names) != len(set(names)):
         record("FAIL", "sync item names are not unique")
@@ -205,6 +209,8 @@ def main() -> int:
             record("FAIL", f"{item['name']} source node {source} is not in {item['node_group']}")
         for node in nodes:
             checks[node]["paths"].add(item["remote"])
+            if item.get("exclude"):
+                checks[node]["excludes"][item["remote"]] = tuple(item["exclude"])
             checks[node]["users"].add(item["owner"])
             checks[node]["groups"].add(item["owner_group"])
     for key in ("post_deploy_commands", "status_commands"):
