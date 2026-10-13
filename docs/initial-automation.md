@@ -130,11 +130,11 @@ local venvへ固定versionのAnsibleを導入し、SSH接続を確立してか�
 
 Ansibleのcontrollerは対象nodeのPythonに合わせて選びます。`bootstrap.sh`はSSH確立後に`scripts/ansible-runtime.py`で全nodeの`/usr/bin/python3`の版を調べ、`legacy`（ansible-core 2.19、target Python 3.8〜3.13）か`modern`（ansible-core 2.21、target Python 3.9〜3.14）を`.local/ansible-runtime.env`へ記録します。両方に収まらない組み合わせはinventoryを分ける必要があるため停止します。依存版は`ansible/requirements-<profile>.txt`、venvは`.local/ansible-venv-<profile>`です。controller自体はPython 3.12または3.13で動かし（`config/ansible-controller.env`の`PYTHON_BIN`）、Phase 0では`./scripts/ansible-install.sh --all`で両方を用意しておきます。Ansibleが対象nodeへ配るhelper（`tree-digest.py`など）は、`tests/test_remote_helpers.py`でPython 3.8でも動くことを確認します。
 
-計測toolの取得（package、alp・slp、FlameGraph）が失敗しても、log・時刻同期・journalなどの土台の設定は続けます。必須toolの欠落は`verify.yml`（`make phase1-check`）が検出します。取得の失敗で止めたい場合は`observability_tools_strict: true`にし、取得だけをやり直すときは`--tags observability_acquire`を使います。perfは`perf stat -e task-clock -- true`で実際にeventを取れるかまで確認します。
+alp・slpのreleaseとFlameGraphのscriptは、Phase 0に`./scripts/fetch-observability-tools.sh --update`でrepo（`ansible/roles/observability/files/vendor/`、x86_64とarm64）へ取り込んであり、bootstrapはそれをnodeへcopyします（`observability_tools_source: bundled`）。nodeがGitHubへ出られない、`git`が無い、rate limitに当たる場合も同じ版が入ります。各nodeにGitHubから取らせる場合だけ`download`にします。版を上げたらscriptを再実行してcommitし、引数なしの実行でSHA256SUMSと照合します。計測toolの取得（package、alp・slp、FlameGraph）が失敗しても、log・時刻同期・journalなどの土台の設定は続けます。必須toolの欠落は`verify.yml`（`make phase1-check`）が検出します。取得の失敗で止めたい場合は`observability_tools_strict: true`にし、取得だけをやり直すときは`--tags observability_acquire`を使います。perfは`perf stat -e task-clock -- true`で実際にeventを取れるかまで確認します。
 
 | 項目 | 内容 | 無効化する変数 |
 | --- | --- | --- |
-| 計測tool | `sysstat`、`ethtool`（ENAの上限超過counter）、実行中kernel用のperf、pin済みの`alp`・`slp`、FlameGraph scripts。off-CPU用の`bpfcc-tools`は既定では入れない | `observability_install_packages`、`observability_download_tools`（`observability_install_offcpu`で有効化） |
+| 計測tool | `sysstat`、`ethtool`（ENAの上限超過counter）、実行中kernel用のperf、pin済みの`alp`・`slp`、FlameGraph scripts。off-CPU用の`bpfcc-tools`は既定では入れない | `observability_install_packages`、`observability_download_tools`（取得元は`observability_tools_source`、`observability_install_offcpu`で有効化） |
 | perf権限 | `kernel.perf_event_paranoid=-1`、`kernel.kptr_restrict=0` | — |
 | Nginx access log | `conf.d/00-isuscope-log.conf`でLTSVを`/var/log/nginx/isuscope-access.log`へ追加出力（既存のaccess_logは変えない）。sessionは`observability_nginx_session_source`で問題に合わせる | `observability_nginx_ltsv` |
 | MySQL slow log | 既定は無効。SQLはisuscopeがperformance_schemaのstatement digestから取る（`mysql-digest`）。digestが使えないMariaDBなどでだけtrueにし、`zzz-isuscope-slow.cnf`で`long_query_time=0`を`/var/log/mysql/isuscope-slow.log`へ出力する | `observability_mysql_slow_log`（既定false） |
@@ -144,7 +144,7 @@ Ansibleのcontrollerは対象nodeのPythonに合わせて選びます。`bootstr
 | 自動更新 | `apt-daily`、`apt-daily-upgrade`、`unattended-upgrades`を停止 | `observability_stop_auto_updates` |
 | Rust build cache | `/home/isucon/.cache/isucon-cargo-target`を作成し、cargoとrustcの有無を表示 | — |
 
-nginx.confがhttpの中で`/etc/nginx/conf.d/*.conf`をincludeしていない場合、LTSV logは追加されず、draft検査がFAILにします。レギュレーションで禁止された項目だけ変数をfalseにします。Phase 3で計測を外すときは`observability_nginx_ltsv`と`observability_mysql_slow_log`をfalseにして`./scripts/run-ansible-playbook.sh bootstrap.yml --tags observability_nginx_log,observability_mysql_slow_log`を実行すると、設定を撤去してreload・再起動します。性能のためのNginx設定は[config/nginx/tare](../config/nginx/tare/README.md)にあり、初回baselineの後にdeployで入れます。事前に取得したtoolは`.local/tools/`へ置き、`observability_local_tools`で配布できます。
+nginx.confがhttpの中で`/etc/nginx/conf.d/*.conf`をincludeしていない場合、LTSV logは追加されず、draft検査がFAILにします。レギュレーションで禁止された項目だけ変数をfalseにします。Phase 3で計測を外すときは`observability_nginx_ltsv`と`observability_mysql_slow_log`をfalseにして`./scripts/run-ansible-playbook.sh bootstrap.yml --tags observability_nginx_log,observability_mysql_slow_log`を実行すると、設定を撤去してreload・再起動します。性能のためのNginx設定は[config/nginx/tare](../config/nginx/tare/README.md)にあり、初回baselineの後にdeployで入れます。これら以外に事前に取得したtoolは`.local/tools/`へ置き、`observability_local_tools`で配布できます。
 
 `isuscope_fingerprint_paths`には、app binaryや主要設定など、全nodeで実体を比較したい絶対pathを列挙します。kernel、OS、Nginx、MySQL、running serviceは宣言なしでも記録します。
 

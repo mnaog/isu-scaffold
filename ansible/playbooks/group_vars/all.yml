@@ -16,8 +16,11 @@ observability_packages:
   - "linux-tools-{{ ansible_facts['kernel'] }}"
 # off-CPU解析はpackageが大きく導入に時間がかかるため、必要になってから有効化します。
 observability_install_offcpu: false
-# alp/slpのpin済みreleaseとFlameGraph scriptsをnodeへ取得します。
+# alp/slpのpin済みreleaseとFlameGraph scriptsをnodeへ入れます。bundledはrepoへ取り込んだもの
+# （ansible/roles/observability/files/vendor、scripts/fetch-observability-tools.sh）をcopyし、
+# downloadは各nodeがGitHubから取得します。
 observability_download_tools: true
+observability_tools_source: bundled
 
 # 存在を調べるcommandです。requiredへ移したものだけverifyを失敗させます。
 observability_probe_commands:

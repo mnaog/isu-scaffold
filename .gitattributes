@@ -1,0 +1,2 @@
+# Upstream files kept byte-for-byte so they match SHA256SUMS; skip the whitespace check.
+ansible/roles/observability/files/vendor/** -whitespace

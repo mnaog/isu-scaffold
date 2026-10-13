@@ -5,6 +5,7 @@ observability_packages: [sysstat, git, ethtool]
 observability_install_offcpu: false
 observability_offcpu_packages: [bpfcc-tools]
 observability_download_tools: true
+observability_tools_source: bundled
 observability_release_tools:
   - {name: alp, version: v1.0.21}
   - {name: slp, version: v0.2.1}

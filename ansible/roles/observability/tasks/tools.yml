@@ -20,6 +20,24 @@
         - ansible_facts.os_family != 'Debian'
         - observability_install_packages | bool
 
+    # bundledはrepoのfiles/vendor（scripts/fetch-observability-tools.shで取り込む）をcopyする。
+    # nodeがGitHubへ出られない・git が無い・rate limitに当たる場合も同じ版が入る。
+    - name: Install pinned alp and slp releases from the repository
+      ansible.builtin.unarchive:
+        src: "vendor/{{ item.name }}_{{ item.version }}_linux_{{ observability_go_arch[ansible_facts.architecture] }}.tar.gz"
+        dest: /usr/local/bin
+        include: ["{{ item.name }}"]
+        owner: root
+        group: root
+        mode: '0755'
+        creates: "/usr/local/bin/{{ item.name }}"
+      loop: "{{ observability_release_tools }}"
+      loop_control:
+        label: "{{ item.name }} {{ item.version }}"
+      when:
+        - observability_download_tools | bool
+        - observability_tools_source == 'bundled'
+
     - name: Download pinned alp and slp releases
       ansible.builtin.unarchive:
         src: "https://github.com/tkuchiki/{{ item.name }}/releases/download/{{ item.version }}/{{ item.name }}_linux_{{ observability_go_arch[ansible_facts.architecture] }}.tar.gz"
@@ -33,7 +51,31 @@
       loop: "{{ observability_release_tools }}"
       loop_control:
         label: "{{ item.name }} {{ item.version }}"
-      when: observability_download_tools | bool
+      when:
+        - observability_download_tools | bool
+        - observability_tools_source == 'download'
+
+    - name: Install FlameGraph scripts from the repository
+      when:
+        - observability_download_tools | bool
+        - observability_tools_source == 'bundled'
+      block:
+        - name: Create the FlameGraph directory
+          ansible.builtin.file:
+            path: "{{ observability_flamegraph_directory }}"
+            state: directory
+            owner: root
+            group: root
+            mode: '0755'
+
+        - name: Copy the bundled FlameGraph scripts
+          ansible.builtin.copy:
+            src: "vendor/FlameGraph/{{ item }}"
+            dest: "{{ observability_flamegraph_directory }}/{{ item }}"
+            owner: root
+            group: root
+            mode: "{{ '0644' if item.endswith('.txt') else '0755' }}"
+          loop: [stackcollapse-perf.pl, flamegraph.pl, cddl1.txt]
 
     - name: Fetch FlameGraph scripts
       ansible.builtin.git:
@@ -41,7 +83,9 @@
         dest: "{{ observability_flamegraph_directory }}"
         version: "{{ observability_flamegraph_version }}"
         depth: 1
-      when: observability_download_tools | bool
+      when:
+        - observability_download_tools | bool
+        - observability_tools_source == 'download'
 
     - name: Link FlameGraph scripts into PATH
       ansible.builtin.file:
