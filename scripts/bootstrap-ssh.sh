@@ -90,13 +90,18 @@ connect_node() {
       "${ssh_user}@${endpoint}" true
   fi
 }
-node_rows=$(jq -r --arg only "${SSH_ONLY_NODE:-}" '
+# SSH_ONLY_NODE selects one node; SSH_EXCEPT_NODE skips one that this run already reached.
+node_rows=$(jq -r --arg only "${SSH_ONLY_NODE:-}" --arg except "${SSH_EXCEPT_NODE:-}" '
   [.all.children[]?.hosts | to_entries[]] | unique_by(.key)[] |
-  select($only == "" or .key == $only) |
+  select($only == "" or .key == $only) | select(.key != $except) |
   [.key, .value.ansible_host, .value.ansible_user,
    (.value.aws_instance_id // "-"), (.value.aws_availability_zone // "-"),
    (.value.node_state // "-")] | @tsv
 ' "${inventory_path}")
+if [[ -z "${node_rows}" && -n "${SSH_EXCEPT_NODE:-}" ]]; then
+  echo "no other SSH nodes"
+  exit 0
+fi
 test -n "${node_rows}" || { echo "no matching SSH nodes" >&2; exit 2; }
 while IFS=$'\t' read -r host_alias endpoint ssh_user instance_id availability_zone instance_state; do
   parallel_start connect_node "${host_alias}" "${endpoint}" "${ssh_user}" "${instance_id}" "${availability_zone}" "${instance_state}"

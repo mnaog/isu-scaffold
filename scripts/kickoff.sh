@@ -22,6 +22,7 @@ inventory=${ANSIBLE_INVENTORY:-${repo_dir}/.local/ansible-inventory.json}
 code_paths=(config/application.env "${application_path}" "${schema_path}")
 
 progress() { python3 "${script_dir}/progress.py" emit kickoff "$@" || true; }
+bootstrap_env=()
 
 cd "${repo_dir}"
 progress started "make kickoff"
@@ -34,7 +35,19 @@ else
   source_node=${CODE_SOURCE_NODE:-$(jq -r '.all.children.application.hosts | keys[0] // empty' "${inventory}")}
   test -n "${source_node}" || { echo "no application source node" >&2; exit 2; }
   stage source-ssh env SSH_ONLY_NODE="${source_node}" "${script_dir}/bootstrap-ssh.sh"
+  # The other nodes' SSH overlaps the code transfer; bootstrap then reuses this run's discovery
+  # and, when every node answered, skips its own SSH round. This is not a stage: a failure
+  # here is not final, and bootstrap's SSH stage retries and reports it.
+  other_ssh_log=${repo_dir}/.local/kickoff-other-ssh.log
+  SSH_EXCEPT_NODE="${source_node}" "${script_dir}/bootstrap-ssh.sh" >"${other_ssh_log}" 2>&1 &
+  other_ssh_pid=$!
   stage early-import env CODE_SOURCE_NODE="${source_node}" "${script_dir}/quick-import-code.sh" "${language}" "${application_path}"
+  bootstrap_env=(BOOTSTRAP_SKIP_DISCOVER=1)
+  if wait "${other_ssh_pid}"; then
+    bootstrap_env+=(BOOTSTRAP_SKIP_SSH=1)
+  else
+    echo "SSH to the other nodes failed (${other_ssh_log}); bootstrap retries it" >&2
+  fi
   existing=()
   for path in "${code_paths[@]}"; do
     [[ -e "${path}" ]] && existing+=("${path}")
@@ -60,7 +73,7 @@ stage lanes python3 "${script_dir}/lane.py" kickoff || echo "some AI lanes did n
 echo ">> Phase 1 local environment: adapt config/local/compose.example.yaml; run make local-up in parallel (docs/local-development.md). Baseline does not wait for it."
 
 echo "== setup: bootstrap, inspection and configuration draft"
-stage bootstrap "${script_dir}/bootstrap.sh"
+stage bootstrap env ${bootstrap_env[@]+"${bootstrap_env[@]}"} "${script_dir}/bootstrap.sh"
 stage inspect "${script_dir}/inspect-environment.sh"
 # docs/environment.md from the inspection, without AI; never stops the setup.
 stage environment-report python3 "${script_dir}/environment-report.py" || true
