@@ -111,7 +111,12 @@ def main():
     print(f'created {target} from {commit[:12]} ({len(files)} files)')
 
     if args.github:
-        subprocess.run(['gh', 'repo', 'create', args.github, '--private', '--source', str(target), '--push'], check=True)
+        subprocess.run(['gh', 'repo', 'create', args.github, '--private', '--source', str(target), '--remote', 'origin'],
+                       check=True)
+        # The first push carries the bundled tools (about 20 MB) in one request; with git's default
+        # HTTP buffer GitHub answered 400 (practice-14-forth).
+        subprocess.run(['git', '-C', str(target), '-c', 'http.postBuffer=524288000', 'push', '-u', 'origin', 'main'],
+                       check=True)
         visibility = subprocess.check_output(['gh', 'repo', 'view', args.github, '--json', 'visibility',
                                               '-q', '.visibility']).decode().strip()
         if visibility != 'PRIVATE':
