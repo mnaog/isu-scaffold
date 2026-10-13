@@ -62,6 +62,12 @@ class Phase1SetupTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             policy.check(rendered.replace('scripts/benchmark-prepare.sh', 'other.sh'), settings)
 
+    def test_policy_refuses_a_history_dir_isuscope_would_refuse(self):
+        # practice-12-sixth: pointing history_dir at another repo passed here and failed in isuscope.
+        for history in ('/Users/nao/project/isucon/isu-scaffold/docs/agent-history', '../scaffold/docs/agent-history', ' '):
+            with self.subTest(history), self.assertRaisesRegex(ValueError, 'relative path'):
+                policy.check('', {'history_dir': history, 'operator_line_pattern': 'x'})
+
     def test_review_checks_the_slow_log_only_when_bootstrap_turns_it_on(self):
         spec = importlib.util.spec_from_file_location('review', ROOT / 'scripts/review-draft.py')
         review = importlib.util.module_from_spec(spec)

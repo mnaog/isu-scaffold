@@ -70,6 +70,12 @@ def apply(text, policy):
 
 
 def check(text, policy):
+    # isuscope's own rule (context.agent.history_dir): the history must live inside this repo.
+    # An absolute path passed this check and was refused only when isuscope loaded the config.
+    history = Path(policy['history_dir'])
+    if not policy['history_dir'].strip() or history.is_absolute() or '..' in history.parts:
+        raise ValueError('history_dir in config/isuscope-policy.json must be a non-empty relative path without `..`; '
+                         'start the AI session inside this repo instead of pointing at another one')
     config = tomllib.loads(text)
     if config.get('context', {}).get('agent', {}).get('history_dir') != policy['history_dir']:
         raise ValueError('isuscope agent history setting differs from config/isuscope-policy.json; run make discover')
