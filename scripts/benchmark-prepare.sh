@@ -5,6 +5,7 @@ set -euo pipefail
 # lockの中）に動きます。deployしたcommitとHEADを照合し（check-deployed-commit.sh）、動いているアプリのunitを再起動し、そのprocessがportをlistenするまで
 # 待ちます。前のベンチが途中で切ったrequestのtransactionが接続poolに残り、次のinitializeの
 # DROP TABLEを止めること（practice-14の初回survey-run）を防ぎます。止めてあるunitは起動しません。
+# REQUIRE_ACTIVE=1なら、止まっているunitも失敗にします（make first-benchが配布状態で測る前の確認）。
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "${script_dir}/.." && pwd)
@@ -14,6 +15,7 @@ repo_dir=$(cd -- "${script_dir}/.." && pwd)
 sync=${SYNC_MANIFEST:-${repo_dir}/config/sync.json}
 inventory=${ANSIBLE_INVENTORY:-${repo_dir}/.local/ansible-inventory.json}
 wait_seconds=${PREPARE_WAIT_SECONDS:-30}
+require_active=$([[ "${REQUIRE_ACTIVE:-}" == 1 ]] && echo 1 || echo 0)
 command -v jq >/dev/null
 
 units=$(jq -r '[.items[]? | select(.name == "rust-service") | .remote | split("/") | last] | join(" ")' "${sync}")
@@ -38,7 +40,10 @@ deadline=\$(( \$(date +%s) + ${wait_seconds} ))
 while :; do
   ready=1
   for unit in \$units; do
-    systemctl is-active --quiet "\$unit" || continue
+    if ! systemctl is-active --quiet "\$unit"; then
+      [ "${require_active}" = 1 ] && ready=0
+      continue
+    fi
     group=\$(systemctl show -p ControlGroup --value "\$unit")
     pids=\$(cat "/sys/fs/cgroup\${group}/cgroup.procs" 2>/dev/null || systemctl show -p MainPID --value "\$unit")
     listening=\$(sudo ss -ltnpH 2>/dev/null || true)

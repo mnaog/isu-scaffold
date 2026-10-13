@@ -36,7 +36,7 @@ class BenchmarkPrepareTest(unittest.TestCase):
         write(stubs / 'systemctl', f'''#!/bin/sh
 case "$1" in
   try-restart) echo "$NODE restart $2" >> {self.calls} ;;
-  is-active) exit 0 ;;
+  is-active) [ -z "$INACTIVE" ] ;;
   show) case "$3" in ControlGroup) echo /system.slice/isu-rust.service ;; MainPID) echo 4321 ;; esac ;;
 esac
 ''', 0o755)
@@ -50,12 +50,13 @@ esac
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_prepare(self, wait='2'):
+    def run_prepare(self, wait='2', **env):
         # The script calls ssh-node.sh next to itself.
+        base = {k: v for k, v in os.environ.items() if k not in ('INACTIVE', 'REQUIRE_ACTIVE')}
         return subprocess.run([str(self.root / 'prepare.sh')], capture_output=True, text=True, env={
-            **os.environ, 'SYNC_MANIFEST': str(self.root / 'config/sync.json'),
+            **base, 'SYNC_MANIFEST': str(self.root / 'config/sync.json'),
             'ANSIBLE_INVENTORY': str(self.root / 'inventory.json'), 'SS_OUTPUT': str(self.listening),
-            'PREPARE_WAIT_SECONDS': wait})
+            'PREPARE_WAIT_SECONDS': wait, **env})
 
     def test_restarts_on_application_nodes_and_waits_for_listening(self):
         write(self.listening, 'LISTEN 0 4096 0.0.0.0:8080 0.0.0.0:* users:(("isu-app",pid=4321,fd=9))\n')
@@ -68,6 +69,14 @@ esac
     def test_fails_when_the_application_never_listens(self):
         write(self.listening, '')
         result = self.run_prepare(wait='1')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('did not start listening', result.stderr)
+
+    def test_a_stopped_unit_passes_unless_it_must_be_running(self):
+        # make first-bench benchmarks the distributed build only when it really runs.
+        write(self.listening, '')
+        self.assertEqual(self.run_prepare(wait='1', INACTIVE='1').returncode, 0)
+        result = self.run_prepare(wait='1', INACTIVE='1', REQUIRE_ACTIVE='1')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('did not start listening', result.stderr)
 
@@ -143,6 +152,22 @@ class DeployedCommitCheckTest(unittest.TestCase):
         result = self.check(SKIP_DEPLOYED_COMMIT_CHECK='1')
         self.assertEqual(result.returncode, 0)
         self.assertIn('WARN', result.stderr)
+
+    def test_before_the_first_deploy_the_imported_commit_is_what_runs(self):
+        imported = self.git('rev-parse', 'HEAD')
+        (self.repo / '.local/current-deploy-commit').unlink()
+        write(self.repo / '.local/current-import-commit', imported + '\n')
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('imported', result.stdout)
+        write(self.repo / 'webapp/rust/src/main.rs', 'fn main() { println!(); }\n')
+        self.commit('Change the app')
+        result = self.check()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('differs from the imported', result.stderr)
+        # Once deployed, the deploy record wins over the import.
+        write(self.repo / '.local/current-deploy-commit', self.git('rev-parse', 'HEAD') + '\n')
+        self.assertEqual(self.check().returncode, 0)
 
 
 if __name__ == '__main__':

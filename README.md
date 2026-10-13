@@ -11,8 +11,8 @@ cp config/environment.example.env .local/environment.env   # provider、SSH、no
 make kickoff                           # コード先行回収・初期build・AI lane起動・draft生成と実nodeでの検査
                                        # 実行中は.local/progress.logを追い、ベンチ接続を並行して準備する
 CONFIRM_DRAFT=true make kickoff-apply  # .local/draft/review.mdを判断してから反映・完全import
-make first-bench                       # importをcommitしたら: phase1-check → deploy → survey-run
-make lanes                             # AI lane（code-map、obvious-fixes）の結果を読んでmergeする
+make first-bench                       # importをcommitしたら: phase1-check → 配布状態のままsurvey-run → deploy
+make lanes                             # AI lane（code-map、indexes、obvious-fixes）の結果を読んで取り込む
 ```
 
 | 資料 | 内容 |

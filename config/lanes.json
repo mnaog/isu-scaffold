@@ -37,6 +37,7 @@
   },
   "kickoff": [
     "code-map",
+    "indexes",
     "obvious-fixes"
   ],
   "lanes": {
@@ -45,8 +46,13 @@
       "prompt": "config/lanes/code-map.md",
       "timeout_minutes": 40
     },
+    "indexes": {
+      "purpose": "索引不足だけを1索引1commitで先行実装する（baselineまでdeployしない）",
+      "prompt": "config/lanes/indexes.md",
+      "timeout_minutes": 30
+    },
     "obvious-fixes": {
-      "purpose": "自明なボトルネックを1件1commitで先行実装する（baselineまでdeployしない）",
+      "purpose": "索引以外の自明なボトルネックを1件1commitで先行実装する（baselineまでdeployしない）",
       "prompt": "config/lanes/obvious-fixes.md",
       "timeout_minutes": 90
     }

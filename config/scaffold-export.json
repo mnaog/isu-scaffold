@@ -108,7 +108,9 @@
     "config/rust-builder/bases.json",
     "tests/test_lane.py",
     "scripts/first-bench.sh",
-    "tests/test_first_bench.py"
+    "tests/test_first_bench.py",
+    "scripts/imported-state.py",
+    "config/lanes/indexes.md"
   ],
   "remove_files": [
     "docs/roles/operator.md",

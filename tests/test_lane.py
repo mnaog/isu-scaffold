@@ -21,6 +21,8 @@ os.makedirs('docs', exist_ok=True)
 open('docs/code-map.md', 'w').write('# map\n')
 subprocess.run(['git', 'add', 'docs/code-map.md'], check=True)
 subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', 'Map the code'], check=True)
+if os.environ.get('FAKE_AFTER_COMMIT'):
+    time.sleep(float(os.environ['FAKE_AFTER_COMMIT']))
 os.makedirs('docs/agent-history', exist_ok=True)
 open('docs/agent-history/lane.md', 'w').write('history written after the last commit\n')
 print(json.dumps({'type': 'system', 'subtype': 'init'}))
@@ -90,8 +92,18 @@ class LaneTests(unittest.TestCase):
         log = (self.repo / '.local/progress.log').read_text()
         self.assertIn('lane:code-map\trunning', log)
         self.assertIn('lane:code-map\tcomplete\t2 commits on lane/code-map', log)
+        self.assertIn('Map the code (git cherry-pick', log)
         timing = (self.repo / '.local/stage-timing.tsv').read_text().split('\t')
         self.assertEqual(timing[1:3], ['lane', 'code-map'])
+
+    def test_each_commit_is_announced_while_the_lane_still_runs(self):
+        result = self.lane('run', 'code-map', FAKE_AFTER_COMMIT='2', LANE_POLL_SECONDS='0.2')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = [line.split('\t') for line in (self.repo / '.local/progress.log').read_text().splitlines()]
+        states = [row[2] for row in rows if row[1] == 'lane:code-map']
+        # The commit line comes before the lane completes, and only once.
+        self.assertLess(states.index('commit'), states.index('complete'))
+        self.assertEqual(len([row for row in rows if row[2] == 'commit' and 'Map the code' in row[3]]), 1)
 
     def test_timeout_stops_claude_and_is_recorded(self):
         config = json.loads((self.repo / 'config/lanes.json').read_text())

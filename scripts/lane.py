@@ -178,6 +178,15 @@ def result_of(stream):
     return final
 
 
+def report_commits(source, name, base_commit, branch, reported):
+    """Each commit is usable on its own, so main may cherry-pick it before the lane ends."""
+    for line in git('log', '--reverse', '--format=%h %s', f'{base_commit}..{branch}', check=False).splitlines():
+        if line and line not in reported:
+            reported.add(line)
+            progress.emit(source, 'commit', f'{line} (git cherry-pick {line.split()[0]})', root=ROOT)
+    save(name, 'running', commits=sorted(reported))
+
+
 def commit_history(worktree):
     """The agent-history hook keeps writing after Claude's last commit; keep it with the lane."""
     if git('status', '--porcelain', '--', 'docs/agent-history', cwd=worktree, check=False):
@@ -236,10 +245,18 @@ def run(name, prompt_file, purpose):
                 except BrokenPipeError:
                     pass
                 save(name, 'running', claude_pid=child.pid)
-                try:
-                    returncode = child.wait(timeout=timeout)
-                    timed_out = False
-                except subprocess.TimeoutExpired:
+                deadline = time.monotonic() + timeout
+                poll = float(os.environ.get('LANE_POLL_SECONDS', '15'))
+                reported = set()
+                timed_out = False
+                while True:
+                    try:
+                        returncode = child.wait(timeout=max(0.1, min(poll, deadline - time.monotonic())))
+                        break
+                    except subprocess.TimeoutExpired:
+                        report_commits(source, name, base_commit, branch, reported)
+                        if time.monotonic() < deadline:
+                            continue
                     os.killpg(child.pid, signal.SIGTERM)
                     try:
                         returncode = child.wait(timeout=30)
@@ -247,6 +264,8 @@ def run(name, prompt_file, purpose):
                         os.killpg(child.pid, signal.SIGKILL)
                         returncode = child.wait()
                     timed_out = True
+                    break
+            report_commits(source, name, base_commit, branch, reported)
             commit_history(worktree)
             final = result_of(stream) or {}
             answer = final.get('result') or ''

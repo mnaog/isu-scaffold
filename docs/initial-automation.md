@@ -15,13 +15,13 @@ cp config/environment.example.env .local/environment.env
 
 ```bash
 make kickoff   # バックグラウンドで実行し、tail -n +1 -f .local/progress.log を追う
-# 先行回収・commit後に、初期buildの調査とAI lane（code-map、obvious-fixes）が並行で始まる
+# 先行回収・commit後に、初期buildの調査とAI lane（code-map、indexes、obvious-fixes）が並行で始まる
 # 実行中に: 公式資料の保存、config/benchmark.env・benchmark-contract、benchmark.sh --check/--probe
 # 実行中に: 自動生成されたbuild設定を確認してcommit（設定待ちなら作る）
 # .local/draft/review.mdのFAILを直し、WARNを判断する
 CONFIRM_DRAFT=true make kickoff-apply
 # importを確認して初期状態をcommit
-make first-bench   # phase1-check（初期buildの完了待ちに重なる）→ deploy → survey-run
+make first-bench   # phase1-check → 配布状態のままsurvey-run → deploy（配布状態で測れなければdeploy → survey-run）
 ```
 
 `kickoff`はまずnode発見後、回収元の1台（既定では最初のapplication node）だけSSHを確立し、`/home/isucon/webapp/rust`と`/home/isucon/webapp/sql`のDDL・初期化script（`.sql`、`.sh`、`.py`、`.rb`、`.pl`）だけを先行回収します。1ファイル1MiB・合計16MiBを超えるものやそれ以外の初期データは後回しにし、`.local/code-schema-manifest.log`へ`INCLUDED`／`DEFERRED`として記録します。上限は`CODE_SCHEMA_MAX_FILE_BYTES`、`CODE_SCHEMA_MAX_TOTAL_BYTES`で変更できます。生成物の`target`、`node_modules`、`.git`は除外します。pathが異なる場合は`CODE_SOURCE_NODE`、`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`、`CODE_SCHEMA_PATH`を環境変数で明示します。回収した`config/application.env`、`webapp/rust`、`webapp/sql`だけを自動commitし、他の未commit変更は含めません。この回収はコード読解開始用の暫定snapshotであり、全node一致の保証は後続の完全importが担当します。
@@ -38,7 +38,9 @@ make first-bench   # phase1-check（初期buildの完了待ちに重なる）→
 | `phase1-build` | `configured` | 自動生成された`config/phase1-build.json`を確認してcommit |
 | `phase1-build` | `needs_configuration` | `proposal.json`の理由を読み、設定を作る |
 | `phase1-build` | `complete`／`failed` | deployできる／`build.log`を読んで直し、`phase1-build.py start` |
+| `lane:<名前>` | `commit` | そのcommitを観測と照合し、効くなら`git cherry-pick`（laneの完了を待たない） |
 | `lane:<名前>` | `complete`／`failed`／`timeout` | 結果を読んでmergeを判断／`lane.py status <名前>`で原因を見る |
+| `first-bench` | `baseline-ready` | `isuscope brief latest`で分析を始める（deployは続いている） |
 | `kickoff` | `draft-ready`／`draft-failed` | `review.md`を判断して`kickoff-apply`／FAILを直す |
 | `kickoff.sh`など | `failed` | その段階のlogを読んで直す |
 
@@ -56,7 +58,7 @@ git merge lane/code-map                      # 取り込みはmainのセッシ�
 
 - **設定**: `config/lanes.json`の`claude`にcommand、model（既定`claude-opus-5-5`）、effort（既定`high`）、permission mode、`allowed_tools`、時間上限を置きます。permission modeは`dontAsk`で、`allowed_tools`にないtool（Web、remote command、任意のshell）は確認なしで拒否されます。人間が途中で承認しないので、laneが自分の権限を広げられないようにするためです。
 - **remote操作の禁止**: laneは環境変数`ISUCON_LANE`付きで動きます。`scripts/tool-guard.py`はこれを見て、SSH・コピー、Ansible、deploy・import・kickoffなどremoteへ触れるscriptとmake target、ベンチ、isuscopeの記録系command、`.local/operation.lock`、`git push`、laneやAI CLIの起動を拒否します。
-- **起動**: `make kickoff`は先行回収のcommit直後に`kickoff`のlane（既定は`code-map`と`obvious-fixes`）を起動します。完了・実行中のlaneは再実行しません。`KICKOFF_LANES=`で止め、`KICKOFF_LANES=code-map`で選べます。laneの起動に失敗してもkickoffは続きます。
+- **起動**: `make kickoff`は先行回収のcommit直後に`kickoff`のlane（既定は`code-map`、`indexes`、`obvious-fixes`）を起動します。`indexes`はschemaと`docs/indexes.md`だけ、`obvious-fixes`はアプリのコードだけを変えるので、互いにmergeで衝突しません。実行中は15秒ごと（`LANE_POLL_SECONDS`）にbranchを見て、新しいcommitを`lane:<名前> commit`として知らせます。完了・実行中のlaneは再実行しません。`KICKOFF_LANES=`で止め、`KICKOFF_LANES=code-map`で選べます。laneの起動に失敗してもkickoffは続きます。
 - **記録**: `.local/lanes/<名前>/`に`status.json`（状態、branch、worktree、commit一覧、秒数、費用）、`stream.jsonl`（stream-json出力）、`result.md`（最後の回答）が残ります。Claudeが最後のcommitの後に書いた会話履歴（`docs/agent-history/`）は、lane.pyがbranchへcommitします。所要時間は`.local/stage-timing.tsv`へ`lane`として入ります。
 - **時間上限**: laneごとの`timeout_minutes`を過ぎるとprocess groupを止めて`timeout`にします。それまでのcommitはbranchに残ります。
 - **後始末**: mergeが済んだlaneは、worktreeで`make local-down`してから`git worktree remove`します。
@@ -82,7 +84,9 @@ draft生成は、採用言語のコードからsessionを識別するheaderやco
 
 `kickoff-apply`は検査済みdraftの反映、再discover、sync検査、完全import、採用言語の固定まで進めます。ベンチ前gateは`make phase1-check`を一度だけ実行します。`phase1-check`はdeployに依存しないので、完全importのcommit後、初期buildの完了を待つ間に実行してからdeployします。deployで設定（nginx、MySQL、unit）を変えたときだけ再実行します。個別の段階をやり直す場合は、以下の各節にある`scripts/`のscriptを直接実行します。kickoff・kickoff-apply・laneは初回`survey-run`、deploy、mergeを実行しません。
 
-完全importをcommitしたら、`make first-bench`が`phase1-check`、`deploy`、`isuscope survey-run --hypothesis "${HYPOTHESIS}"`（既定は「初期状態の負荷構造とベンチシナリオを記録する」）を続けて実行し、失敗した段階で止まります。AIが段階ごとに終了へ気づいて次を打つ待ち時間を消すためのもので、draftの判断とimportのcommitは前もって操作者が済ませます。`webapp/`か`config/`に未commitの変更があれば何もしません。lane（`ISUCON_LANE`）からは動かず、tool-guardも止めます。runへ会話を紐付けるため、mainのセッションから実行します。各段階は自分で操作lockを取るので、このcommand自体はlockを持ちません。進行は`.local/progress.log`の`first-bench`の行（`checked`、`deployed`、`complete`、段階の`failed`）に出ます。
+完全importをcommitしたら、`make first-bench`が`phase1-check`、`isuscope survey-run --hypothesis "${HYPOTHESIS}"`（既定は「初期状態の負荷構造とベンチシナリオを記録する」）、`deploy`を続けて実行し、失敗した段階で止まります。
+
+最初のdeployの前は、サーバーが完全importと同じ内容で動いています。importは各itemのdigestを`.local/imported-state.json`へ残し（nodeごとに内容が違うimportでは残しません）、`first-bench`は`scripts/imported-state.py`でHEADがまだその内容かを確かめ、`REQUIRE_ACTIVE=1 scripts/benchmark-prepare.sh`でアプリのunitが全nodeで動いてlistenするのを確かめます。どちらも通れば、そのcommitを`.local/current-import-commit`へ記録し、ローカルbuildとdeployを待たずに配布されたbuildのままsurvey-runを始めます。`check-deployed-commit.sh`は、deployの記録がない間はこの記録を稼働中のcommitとして照合します。survey-runの後に同じcommitをdeployするので、deploy経路は最初の改善の前に確かめられ、以後のrunは自前のbuildになります。どちらかが通らなければ`fallback`を出し、従来どおりdeployしてからsurvey-runします。`FIRST_BENCH_MODE=deploy`なら常にdeployが先です。AIが段階ごとに終了へ気づいて次を打つ待ち時間を消すためのもので、draftの判断とimportのcommitは前もって操作者が済ませます。`webapp/`か`config/`に未commitの変更があれば何もしません。lane（`ISUCON_LANE`）からは動かず、tool-guardも止めます。runへ会話を紐付けるため、mainのセッションから実行します。各段階は自分で操作lockを取るので、このcommand自体はlockを持ちません。進行は`.local/progress.log`の`first-bench`の行（`checked`、`distributed`／`fallback`、`baseline-ready`、`deployed`、`complete`、段階の`failed`）に出ます。`baseline-ready`が出たら、deployの終了を待たずに`isuscope brief latest`で分析を始めます。
 
 SSH確立はinventoryのnode名で重複排除し、`SSH_MAX_PARALLEL_NODES`（既定5）台ずつ並列に行います。完全importはnodeごとに全itemのdigestを1回のSSHでまとめて計算し（`IMPORT_MAX_PARALLEL_NODES`、既定5）、localの内容がsourceのdigestと一致するitemは再転送しません。全itemのstagingと検証が終わるまで既存のlocalを置き換えず、途中で失敗した場合は元へ戻します。Ansible requirementsは内容hashが同じなら再installせず、bootstrap内のapplication nodeのfact収集も一度だけです。
 
@@ -273,10 +277,10 @@ isuscope routes suggest <run-id> --output .local/route-suggestions.toml
 ## 7. ベンチ前gateと初回run
 
 ```bash
-make first-bench   # 次の3つを続けて実行する
+make first-bench   # 次を続けて実行する（配布状態で測れないときはdeployが先）
 # make phase1-check
-# make deploy
 # isuscope survey-run --hypothesis "初期状態の負荷構造とベンチシナリオを記録する"
+# make deploy
 ```
 
 isuscopeは毎回のベンチの前（collectorより前）に、`config/isuscope-policy.json`の`prepare_command`（`scripts/benchmark-prepare.sh`）を実行します。sync.jsonのRust unitを、動いているnodeでだけ再起動し（`try-restart`）、そのunitのprocessがportをlistenするまで待ちます。practice-14では、手動のベンチが途中で切ったrequestのtransactionが接続poolに残り、次のinitializeの`DROP TABLE`がlock待ちで30秒のtimeoutになりました。準備に失敗したrunは、ベンチを始めずにFAILとして残ります。

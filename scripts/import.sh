@@ -9,6 +9,9 @@ sync_validate
 source "${script_dir}/parallel-lib.sh"
 parallel_init "${IMPORT_MAX_PARALLEL_NODES:-5}"
 mkdir -p "${sync_repo_dir}/.local"
+# Any new import supersedes the recorded distributed state; a successful one writes it again.
+state_file=${sync_repo_dir}/.local/imported-state.json
+rm -f -- "${state_file}"
 workspace=$(mktemp -d "${sync_repo_dir}/.local/import.XXXXXX")
 backup_root=${workspace}/backup
 mkdir -p "${workspace}/digests" "${workspace}/staged" "${workspace}/reuse" "${backup_root}"
@@ -146,4 +149,25 @@ while IFS=$'\t' read -r name type path; do
   installed+=("${name}")
 done < <(jq -r '.items[] | [.name,.type,.local] | @tsv' "${sync_manifest}")
 complete=true
+# Until the first deploy the servers run exactly what was imported (the distributed build).
+# make first-bench benchmarks that state when HEAD still has these digests, so the first
+# run does not wait for the local build and deploy. Divergent nodes have no single state.
+if [[ "${divergent}" == 0 ]]; then
+  python3 - "${sync_manifest}" "${workspace}/digests" "${state_file}" <<'PY'
+import json, sys, time
+from pathlib import Path
+manifest = json.loads(Path(sys.argv[1]).read_text())
+digests = Path(sys.argv[2])
+items = {}
+for item in manifest['items']:
+    source = item.get('source_node', manifest.get('source_node'))
+    for line in (digests / source).read_text().splitlines():
+        name, _, digest = line.partition('\t')
+        if name == item['name']:
+            items[name] = {'local': item['local'], 'digest': digest.strip(), 'exclude': item.get('exclude', [])}
+temp = Path(sys.argv[3] + '.tmp')
+temp.write_text(json.dumps({'imported_at': time.time(), 'items': items}, indent=2) + '\n')
+temp.replace(sys.argv[3])
+PY
+fi
 echo "import complete; all local digests match their selected source nodes"

@@ -6,7 +6,7 @@
 
 また、アプリケーションコードと設定ファイルをすべてローカルリポジトリで管理し、コマンドからサーバーへデプロイできる状態を作る。
 
-SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を2本起動する。`code-map`が`docs/code-map.md`を書き、`obvious-fixes`が自明な修正を1件1commitで先行実装する。mainのセッションはその間に公式資料・ベンチ接続・初期build設定・draftの判断を進める。
+SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を3本起動する。`code-map`が`docs/code-map.md`を書き、`indexes`が索引を、`obvious-fixes`が索引以外の自明な修正を、それぞれ1件1commitで先行実装する。mainのセッションはその間に公式資料・ベンチ接続・初期build設定・draftの判断を進める。
 
 調査・修正・ローカル検証・deploy・ベンチ・採否判断の責任はmainのセッションが持つ。laneの成果は根拠を照合してからmergeする。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
 
@@ -15,8 +15,8 @@ SSH確立直後に採用言語のコードとDB schemaを先行importし、初�
 1. `make kickoff`をバックグラウンドで始め、`.local/progress.log`を追う。コードとschemaの先行回収・commitの後、build laneとAI laneが並行で始まる。
 2. kickoffと並行して、公式資料の保存、`config/benchmark.env`・`benchmark-contract`の用意、`--check`・`--probe`を済ませる。build設定が自動生成されたら確認してcommitし、設定待ちなら`config/phase1-build.json`を作る。
 3. draftを判断して`kickoff-apply`し、完全importをcommitする。
-4. 人間の確認を待たずに`make first-bench`を実行する。`phase1-check`（初期buildの完了待ちに重なる）、deploy、初期状態の`survey-run`を続けて行う。スコア・エラー・HTTP・SQL・ホスト負荷を分析し、lane `code-map`の地図を照合に使う。
-5. 観測とコードから改善を選ぶ。lane `obvious-fixes`のcommitは観測と照合して取り込み、残りは実装・ローカル検証・commit・deployを進める。
+4. 人間の確認を待たずに`make first-bench`を実行する。`phase1-check`の後、配布状態のままの初期状態で`survey-run`を取り、その後に同じcommitをdeployする（配布状態で測れない場合はdeployを先にする）。`baseline-ready`が出たらスコア・エラー・HTTP・SQL・ホスト負荷を分析し、lane `code-map`の地図を照合に使う。
+5. 観測とコードから改善を選ぶ。lane `indexes`・`obvious-fixes`のcommitは観測と照合して効くものから`git cherry-pick`し（laneの完了を待たない）、残りは実装・ローカル検証・commit・deployを進める。
 6. 通常の`isuscope run`で比較し、仮説の判定と変更の採否を記録する。障害があれば原因調査から修正・再評価まで続ける。
 
 先行importは読解用の暫定snapshotであり、全配布先のdigest一致と設定の正本化は完全importで確認する。並行作業はlane（`scripts/lane.py`）か`make worktree`で行う。remote操作はmain側で共通lockを使う。
@@ -92,7 +92,9 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 ## 初回ベンチを実行する
 
-初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。完全importのcommit後に`make first-bench`で`phase1-check`・deployから続けて、人間の確認を待たずに実行する。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[初動自動化](../initial-automation.md)の「ベンチ前gateと初回run」を参照する。
+初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。完全importのcommit後に`make first-bench`で、人間の確認を待たずに実行する。
+
+最初のdeployの前は、サーバーが完全importと同じ内容（配布状態）で動いている。`make first-bench`は、HEADがimportしたdigestのままで（`scripts/imported-state.py`）、アプリのunitが全nodeで動いてlistenしていれば、そのcommitを稼働中として記録し（`.local/current-import-commit`）、ローカルbuildとdeployを待たずにbaselineを取る。その後に同じcommitをdeployし、deploy経路を最初の改善より前に確かめる。baselineの実行ファイルは配布されたbuild、2本目以降は自前のbuild（Rust 1.99.0）になるので、最初の改善runの比較にはその差が混ざり得る。配布サーバーのRust版（`.local/phase1-build/environment.txt`）が大きく違う場合は`docs/baseline.md`に書き、小さな差の判定に注意する。配布状態で測れないとき（記録がない、importの後に配る対象を変えた、unitが動いていない、既にdeployした）は、deployしてから測る。`FIRST_BENCH_MODE=deploy`なら常にdeployが先になる。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[初動自動化](../initial-automation.md)の「ベンチ前gateと初回run」を参照する。
 
 確認するもの：
 
@@ -143,7 +145,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 インデックスは、対象のSQL、初期化後の行数、効果を確かめたrun IDを`docs/indexes.md`へ残す。読み取りのキャッシュ・メモリ化と、DB・アプリ・nginxを別のnodeへ分ける配置変更は、次節の条件でPhase 1でも入れてよい。整合性条件を変えるもの、非同期化、write-behindなど永続化の時機を変えるものはPhase 1では実装しない。
 
-この一掃は初動の待ち時間と並行して進める作業であり、次の判断を止めるgateではない。先行回収の直後からlane `obvious-fixes`が`lane/obvious-fixes`へ1件1commitで実装する（deployはしない）。初回runから得た上位SQL・HTTP・エラーとそのcommitを照合し、効くものだけを選んで取り込む。根拠が弱い変更は保留する。変更を反映した最初の`isuscope run`で大きく改善することを確認し、その後はボトルネックごとの短いサイクルに切り替える。
+この一掃は初動の待ち時間と並行して進める作業であり、次の判断を止めるgateではない。先行回収の直後からlane `indexes`が`lane/indexes`へ索引を、lane `obvious-fixes`が`lane/obvious-fixes`へ索引以外の修正を、1件1commitで実装する（deployはしない）。commitのたびに`.local/progress.log`へ`lane:<名前> commit`が出るので、初回runから得た上位SQL・HTTP・エラーと照合し、効くcommitからlaneの完了を待たずに`git cherry-pick`する。根拠が弱い変更は保留する。変更を反映した最初の`isuscope run`で大きく改善することを確認し、その後はボトルネックごとの短いサイクルに切り替える。
 
 ## baselineの後に次の変更を選ぶ
 
