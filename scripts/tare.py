@@ -14,7 +14,7 @@ the application's 1024 open files, the 511 listen backlog and 4096 worker connec
 - the Rust unit (the synced rust-service item): LimitNOFILE
 - /etc/sysctl.d/99-tare.conf: accept queues, SYN backlog, ephemeral ports, TIME_WAIT reuse
 - MySQL: max_connections, and innodb_buffer_pool_size from the DB node's memory
-- deploy commands: daemon-reload, sysctl --system, and a MySQL restart to load them, each
+- deploy commands: daemon-reload, loading 99-tare.conf, and a MySQL restart to load them, each
   limited by "when" to deploys that change the unit, the sysctl file or the MySQL settings
 
 The edited files are committed together. Rerunning on an applied tree changes nothing.
@@ -292,12 +292,13 @@ def buffer_pool_mb(root, sync, mysql_items):
     return size, f'innodb_buffer_pool_size {size}M = {"70" if alone else "40"}% of {source} {memory} MiB'
 
 
-def ensure_command(commands, entry, first=False, before=None):
+def ensure_command(commands, entry, first=False, before=None, replaces=()):
     if entry in commands:
         return commands
-    # The same command from an earlier tare (without "when") is updated in place.
+    # The same command from an earlier tare (without "when", or an older form) is updated in place.
     for index, command in enumerate(commands):
-        if isinstance(command, dict) and (command.get('node_group'), command.get('command')) == (entry['node_group'], entry['command']):
+        if isinstance(command, dict) and command.get('node_group') == entry['node_group'] and \
+                command.get('command') in (entry['command'], *replaces):
             return commands[:index] + [entry] + commands[index + 1:]
     if first:
         return [entry] + commands
@@ -386,11 +387,13 @@ def main():
     # "when" keeps each command to deploys that change its files (scripts/deploy-plan.py):
     # a Rust-only change must not restart MySQL and empty its buffer pool before every run.
     reload = {'node_group': 'application', 'command': 'sudo systemctl daemon-reload', 'when': ['rust-service']}
-    sysctl = {'node_group': 'application', 'command': 'sudo sysctl --system >/dev/null', 'when': ['tare-sysctl']}
+    # Only tare's own file: `sysctl --system` also reloads the OS defaults, whose keys the instance
+    # may not have, and printed "Invalid argument" after every deploy (practice-12-sixth).
+    sysctl = {'node_group': 'application', 'command': 'sudo sysctl -q -p /etc/sysctl.d/99-tare.conf', 'when': ['tare-sysctl']}
     restart_mysql = {'node_group': 'role_mysql', 'command': 'sudo systemctl restart mysql', 'when': ['mysql-*']}
     for key in ('post_deploy_commands', 'rollback_commands'):
         commands = sync.get(key, [])
-        commands = ensure_command(commands, sysctl, first=True)
+        commands = ensure_command(commands, sysctl, first=True, replaces=('sudo sysctl --system >/dev/null',))
         commands = ensure_command(commands, reload, first=True)
         if mysql_dir:
             commands = ensure_command(commands, restart_mysql,

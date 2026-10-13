@@ -170,7 +170,7 @@ class TareTest(unittest.TestCase):
         sync = json.loads(self.read('config/sync.json'))
         self.assertTrue(any(item['remote'] == '/etc/sysctl.d/99-tare.conf' for item in sync['items']))
         commands = [c if isinstance(c, str) else c['command'] for c in sync['post_deploy_commands']]
-        self.assertEqual(commands[:2], ['sudo systemctl daemon-reload', 'sudo sysctl --system >/dev/null'])
+        self.assertEqual(commands[:2], ['sudo systemctl daemon-reload', 'sudo sysctl -q -p /etc/sysctl.d/99-tare.conf'])
         self.assertLess(commands.index('sudo systemctl restart mysql'), commands.index('sudo systemctl is-active --quiet mysql'))
         self.assertIn('sudo systemctl daemon-reload', [c if isinstance(c, str) else c['command'] for c in sync['rollback_commands']])
 
@@ -181,6 +181,17 @@ class TareTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('already applied', result.stdout)
         self.assertEqual(git(self.root, 'rev-parse', 'HEAD'), head)
+
+    def test_rerun_replaces_the_reload_of_every_sysctl_file(self):
+        # An earlier tare ran `sysctl --system`, which warned about the OS defaults after every deploy.
+        self.assertEqual(self.run_tare().returncode, 0)
+        path = self.root / 'config/sync.json'
+        path.write_text(path.read_text().replace('sudo sysctl -q -p /etc/sysctl.d/99-tare.conf', 'sudo sysctl --system >/dev/null'))
+        git(self.root, 'commit', '-qam', 'older tare')
+        self.assertEqual(self.run_tare().returncode, 0)
+        commands = [c if isinstance(c, str) else c['command'] for c in json.loads(self.read('config/sync.json'))['post_deploy_commands']]
+        self.assertNotIn('sudo sysctl --system >/dev/null', commands)
+        self.assertEqual(commands.count('sudo sysctl -q -p /etc/sysctl.d/99-tare.conf'), 1)
 
     def test_refuses_to_mix_with_uncommitted_edits(self):
         path = self.root / 'config/nginx/nginx.conf'

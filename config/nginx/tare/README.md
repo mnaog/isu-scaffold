@@ -13,7 +13,7 @@
 | Rustのunit | `LimitNOFILE=1048576` |
 | `/etc/sysctl.d/99-tare.conf` | somaxconn、SYN backlog、netdev backlog、ephemeral port、TIME_WAITの再利用 |
 | MySQL（`mysql.conf.d/zz-tare.cnf`） | `max_connections 1000`、`innodb_buffer_pool_size`（DB nodeのメモリの40%、MySQLだけのnodeなら70%） |
-| deployのcommand | 先頭に`daemon-reload`と`sysctl --system`、MySQLの`is-active`の前に`restart mysql`。それぞれ`when`（`rust-service`、`tare-sysctl`、`mysql-*`）付きで、そのitemが変わったdeployでだけ動く |
+| deployのcommand | 先頭に`daemon-reload`と`sysctl -q -p /etc/sysctl.d/99-tare.conf`、MySQLの`is-active`の前に`restart mysql`。それぞれ`when`（`rust-service`、`tare-sysctl`、`mysql-*`）付きで、そのitemが変わったdeployでだけ動く |
 
 fsync・binlogなど耐久性を変える設定と、下のB1のsendfileなどは入れない。practice-14ではこれらの既定値（keepalive_requests 1000、アプリのfd 1024、listen backlog 511、worker_connections 4096）で、後からFAILが4回出た。
 
