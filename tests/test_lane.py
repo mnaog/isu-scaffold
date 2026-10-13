@@ -86,7 +86,7 @@ class LaneTests(unittest.TestCase):
         status = self.status()
         self.assertEqual(status['state'], 'complete', status)
         worktree = Path(status['worktree'])
-        self.assertEqual(worktree, self.repo.parent / 'repo-code-map')
+        self.assertEqual(worktree.resolve(), (self.repo.parent / 'repo-code-map').resolve())
         self.assertEqual(status['branch'], 'lane/code-map')
         call = json.loads(self.record.read_text())
         self.assertEqual(Path(call['cwd']).resolve(), worktree.resolve())

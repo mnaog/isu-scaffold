@@ -25,6 +25,7 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/local-build.py \
   "${source_repo}"/scripts/sync-check.sh \
   "${source_repo}"/scripts/deploy.sh \
+  "${source_repo}"/scripts/deploy-plan.py \
   "${source_repo}"/scripts/rollback.sh \
   "${source_repo}"/scripts/status.sh \
   "${source_repo}"/scripts/import.sh \
@@ -459,6 +460,12 @@ test "$(cat "${fixture_repo}/.local/current-commit")" = \
   "$(git -C "${fixture_repo}" rev-parse HEAD)"
 
 # 同じcommitを続けてdeployしてもtransaction IDが衝突しません。
+# 変更のないcommitを続けてdeployしても、何も送らずreleaseも変えません。
+unchanged_output=$(cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" ./scripts/deploy.sh 2>&1)
+grep -q 'nothing to send' <<<"${unchanged_output}"
+test "$(cat "${fixture_repo}/.local/current-release")" = "${first_release}"
+# 以降はtransaction・build・rollbackの検査なので、変更の有無によらず全itemを送ります。
+export DEPLOY_ALL=1
 (cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" ./scripts/deploy.sh)
 second_release=$(cat "${fixture_repo}/.local/current-release")
 test "${first_release}" != "${second_release}"

@@ -77,6 +77,8 @@ class AdapterTest(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         return json.loads(completed.stdout.strip().splitlines()[-1])
 
+    # The fake ssh runs the node-side command here, and the benchmark node has GNU timeout and setsid.
+    @unittest.skipUnless(shutil.which('timeout') and shutil.which('setsid'), 'needs GNU timeout and setsid')
     def test_ssh_benchmark_is_stopped_on_the_benchmark_node_too(self):
         # Killing the local ssh leaves a remote command without a pty running; the next run
         # would overlap it. The node-side timeout ends it, and the local one waits past it.
@@ -93,6 +95,8 @@ class AdapterTest(unittest.TestCase):
         remote = (self.root / 'remote-command').read_text()
         self.assertTrue(remote.startswith("echo $$ > /tmp/isuscope-benchmark.pid; exec timeout -k 10 1 sh -c 'printf "), remote)
 
+    # The fake ssh runs the node-side command here, and the benchmark node has GNU timeout and setsid.
+    @unittest.skipUnless(shutil.which('timeout') and shutil.which('setsid'), 'needs GNU timeout and setsid')
     def test_isuscope_timeout_wins_and_cleanup_stops_the_remote_group(self):
         fake = self.root / 'scripts/ssh-node.sh'
         fake.write_text('#!/bin/bash\nprintf "%s\\n" "$2" >> "$(dirname "$0")/../remote-commands"\n'
