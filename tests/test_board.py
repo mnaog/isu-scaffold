@@ -9,7 +9,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
 import unittest
 from unittest.mock import patch
 import urllib.error
@@ -455,13 +454,6 @@ class BoardTests(unittest.TestCase):
             caught.exception.close()
         finally:
             p.terminate();p.wait(timeout=5);p.stdout.close()
-
-    def wait_for(self, test):
-        end=time.monotonic()+8
-        while time.monotonic()<end:
-            if test():return
-            time.sleep(.05)
-        self.fail('condition timeout')
 
 
 @unittest.skipUnless(os.environ.get('ISUSCOPE_BOARD_REPO'), 'set ISUSCOPE_BOARD_REPO to a repository with finished runs')
