@@ -8,6 +8,17 @@ from collections import Counter
 from pathlib import Path
 
 REPO_DIR = Path(__file__).resolve().parent.parent
+
+
+def slow_log_enabled(repo: Path, ansible_vars: dict) -> bool:
+    """Share review-draft.py's reading of observability_mysql_slow_log."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("review_draft", Path(__file__).with_name("review-draft.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.slow_log_enabled(repo, ansible_vars)
+
+
 # Deploying all of webapp/ copies the initial data on every release; deploy the adopted
 # language and small schema/init files instead and leave the data on the nodes.
 SQL_SUFFIXES = {".sql", ".sh"}
@@ -573,7 +584,8 @@ def main() -> int:
         warnings.append("webapp owner/group defaulted to the SSH user; confirm them before applying")
     if not nginx_logs:
         warnings.append("Nginx access log was not detected; default path is only a candidate")
-    if not mysql_logs:
+    # The slow log is off unless bootstrap turns it on; only then does a missing path matter.
+    if not mysql_logs and slow_log_enabled(REPO_DIR, ansible_vars):
         warnings.append("MySQL slow log was not detected; default path is only a candidate")
     if not items:
         warnings.append("no sync items were inferred")

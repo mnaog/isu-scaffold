@@ -684,4 +684,14 @@ grep -q 'log=/var/log/nginx/isuscope-access.log' "${fixture_repo}/.isuscope/conf
 grep -q '^service_units = \["mysql.service", "nginx.service"\]$' \
   "${fixture_repo}/.isuscope/config.toml"
 
+# slow logは既定で無効なので、見つからなくてもWARNにしません。bootstrapで有効にする場合だけ確認を促します。
+jq '.mysql_slow_logs = []' "${fixture_repo}/.local/inspection/app1.json" >"${fixture_repo}/.local/app1-no-slow.json"
+mv "${fixture_repo}/.local/app1-no-slow.json" "${fixture_repo}/.local/inspection/app1.json"
+(cd "${fixture_repo}" && ./scripts/configure-draft.sh >/dev/null)
+jq -e '.warnings | all(test("MySQL slow log") | not)' "${fixture_repo}/.local/draft/summary.json" >/dev/null
+mkdir -p "${fixture_repo}/ansible/playbooks/group_vars"
+printf 'observability_mysql_slow_log: true\n' >"${fixture_repo}/ansible/playbooks/group_vars/all.yml"
+(cd "${fixture_repo}" && ./scripts/configure-draft.sh >/dev/null)
+jq -e '.warnings | any(test("MySQL slow log was not detected"))' "${fixture_repo}/.local/draft/summary.json" >/dev/null
+
 echo "initial automation fixture passed"
