@@ -54,9 +54,9 @@ LANE_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-
                 'inspect-environment.sh', 'phase1-check.sh', 'quick-import-code.sh', 'run-ansible-playbook.sh',
                 'status.sh', 'switch-language-service.sh', 'sync-check.sh', 'benchmark.sh',
                 'benchmark-prepare.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'phase1-build.py',
-                'lane.py', 'review-draft.py', 'check-deployed-commit.sh'}
+                'lane.py', 'review-draft.py', 'check-deployed-commit.sh', 'first-bench.sh'}
 LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap',
-                     'phase1-check', 'tare', 'practice-check', 'practice-create', 'practice-status',
+                     'phase1-check', 'first-bench', 'tare', 'practice-check', 'practice-create', 'practice-status',
                      'practice-delete'}
 # Read-only isuscope commands; everything else records, benchmarks or reaches nodes.
 LANE_ISUSCOPE = {'list', 'brief', 'query', 'sql', 'help', '--help', '-h', '--version', 'version'}

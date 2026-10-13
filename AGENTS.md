@@ -84,26 +84,23 @@ kickoffの実行中にmainのセッションが並行して進める
 review.mdのFAILを直し、WARNをすべて判断してからCONFIRM_DRAFT=true make kickoff-apply
   → draftを再検査して反映し、全配布先のdigest一致を確認して完全import
 完全importを確認して初期状態をcommit
-make phase1-check（初期buildの完了待ちに重ねて、deployの前に流す）
-  → 全node、同期、ベンチadapterと接続先、isuscope doctorをベンチなしで検査
-make deploy
-  → ローカル成果物を再利用・必要時buildし、同じbinaryを全台stagingへ配布
-  → 全台preflight・staging検査後に切り替え、失敗時はtransaction全体を復旧
-isuscope survey-run --hypothesis "..."
-  → phase1-checkが通ったら、人間の確認を待たずに初回ベンチを一度だけ実行
+make first-bench（人間の確認を待たずにすぐ実行する。次の3段階を続けて行い、失敗した段階で止まる）
+  → make phase1-check: 全node、同期、ベンチadapterと接続先、isuscope doctorをベンチなしで検査（初期buildの完了待ちに重なる）
+  → make deploy: ローカル成果物を再利用・必要時buildし、同じbinaryを全台stagingへ配布。全台preflight・staging検査後に切り替え、失敗時はtransaction全体を復旧
+  → isuscope survey-run: 初回ベンチを一度だけ実行
   → 出力の形を確かめる前ならresultはPENDING。保存された出力をsampleにして--checkを通し、isuscope rescoreで確定
 初回runの分析後に観測に基づいて改善を実装・検証
   → lane obvious-fixesのcommitをbaselineの観測と照合して選んで取り込む
   → deployし、通常のisuscope runでbaselineと比較
 ```
 
-時間の大半は「kickoffが終わるのを待つ間」と「deployから初回ベンチまで」に出る。mainのセッションは`make kickoff`の終了を待たず、`.local/progress.log`の行（`code-ready`、`phase1-build configured / needs_configuration / complete / failed`、`lane:<名前> complete / failed`、`draft-ready / draft-failed`、段階の`failed`）を見て次の操作へ移る。Claude Codeならkickoffを`run_in_background`で起動し、Monitorで`tail -n +1 -f .local/progress.log`を追う。Codexでは別のshellでkickoffを動かし、同じfileを作業の区切りごとに読む。ベンチ接続の準備はkickoffの結果を使わないので、kickoffの開始と同時に始める。`phase1-check`はdeployに依存しないので、deployの前に流して初期buildの待ち時間に重ねる。deployで設定（nginx、MySQL、unit）を変えたときだけ再実行する。
+時間の大半は「kickoffが終わるのを待つ間」と「deployから初回ベンチまで」に出る。mainのセッションは`make kickoff`の終了を待たず、`.local/progress.log`の行（`code-ready`、`phase1-build configured / needs_configuration / complete / failed`、`lane:<名前> complete / failed`、`draft-ready / draft-failed`、段階の`failed`）を見て次の操作へ移る。Claude Codeならkickoffを`run_in_background`で起動し、Monitorで`tail -n +1 -f .local/progress.log`を追う。Codexでは別のshellでkickoffを動かし、同じfileを作業の区切りごとに読む。ベンチ接続の準備はkickoffの結果を使わないので、kickoffの開始と同時に始める。`make first-bench`は段階の間でAIの手番を待たない。`phase1-check`はdeployに依存しないので、deployの前に流して初期buildの待ち時間に重ねる。段階を個別にやり直すときは`make phase1-check`、`make deploy`、`isuscope survey-run`を直接使う。deployで設定（nginx、MySQL、unit）を変えたときだけ`phase1-check`を再実行する。
 
 採用言語はRustに固定する（`config/application.env`）。先行回収は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は`kickoff-apply`のimportで完了する。`kickoff`は再実行でき、回収済みならimportを飛ばし、初期buildと完了・実行中のlaneは重複起動しない。draftの判断は`review.md`を読んだ操作者（人間またはこのセッション）が行い、`make`の中で別のAIを呼んで承認させない。`make`は初動・deploy・検査とボードの入口に絞っており、個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
 
 - 計測と運用の土台（計測tool、LTSV access log、時刻同期、journal、自動更新停止）は初動のAnsibleで固定化し（SQLはisuscopeがperformance_schemaから取るので、slow logは既定で無効）、レギュレーションで禁止された項目だけ変数で外す。性能を変える設定（`config/nginx/tare`、networking sysctl、MySQLの性能設定）は初回baselineの後に1つの変更として入れる。接続・fdの上限（nginxのworker_connections・backlog・keepalive、アプリのLimitNOFILE、sysctl、MySQLのmax_connectionsとbuffer pool）は`make tare`が1つのcommitにするので、baselineの後に早めにdeployして`isuscope run`で測る。
 - ベンチの前には毎回、isuscopeの`prepare_command`（`scripts/benchmark-prepare.sh`）が動いているアプリのunitを再起動し、listenを待つ。前のベンチが途中で切ったrequestのtransactionが、次のinitializeを止めないようにするため。その前に、最後にdeployしたcommitとHEADを、deployが配るファイルに限って照合し、ずれていればベンチを始めない（`scripts/check-deployed-commit.sh`）。止まったら、commitして`make deploy`するか、HEADを戻す。
-- `kickoff`、`bootstrap`、`phase1-check`からベンチを起動しない。`isuscope survey-run`は必ず独立した明示操作にし、`phase1-check`が通ったら作業中のAIが人間の確認を待たずに実行する。
+- `kickoff`、`bootstrap`、`phase1-check`、laneからベンチを起動しない。初回ベンチは`make first-bench`（または`isuscope survey-run`）を独立した明示操作としてmainのセッションから実行し、runへその会話を紐付ける。import のcommitが済んだら、作業中のAIが人間の確認を待たずに実行する。
 - kickoffが起動するlaneは`config/lanes.json`の`kickoff`（既定は`code-map`と`obvious-fixes`）。`KICKOFF_LANES=`で止め、`KICKOFF_LANES="code-map"`のように選べる。baseline後に並行させたい調査や実装は、promptを書いて`python3 scripts/lane.py start <名前> --prompt-file <path> --purpose "..."`で起動する。進行は`make lanes`で見る。
 - laneの`code-map`は文書だけなので、終わり次第mainへmergeしてよい。`obvious-fixes`のcommitは初回baselineの分析の後、観測と照合して選んで取り込み（`git merge`、または一部なら`git cherry-pick`）、deployして`isuscope run`で測る。laneの最後の回答にある「実装しなかった候補」も次の変更を選ぶ材料にする。
 - 並行作業を手で行うなら`make worktree BRANCH=<name> PURPOSE="..."`で作る。目的はbranchへ記録する。変更目的ごとにcommitを分け、検証結果と評価したcommitを残す。

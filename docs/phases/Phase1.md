@@ -14,8 +14,8 @@ SSH確立直後に採用言語のコードとDB schemaを先行importし、初�
 
 1. `make kickoff`をバックグラウンドで始め、`.local/progress.log`を追う。コードとschemaの先行回収・commitの後、build laneとAI laneが並行で始まる。
 2. kickoffと並行して、公式資料の保存、`config/benchmark.env`・`benchmark-contract`の用意、`--check`・`--probe`を済ませる。build設定が自動生成されたら確認してcommitし、設定待ちなら`config/phase1-build.json`を作る。
-3. draftを判断して`kickoff-apply`し、完全importをcommitする。初期buildの完了を待つ間に`phase1-check`を流し、`make deploy`する。
-4. `phase1-check`とdeployが通ったら、人間の確認を待たずに初期状態の`survey-run`を明示実行し、スコア・エラー・HTTP・SQL・ホスト負荷を分析する。lane `code-map`の地図を照合に使う。
+3. draftを判断して`kickoff-apply`し、完全importをcommitする。
+4. 人間の確認を待たずに`make first-bench`を実行する。`phase1-check`（初期buildの完了待ちに重なる）、deploy、初期状態の`survey-run`を続けて行う。スコア・エラー・HTTP・SQL・ホスト負荷を分析し、lane `code-map`の地図を照合に使う。
 5. 観測とコードから改善を選ぶ。lane `obvious-fixes`のcommitは観測と照合して取り込み、残りは実装・ローカル検証・commit・deployを進める。
 6. 通常の`isuscope run`で比較し、仮説の判定と変更の採否を記録する。障害があれば原因調査から修正・再評価まで続ける。
 
@@ -92,7 +92,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 ## 初回ベンチを実行する
 
-初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。`make phase1-check`が通ったら、人間の確認を待たずに実行する。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[初動自動化](../initial-automation.md)の「ベンチ前gateと初回run」を参照する。
+初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。完全importのcommit後に`make first-bench`で`phase1-check`・deployから続けて、人間の確認を待たずに実行する。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[初動自動化](../initial-automation.md)の「ベンチ前gateと初回run」を参照する。
 
 確認するもの：
 

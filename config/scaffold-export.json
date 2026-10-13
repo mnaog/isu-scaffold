@@ -106,7 +106,9 @@
     "config/lanes/code-map.md",
     "config/lanes/obvious-fixes.md",
     "config/rust-builder/bases.json",
-    "tests/test_lane.py"
+    "tests/test_lane.py",
+    "scripts/first-bench.sh",
+    "tests/test_first_bench.py"
   ],
   "remove_files": [
     "docs/roles/operator.md",

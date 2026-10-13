@@ -181,6 +181,8 @@ class ToolGuardTest(unittest.TestCase):
             'rsync -a webapp/ isucon14-app1:/home/isucon/webapp/',
             'make deploy',
             'make -j2 kickoff',
+            'make first-bench',
+            'isuscope survey-run --hypothesis "初期状態"',
             'bash scripts/deploy.sh',
             './scripts/import.sh',
             'python3 scripts/tare.py',
