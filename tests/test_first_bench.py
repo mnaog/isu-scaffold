@@ -17,7 +17,8 @@ class FirstBenchTests(unittest.TestCase):
         self.repo = Path(self.tmp.name)
         for folder in ('scripts', 'bin', 'webapp/rust', 'config', '.local'):
             (self.repo / folder).mkdir(parents=True)
-        for name in ('first-bench.sh', 'stage-lib.sh', 'progress.py', 'imported-state.py', 'tree-digest.py'):
+        for name in ('first-bench.sh', 'stage-lib.sh', 'progress.py', 'imported-state.py', 'tree-digest.py',
+                     'check-deployed-commit.sh'):
             shutil.copy(ROOT / 'scripts' / name, self.repo / 'scripts' / name)
         for name in ('phase1-check.sh', 'deploy.sh', 'benchmark-prepare.sh'):
             step = name.removesuffix('.sh')
@@ -72,6 +73,18 @@ class FirstBenchTests(unittest.TestCase):
                                         'isuscope survey-run --hypothesis 初期状態を記録する', 'deploy'])
         self.assertEqual((self.repo / '.local/current-import-commit').read_text().strip(), self.head())
         self.assertEqual(self.states(), ['started', 'checked', 'distributed', 'baseline-ready', 'deployed', 'complete'])
+
+    def test_a_change_committed_during_the_baseline_is_not_deployed_unmeasured(self):
+        self.record_import()
+        # The fake survey-run stands for the agent cherry-picking a lane commit meanwhile.
+        (self.repo / 'bin/isuscope').write_text(
+            '#!/bin/sh\necho "isuscope $*" >> "$EVENTS"\n'
+            'echo "fn main() { indexed() }" > webapp/rust/main.rs\n'
+            'git -c user.name=t -c user.email=t@example.com commit -qam "Add an index"\n')
+        result = self.run_first_bench()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('deploy', self.lines())
+        self.assertEqual(self.states()[-2:], ['deploy-skipped', 'complete'])
 
     def test_deploys_first_when_the_distributed_state_cannot_be_used(self):
         cases = {

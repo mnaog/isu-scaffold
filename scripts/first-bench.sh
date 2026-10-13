@@ -58,8 +58,14 @@ if [[ "${distributed}" == true ]]; then
   progress distributed "benchmarking the distributed build at $(git rev-parse --short HEAD) without waiting for build and deploy"
   stage survey-run isuscope survey-run --hypothesis "${hypothesis}"
   progress baseline-ready "analyze with isuscope brief latest; deploying the same commit meanwhile"
-  stage deploy "${script_dir}/deploy.sh"
-  progress deployed "$(git rev-parse --short HEAD) built locally and deployed; later runs use this build"
+  # Deploy only what was measured: a change committed during the survey-run (make tare, a
+  # cherry-picked lane commit) must get its own run, so it is not shipped here unmeasured.
+  if "${script_dir}/check-deployed-commit.sh" >/dev/null 2>&1; then
+    stage deploy "${script_dir}/deploy.sh"
+    progress deployed "$(git rev-parse --short HEAD) built locally and deployed; later runs use this build"
+  else
+    progress deploy-skipped "HEAD changed deployed files after the baseline; make deploy with the next isuscope run"
+  fi
 else
   stage deploy "${script_dir}/deploy.sh"
   progress deployed "$(git rev-parse --short HEAD); starting survey-run"
