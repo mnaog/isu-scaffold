@@ -683,12 +683,14 @@ test ! -e "${fixture_repo}/.local/draft/service-switch.json"
 # sessionを識別するnginx変数をコードから推定し、確認を促します。
 jq -e '.observability_nginx_session_source == "$cookie_app_session$cookie_owner_session"' \
   "${fixture_repo}/.local/draft/ansible-vars.json" >/dev/null
-# fingerprintは配った実体（Rustはbinary、単一file、/etc/systemd/systemのunit）だけを比べ、
+# fingerprintは配った実体（Rustはbinaryと、同期する単一file）だけを比べ、
 # directoryの中身はidentity_commandに任せます。
 jq -e '.isuscope_fingerprint_paths as $p
   | ($p | index("/home/isucon/webapp/rust/target/release/isu-app")) != null
   and ($p | index("/home/isucon/env.sh")) != null
   and ($p | index("/home/isucon/webapp/rust")) == null
+  and ($p | index("/etc/systemd/system/isu-rust.service")) != null
+  and ($p | index("/etc/systemd/system/nginx.service")) == null
   and ($p | all(startswith("/lib/systemd/") | not))' \
   "${fixture_repo}/.local/draft/ansible-vars.json" >/dev/null
 jq -e '.warnings | any(test("session source guessed"))' "${fixture_repo}/.local/draft/summary.json" >/dev/null

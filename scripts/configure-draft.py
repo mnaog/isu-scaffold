@@ -542,15 +542,15 @@ def main() -> int:
     }
 
     # The fingerprint checks what the nodes actually run, before every benchmark: a locally built
-    # item by its binary, synced single files, and the units defined in /etc/systemd/system.
-    # Synced directories are left out: identity_command already compares their committed content,
-    # and hashing a large tree (static files, a source tree with target/) on every node before
-    # every run costs seconds. Package units are covered by the nginx/MySQL versions.
+    # item by its binary, and the synced single files (the app's unit, env, nginx and MySQL
+    # configuration). Synced directories are left out: identity_command already compares their
+    # committed content, and hashing a large tree (static files, a source tree with target/) on
+    # every node before every run costs seconds. Other units under /etc/systemd/system (snap,
+    # the other languages' implementations) are not ours to change and only add noise.
     built = {build["item"]: build["binary"] for build in local_builds}
     fingerprint_paths = sorted(
         {f"{item['remote']}/target/release/{built[item['name']]}" for item in items if item["name"] in built}
         | {item["remote"] for item in items if item.get("type") == "file"}
-        | {path for path in service_fragments if path.startswith("/etc/systemd/system/")}
     )
     available_tools_by_node = {
         node: sorted(
