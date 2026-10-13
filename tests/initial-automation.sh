@@ -313,7 +313,8 @@ case "${command}" in
   *tree-digest.py*'/etc/nginx/nginx.conf'*) exec python3 "${TREE_DIGEST:?}" "${root}/etc/nginx/nginx.conf" ;;
   *"tar -C '/home/isucon/webapp/rust'"*) exec tar -C "${root}/home/isucon/webapp/rust" --exclude='./target' -cf - . ;;
   *"sudo -n python3 -c"*) exec bash -c "$(sed -e 's|^sudo -n ||' -e "s| /home/isucon/webapp/sql | ${root}/home/isucon/webapp/sql |" <<<"${command}")" ;;
-  *"tar -C '/home/isucon/webapp'"*) exec tar -C "${root}/home/isucon/webapp" -cf - . ;;
+  *"tar -C '/home/isucon/webapp'"*)
+    exec bash -c "$(sed -e "s|^sudo tar -C '/home/isucon/webapp'|tar -C '${root}/home/isucon/webapp'|" <<<"${command}")" ;;
   *"tar -C '/etc/nginx'"*) exec tar -C "${root}/etc/nginx" -cf - nginx.conf ;;
   *) echo "unexpected fake import command: ${command}" >&2; exit 1 ;;
 esac
@@ -341,8 +342,12 @@ test ! -e "${fixture_root}/no-purpose"
   FAKE_REMOTE_ROOT="${fake_remote}" TREE_DIGEST="${fixture_repo}/scripts/tree-digest.py" \
   ./scripts/import.sh)
 grep -q '^remote application$' "${fixture_repo}/webapp/main.txt"
+# 同期itemのexcludeはdigestと転送の両方から外し、build成果物を回収しません。
+test ! -e "${fixture_repo}/webapp/rust/target"
 test "$(wc -l <"${fixture_repo}/.local/import-comparison.tsv" | tr -d ' ')" -eq 5
-# 内容が一致するlocal itemは再転送しません。
+# 内容が一致するlocal itemは再転送しません。除外したpathがlocalだけにあっても同じです。
+mkdir -p "${fixture_repo}/webapp/rust/target"
+printf 'local build output\n' >"${fixture_repo}/webapp/rust/target/local.bin"
 reimport_output=$(cd "${fixture_repo}" && \
   FAKE_REMOTE_ROOT="${fake_remote}" TREE_DIGEST="${fixture_repo}/scripts/tree-digest.py" \
   ./scripts/import.sh 2>/dev/null)

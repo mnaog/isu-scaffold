@@ -10,7 +10,8 @@
       "local": "webapp/rust",
       "remote": "/home/isucon/webapp/rust",
       "owner": "isucon",
-      "owner_group": "isucon"
+      "owner_group": "isucon",
+      "exclude": ["target", ".git"]
     }
   ],
   "build_commands": [],

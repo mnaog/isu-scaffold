@@ -28,7 +28,11 @@ sync_validate() {
         . != "/" and . != "/etc" and . != "/home" and . != "/opt" and
         . != "/root" and . != "/srv" and . != "/usr" and . != "/var") and
       (.owner | type == "string" and test("^[A-Za-z0-9_.-]+$")) and
-      (.owner_group | type == "string" and test("^[A-Za-z0-9_.-]+$"))) and
+      (.owner_group | type == "string" and test("^[A-Za-z0-9_.-]+$")) and
+      ((.exclude // []) | type == "array" and all(.[];
+        type == "string" and test("^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$") and
+        (split("/") | index("..") == null and index(".") == null))) and
+      (.type == "directory" or (.exclude // []) == [])) and
     ((.build_commands // []) | type == "array" and
       (map(.name) | length == (unique | length)) and all(.[];
       (type == "object") and

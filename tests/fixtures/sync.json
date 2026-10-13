@@ -10,7 +10,8 @@
       "local": "webapp",
       "remote": "/home/isucon/webapp",
       "owner": "isucon",
-      "owner_group": "isucon"
+      "owner_group": "isucon",
+      "exclude": ["rust/target"]
     },
     {
       "name": "nginx-conf",

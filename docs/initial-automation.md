@@ -182,7 +182,7 @@ make deploy
 make status
 ```
 
-`import`は対象groupの全nodeでpathの内容・mode・symlinkをdigest比較し、不一致なら回収前に停止します。意図した差異だと確認した場合だけ`IMPORT_ALLOW_DIVERGENT=true ./scripts/import.sh`とし、itemごとの`source_node`から回収します。比較表は`.local/import-comparison.tsv`へ残ります。
+`import`は対象groupの全nodeでpathの内容・mode・symlinkをdigest比較し、不一致なら回収前に停止します。意図した差異だと確認した場合だけ`IMPORT_ALLOW_DIVERGENT=true ./scripts/import.sh`とし、itemごとの`source_node`から回収します。比較表は`.local/import-comparison.tsv`へ残ります。directory itemの`exclude`（itemからの相対path）は、digest比較と転送の両方から外します。draftのRust itemは`target`と`.git`を除外します。build成果物はGit管理もdeployもしないので、回収すると不要な転送が増え（practice-14では約720MiB）、node間でbuild状態が違うだけで不一致として止まるためです。実行時に必要なファイルが除外pathの下にあるなら、`exclude`から外して明示的に回収します。
 
 `deploy`は未コミットの同期対象を拒否します。全nodeでsudo、owner/group、空き容量、配置先をpreflightし、全fileをstagingし、build commandを完了してから切り替えます。一台でもbuild、配置、post-deploy検証に失敗すると、そのtransactionで触れた全対象を元へ戻し、live切替後なら`rollback_commands`で稼働プロセスも旧構成へ戻します。rollback自体が失敗した場合、stateは`rollback-failed`になります。
 

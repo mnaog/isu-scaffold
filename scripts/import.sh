@@ -42,15 +42,26 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Item excludes (sync.json "exclude") leave build outputs such as Rust target/ out of the
+# digest on both sides and out of the transfer, so they are neither compared nor copied.
+exclude_args() {
+  local mode=$1 path
+  for path in $2; do
+    case "${mode}" in
+      digest) printf " --exclude '%s'" "${path}" ;;
+      tar) printf " --exclude='./%s'" "${path}" ;;
+    esac
+  done
+}
 digest_node() {
-  local node=$1 name remote command="set -eu # ISUCON_DIGEST_BATCH" expected=0
-  while IFS=$'\t' read -r name remote; do
+  local node=$1 name remote excludes command="set -eu # ISUCON_DIGEST_BATCH" expected=0
+  while IFS=$'\t' read -r name remote excludes; do
     command+=$'\n'
-    command+="printf '${name}\\t'; sudo python3 /usr/local/lib/isuscope/tree-digest.py '${remote}'"
+    command+="printf '${name}\\t'; sudo python3 /usr/local/lib/isuscope/tree-digest.py '${remote}'$(exclude_args digest "${excludes}")"
     expected=$((expected+1))
   done < <(jq -r --arg node "${node}" --slurpfile inv "${sync_inventory}" '
     .items[] | select($inv[0].all.children[.node_group].hosts | has($node)) |
-    [.name,.remote] | @tsv' "${sync_manifest}")
+    [.name,.remote,((.exclude // []) | join(" "))] | @tsv' "${sync_manifest}")
   "${script_dir}/ssh-node.sh" "${node}" "${command}" </dev/null >"${workspace}/digests/${node}"
   test "$(wc -l <"${workspace}/digests/${node}" | tr -d ' ')" -eq "${expected}"
 }
@@ -85,13 +96,16 @@ if [[ "${divergent}" != 0 && "${IMPORT_ALLOW_DIVERGENT:-false}" != true ]]; then
 fi
 
 stage_node() {
-  local source=$1 name type path remote expected digest staged parent base
-  while IFS=$'\t' read -r name type path remote; do
+  local source=$1 name type path remote excludes exclude expected digest staged parent base
+  local -a digest_excludes
+  while IFS=$'\t' read -r name type path remote excludes; do
+    digest_excludes=()
+    for exclude in ${excludes}; do digest_excludes+=(--exclude "${exclude}"); done
     expected=$(awk -F '\t' -v name="${name}" '$1==name{print $2}' "${workspace}/digests/${source}")
     [[ "${expected}" =~ ^[0-9a-f]{64}$ ]] || { echo "missing source digest: ${name} on ${source}" >&2; return 1; }
     digest=
     if [[ -e "${sync_repo_dir}/${path}" || -L "${sync_repo_dir}/${path}" ]]; then
-      digest=$(python3 "${script_dir}/tree-digest.py" "${sync_repo_dir}/${path}")
+      digest=$(python3 "${script_dir}/tree-digest.py" "${sync_repo_dir}/${path}" ${digest_excludes[@]+"${digest_excludes[@]}"})
     fi
     if [[ "${digest}" == "${expected}" ]]; then
       touch "${workspace}/reuse/${name}"
@@ -102,17 +116,17 @@ stage_node() {
     mkdir -p "${staged}"
     echo "importing ${name} from ${source}:${remote}"
     if [[ "${type}" == directory ]]; then
-      "${script_dir}/ssh-node.sh" "${source}" "sudo tar -C '${remote}' -cf - ." </dev/null | tar -C "${staged}" -xpf -
+      "${script_dir}/ssh-node.sh" "${source}" "sudo tar -C '${remote}'$(exclude_args tar "${excludes}") -cf - ." </dev/null | tar -C "${staged}" -xpf -
     else
       parent=$(dirname -- "${remote}"); base=$(basename -- "${remote}")
       "${script_dir}/ssh-node.sh" "${source}" "sudo tar -C '${parent}' -cf - '${base}'" </dev/null | tar -C "${staged}" -xpf -
       mv "${staged}/${base}" "${staged}/item"
       staged=${staged}/item
     fi
-    digest=$(python3 "${script_dir}/tree-digest.py" "${staged}")
+    digest=$(python3 "${script_dir}/tree-digest.py" "${staged}" ${digest_excludes[@]+"${digest_excludes[@]}"})
     test "${digest}" == "${expected}" || { echo "digest mismatch after import: ${name}" >&2; return 1; }
   done < <(jq -r --arg source "${source}" '.source_node as $s | .items[] |
-    select((.source_node//$s)==$source) | [.name,.type,.local,.remote] | @tsv' "${sync_manifest}")
+    select((.source_node//$s)==$source) | [.name,.type,.local,.remote,((.exclude // []) | join(" "))] | @tsv' "${sync_manifest}")
 }
 parallel_init "${IMPORT_MAX_PARALLEL_NODES:-5}"
 while IFS= read -r source; do parallel_start stage_node "${source}"; done < <(

@@ -358,6 +358,9 @@ def main() -> int:
             "remote": remote_application,
             "owner": app_owner,
             "owner_group": app_group,
+            # Build output and a nested repository are neither committed nor deployed;
+            # the early import skips them, and the full import must not copy them back.
+            "exclude": ["target", ".git"],
         })
         example = read_json(REPO_DIR / "config/sync.rust.example.json")
         early_build = REPO_DIR / "config/phase1-build.json"

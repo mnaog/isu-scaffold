@@ -34,16 +34,24 @@ def record(path: Path, relative: str) -> dict[str, object]:
     return result
 
 
-def tree_digest(root: Path) -> str:
+def tree_digest(root: Path, excludes: frozenset = frozenset()) -> str:
+    """Digest a tree; excluded paths are relative to root and drop their whole subtree."""
     if not root.exists() and not root.is_symlink():
         raise FileNotFoundError(root)
     is_directory = root.is_dir() and not root.is_symlink()
     entries = [{"path": ".", "type": "directory"}] if is_directory else [record(root, ".")]
     if is_directory:
         for current, directories, files in os.walk(root, followlinks=False):
-            directories.sort()
-            files.sort()
             current_path = Path(current)
+            # Prune excluded directories so os.walk does not read them at all.
+            directories[:] = sorted(
+                name for name in directories
+                if (current_path / name).relative_to(root).as_posix() not in excludes
+            )
+            files[:] = sorted(
+                name for name in files
+                if (current_path / name).relative_to(root).as_posix() not in excludes
+            )
             for name in directories + files:
                 path = current_path / name
                 relative = path.relative_to(root).as_posix()
@@ -56,11 +64,13 @@ def tree_digest(root: Path) -> str:
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print(f"usage: {sys.argv[0]} PATH", file=sys.stderr)
+    arguments = sys.argv[1:]
+    excludes = arguments[2::2]
+    if not arguments or arguments[1::2] != ["--exclude"] * len(excludes) or len(arguments) % 2 != 1:
+        print(f"usage: {sys.argv[0]} PATH [--exclude RELATIVE_PATH]...", file=sys.stderr)
         return 2
     try:
-        print(tree_digest(Path(sys.argv[1])))
+        print(tree_digest(Path(arguments[0]), frozenset(excludes)))
     except (OSError, ValueError) as error:
         print(f"cannot digest {sys.argv[1]}: {error}", file=sys.stderr)
         return 1
