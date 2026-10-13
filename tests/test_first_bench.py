@@ -12,6 +12,10 @@ ROOT = Path(__file__).resolve().parent.parent
 class FirstBenchTests(unittest.TestCase):
     """make first-bench takes the baseline on the distributed build when it can, else deploys first."""
 
+    # `isuscope list` answers from .local/runs.json (no runs by default) and is not an event.
+    FAKE_LIST = ('#!/bin/sh\nif [ "$1" = list ]; then cat .local/runs.json 2>/dev/null || '
+                 'echo \'{"runs":{"columns":["id","state"],"rows":[]}}\'; exit 0; fi\n')
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.repo = Path(self.tmp.name)
@@ -25,7 +29,7 @@ class FirstBenchTests(unittest.TestCase):
             (self.repo / 'scripts' / name).write_text(
                 f'#!/bin/sh\necho "{step}${{REQUIRE_ACTIVE:+ REQUIRE_ACTIVE=$REQUIRE_ACTIVE}}${{PREPARE_CHECK_ONLY:+ check-only}}" >> "$EVENTS"\n'
                 f'[ "$FAIL" = {step} ] && exit 1\nexit 0\n')
-        (self.repo / 'bin/isuscope').write_text('#!/bin/sh\necho "isuscope $*" >> "$EVENTS"\n')
+        (self.repo / 'bin/isuscope').write_text(self.FAKE_LIST + 'echo "isuscope $*" >> "$EVENTS"\n')
         for path in [*(self.repo / 'scripts').glob('*.sh'), self.repo / 'bin/isuscope']:
             path.chmod(0o755)
         (self.repo / 'webapp/rust/main.rs').write_text('fn main() {}\n')
@@ -74,11 +78,37 @@ class FirstBenchTests(unittest.TestCase):
         self.assertEqual((self.repo / '.local/current-import-commit').read_text().strip(), self.head())
         self.assertEqual(self.states(), ['started', 'checked', 'distributed', 'baseline-ready', 'deployed', 'complete'])
 
+    def fake_survey_run(self, state):
+        """A survey-run that records one run in the given state and exits 1, as isuscope does for
+        every result that is not a PASS."""
+        runs = json.dumps({'runs': {'columns': ['id', 'state'], 'rows': [['new-run', state]]}})
+        (self.repo / 'bin/isuscope').write_text(
+            self.FAKE_LIST + 'echo "isuscope $*" >> "$EVENTS"\n'
+            f"echo '{runs}' > .local/runs.json\nexit 1\n")
+
+    def test_a_pending_baseline_still_deploys(self):
+        # practice-12-sixth: the adapter left the first result pending, isuscope exited 1 and
+        # first-bench stopped before baseline-ready and deploy.
+        self.record_import()
+        self.fake_survey_run('pending')
+        result = self.run_first_bench(HYPOTHESIS='初期状態を記録する')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.lines()[-2:], ['isuscope survey-run --hypothesis 初期状態を記録する', 'deploy'])
+        self.assertIn('isuscope rescore new-run', result.stdout)
+        self.assertEqual(self.states(), ['started', 'checked', 'distributed', 'baseline-ready', 'deployed', 'complete'])
+
+    def test_a_failed_baseline_stops_before_deploy(self):
+        self.record_import()
+        self.fake_survey_run('failed')
+        result = self.run_first_bench()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('deploy', self.lines())
+
     def test_a_change_committed_during_the_baseline_is_not_deployed_unmeasured(self):
         self.record_import()
         # The fake survey-run stands for the agent cherry-picking a lane commit meanwhile.
         (self.repo / 'bin/isuscope').write_text(
-            '#!/bin/sh\necho "isuscope $*" >> "$EVENTS"\n'
+            self.FAKE_LIST + 'echo "isuscope $*" >> "$EVENTS"\n'
             'echo "fn main() { indexed() }" > webapp/rust/main.rs\n'
             'git -c user.name=t -c user.email=t@example.com commit -qam "Add an index"\n')
         result = self.run_first_bench()

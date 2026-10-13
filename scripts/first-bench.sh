@@ -21,6 +21,32 @@ mode=${FIRST_BENCH_MODE:-auto}
 source "${script_dir}/stage-lib.sh"
 progress() { python3 "${script_dir}/progress.py" emit first-bench "$@" || true; }
 
+# The id and state of the newest run, as `isuscope list` shows them ("" when there is none).
+latest_run() {
+  isuscope list --limit 1 2>/dev/null | python3 -c '
+import json, sys
+runs = json.load(sys.stdin)["runs"]
+row = dict(zip(runs["columns"], runs["rows"][0])) if runs["rows"] else {}
+print(row.get("id", ""), row.get("state", ""))' 2>/dev/null || true
+}
+
+# isuscope exits 1 for any result that is not a PASS, also for one the adapter left pending
+# before the output's shape is known (practice-12-sixth). A pending baseline is the expected
+# first result: it is completed later with the saved output and `isuscope rescore`, so the
+# deploy after it still runs. A new run in any other state stays a failure.
+survey_run() {
+  local before code=0 id state
+  before=$(latest_run)
+  isuscope survey-run --hypothesis "${hypothesis}" || code=$?
+  [[ "${code}" -eq 0 ]] && return 0
+  read -r id state <<<"$(latest_run)"
+  if [[ "${state}" == pending && -n "${id}" && "${id}" != "${before%% *}" ]]; then
+    echo "survey-run ${id} is pending: save its output as the adapter's sample, then isuscope rescore ${id}"
+    return 0
+  fi
+  return "${code}"
+}
+
 cd "${repo_dir}"
 if [[ -n "${ISUCON_LANE:-}" ]]; then
   echo "lanes do not benchmark; ask the main session to run make first-bench" >&2
@@ -56,7 +82,7 @@ fi
 
 if [[ "${distributed}" == true ]]; then
   progress distributed "benchmarking the distributed build at $(git rev-parse --short HEAD) without waiting for build and deploy"
-  stage survey-run isuscope survey-run --hypothesis "${hypothesis}"
+  stage survey-run survey_run
   progress baseline-ready "analyze with isuscope brief latest; deploying the same commit meanwhile"
   # Deploy only what was measured: a change committed during the survey-run (make tare, a
   # cherry-picked lane commit) must get its own run, so it is not shipped here unmeasured.
@@ -69,7 +95,7 @@ if [[ "${distributed}" == true ]]; then
 else
   stage deploy "${script_dir}/deploy.sh"
   progress deployed "$(git rev-parse --short HEAD); starting survey-run"
-  stage survey-run isuscope survey-run --hypothesis "${hypothesis}"
+  stage survey-run survey_run
   progress baseline-ready "analyze with isuscope brief latest"
 fi
 progress complete "a pending result needs the sample and isuscope rescore"
