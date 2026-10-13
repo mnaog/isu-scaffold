@@ -26,6 +26,9 @@ bootstrap_env=()
 
 cd "${repo_dir}"
 progress started "make kickoff"
+# Benchmarks are linked to the conversation in this repo's docs/agent-history; a session started
+# elsewhere would only be refused at phase1-check, minutes later.
+stage agent-session python3 "${script_dir}/check-agent-session.py"
 if git ls-files --error-unmatch -- "${application_path}" >/dev/null 2>&1 &&
   [[ -z "$(git status --porcelain --untracked-files=all -- "${code_paths[@]}")" ]]; then
   echo "== code: ${application_path} is already imported and committed; skipping early import"

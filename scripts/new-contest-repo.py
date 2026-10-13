@@ -117,7 +117,8 @@ def main():
         if visibility != 'PRIVATE':
             sys.exit(f'{args.github} is {visibility}, not PRIVATE; fix it before adding anything')
         print(f'pushed to {args.github} (private)')
-    print('next: fill docs/phase0/readiness.md along docs/phases/Phase0.md')
+    print('next: start a new Codex or Claude Code session inside ' + str(target) + ' (benchmarks are linked to '
+          'the conversation recorded there), then fill docs/phase0/readiness.md along docs/phases/Phase0.md')
     return 0
 
 

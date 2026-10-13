@@ -17,6 +17,7 @@
     "scripts/configure-draft.py",
     "scripts/isuscope-policy.py",
     "scripts/kickoff.sh",
+    "scripts/check-agent-session.py",
     "scripts/bootstrap-ssh.sh",
     "scripts/local-build.py",
     "scripts/board/board.html",

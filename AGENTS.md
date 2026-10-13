@@ -66,6 +66,8 @@ Phase 0は本番開始前に利用できる情報だけで行える準備をす�
 
 ## 初動の自動化
 
+mainのAIセッション（Codex・Claude Code）は、このrepoの中で起動する。isuscopeは各ベンチをこのrepoの`docs/agent-history/`にある会話へ結び付けるので、別のdirectory（scaffoldなど）で起動したセッションからはベンチを動かせない（`make kickoff`が最初に`scripts/check-agent-session.py`で止める）。
+
 大会開始後は、`config/environment.example.env`を`.local/environment.env`へコピーしてprovider、SSH、node分類を設定し、次の順で初動を進める。
 
 ```text
