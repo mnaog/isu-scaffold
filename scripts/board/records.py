@@ -3,7 +3,7 @@
 Only the listed files, and files inside the listed directories, can be read. Nothing is written.
 """
 import json
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 import subprocess
 import threading
 import time

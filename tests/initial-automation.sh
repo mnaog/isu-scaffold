@@ -570,7 +570,6 @@ test "${duplicate_exit}" -ne 0
 grep -q 'was already used' <<<"${duplicate_output}"
 
 # 復旧が失敗したら、deployはそれを出力して失敗として扱います。
-restore_failure_start=$(wc -l <"${ssh_call_log}" | tr -d ' ')
 set +e
 restore_failure_output=$(cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" \
   FAIL_SWITCH_NODE=app2 FAIL_MARKER="${fixture_repo}/.local/restore-fail-marker" \
