@@ -13,17 +13,19 @@ fi
 
 # shellcheck disable=SC1091
 source "${repo_dir}/config/application.env"
+# shellcheck disable=SC1091
+source "${script_dir}/stage-lib.sh"
 
 # The draft may have been edited since kickoff; review it again before applying.
-python3 "${script_dir}/review-draft.py"
-"${script_dir}/configure-apply.sh"
+stage review-draft python3 "${script_dir}/review-draft.py"
+stage configure-apply "${script_dir}/configure-apply.sh"
 # Start the Rust implementation where the draft found another language running.
-"${script_dir}/switch-language-service.sh"
-"${script_dir}/discover.sh"
+stage switch-language "${script_dir}/switch-language-service.sh"
+stage discover "${script_dir}/discover.sh"
 # The applied draft may set the session source for the measurement log; rewrite only that drop-in.
-"${script_dir}/run-ansible-playbook.sh" bootstrap.yml --tags observability_nginx_log
-"${script_dir}/sync-check.sh"
-"${script_dir}/import.sh"
+stage nginx-log "${script_dir}/run-ansible-playbook.sh" bootstrap.yml --tags observability_nginx_log
+stage sync-check "${script_dir}/sync-check.sh"
+stage import "${script_dir}/import.sh"
 
 echo "kickoff apply complete"
 echo "review the import, commit the initial state, then run: make deploy && make phase1-check"

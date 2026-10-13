@@ -15,8 +15,34 @@ STATE = ROOT / '.local/phase1-build'
 CONFIG = ROOT / 'config/phase1-build.json'
 
 
+_entered = None
+
+
+def record_transition(state, now):
+    """Append the time spent in the previous state, in the stage-lib.sh format."""
+    global _entered
+    if _entered:
+        previous, since = _entered
+        code = 1 if state == 'failed' else 0
+        rows = [(previous, since, now - since, code)]
+        if state in ('complete', 'failed'):
+            # A zero-length row marks when the lane finished.
+            rows.append((state, now, 0.0, code))
+        try:
+            timing = Path(os.environ.get('STAGE_TIMING_FILE', ROOT / '.local/stage-timing.tsv'))
+            timing.parent.mkdir(parents=True, exist_ok=True)
+            with timing.open('a') as out:
+                for name, at, seconds, status in rows:
+                    stamp = time.strftime('%Y-%m-%dT%H:%M:%S%z', time.localtime(at))
+                    out.write(f'{stamp}\tphase1-build\t{name}\t{seconds:.1f}\t{status}\n')
+        except OSError:
+            pass
+    _entered = (state, now)
+
+
 def save(state, **fields):
     STATE.mkdir(parents=True, exist_ok=True)
+    record_transition(state, time.time())
     p = STATE / 'status.json'
     temp = p.with_suffix('.tmp')
     temp.write_text(json.dumps(dict(state=state, updated_at=time.time(), **fields), indent=2) + '\n')
@@ -44,6 +70,8 @@ def run(node, application):
         except BlockingIOError:
             print('Build lane already running', flush=True)
             return
+        global _entered
+        _entered = None
         save('inspecting', pid=os.getpid(), node=node)
         try:
             # Read-only and independent of bootstrap/operation.lock; no application execution.

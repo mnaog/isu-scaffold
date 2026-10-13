@@ -12,6 +12,8 @@ fi
 
 # shellcheck disable=SC1091
 source "${script_dir}/application-policy.sh"
+# shellcheck disable=SC1091
+source "${script_dir}/stage-lib.sh"
 language=${APPLICATION_LANGUAGE:?set APPLICATION_LANGUAGE in config/application.env}
 application_path=${APPLICATION_PATH:?set APPLICATION_PATH in config/application.env}
 schema_path=${CODE_SCHEMA_PATH:-webapp/sql}
@@ -24,11 +26,11 @@ if git ls-files --error-unmatch -- "${application_path}" >/dev/null 2>&1 &&
   echo "== code: ${application_path} is already imported and committed; skipping early import"
 else
   echo "== code: early import of ${application_path} and ${schema_path}"
-  "${script_dir}/discover.sh"
+  stage discover "${script_dir}/discover.sh"
   source_node=${CODE_SOURCE_NODE:-$(jq -r '.all.children.application.hosts | keys[0] // empty' "${inventory}")}
   test -n "${source_node}" || { echo "no application source node" >&2; exit 2; }
-  SSH_ONLY_NODE="${source_node}" "${script_dir}/bootstrap-ssh.sh"
-  CODE_SOURCE_NODE="${source_node}" "${script_dir}/quick-import-code.sh" "${language}" "${application_path}"
+  stage source-ssh env SSH_ONLY_NODE="${source_node}" "${script_dir}/bootstrap-ssh.sh"
+  stage early-import env CODE_SOURCE_NODE="${source_node}" "${script_dir}/quick-import-code.sh" "${language}" "${application_path}"
   existing=()
   for path in "${code_paths[@]}"; do
     [[ -e "${path}" ]] && existing+=("${path}")
@@ -45,17 +47,17 @@ fi
 
 source_node=${CODE_SOURCE_NODE:-$(jq -r '.all.children.application.hosts | keys[0] // empty' "${inventory}")}
 echo "== parallel build lane: inspect source node and start with reviewed settings"
-python3 "${script_dir}/phase1-build.py" start --node "${source_node}" --application "${application_path}"
+stage build-dispatch python3 "${script_dir}/phase1-build.py" start --node "${source_node}" --application "${application_path}"
 echo ">> Phase 1 local environment: adapt config/local/compose.example.yaml; run make local-up in parallel (docs/local-development.md). Baseline does not wait for it."
 
 echo "== setup: bootstrap, inspection and configuration draft"
-"${script_dir}/bootstrap.sh"
-"${script_dir}/inspect-environment.sh"
-"${script_dir}/configure-draft.sh"
+stage bootstrap "${script_dir}/bootstrap.sh"
+stage inspect "${script_dir}/inspect-environment.sh"
+stage configure-draft "${script_dir}/configure-draft.sh"
 
 echo "== draft review"
 review_status=0
-python3 "${script_dir}/review-draft.py" || review_status=$?
+stage review-draft python3 "${script_dir}/review-draft.py" || review_status=$?
 
 echo
 echo "kickoff stopped before applying the draft"

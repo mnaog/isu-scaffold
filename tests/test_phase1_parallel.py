@@ -34,6 +34,10 @@ class BuildLaneTests(unittest.TestCase):
             self.assertEqual([c[2] for c in calls[1:]], ['validate', 'build'])
             manifest = json.loads((root/'state/manifest.json').read_text())
             self.assertEqual(manifest['local_builds'][0]['base_image'], settings['base_image'])
+            # The time spent waiting for settings is recorded beside kickoff's stages.
+            rows = [line.split('\t') for line in (root/'.local/stage-timing.tsv').read_text().splitlines()]
+            self.assertEqual([row[2] for row in rows], ['inspecting', 'needs_configuration', 'building', 'complete'])
+            self.assertTrue(all(row[1] == 'phase1-build' and row[4] == '0' for row in rows))
 
     def test_probe_failure_never_compiles(self):
         with tempfile.TemporaryDirectory() as d:
@@ -51,7 +55,7 @@ class KickoffTests(unittest.TestCase):
             root = Path(d)
             for folder in ('scripts', 'config', 'webapp/rust', 'webapp/sql', '.local'):
                 (root/folder).mkdir(parents=True)
-            for name in ('kickoff.sh', 'application-policy.sh'):
+            for name in ('kickoff.sh', 'application-policy.sh', 'stage-lib.sh'):
                 shutil.copy(ROOT/'scripts'/name, root/'scripts'/name)
             (root/'config/application.env').write_text('APPLICATION_LANGUAGE=rust\nAPPLICATION_PATH=webapp/rust\n')
             (root/'webapp/rust/Cargo.toml').write_text('[package]\nname="fixture"\n')
@@ -66,6 +70,10 @@ class KickoffTests(unittest.TestCase):
             result=subprocess.run(['bash','scripts/kickoff.sh'],cwd=root,env=dict(os.environ,ISUSCOPE_LOCK_HELD='1'),capture_output=True,text=True)
             self.assertEqual((root/'events').read_text().splitlines(), ['build-start','bootstrap','inspect','draft','build-status'])
             self.assertEqual(result.returncode, 0, result.stderr)
+            # Nested steps keep their own timing although the outer lock records only kickoff.
+            stages = [line.split('\t')[1:3] for line in (root/'.local/stage-timing.tsv').read_text().splitlines()]
+            self.assertEqual(stages, [['kickoff.sh', name] for name in
+                                      ('build-dispatch', 'bootstrap', 'inspect', 'configure-draft', 'review-draft')])
 
     def test_build_starts_before_bootstrap_without_another_session(self):
         self.exercise()

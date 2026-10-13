@@ -94,7 +94,12 @@
     "docs/board.md",
     "scripts/board/records.py",
     "scripts/board/board-records.js",
-    "tests/board-records.test.js"
+    "tests/board-records.test.js",
+    "scripts/import.sh",
+    "scripts/stage-lib.sh",
+    "ansible/ansible.cfg",
+    "ansible/callback_plugins/task_timing.py",
+    "tests/fixtures/sync.json"
   ],
   "remove_files": [
     "docs/roles/operator.md",

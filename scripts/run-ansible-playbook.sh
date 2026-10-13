@@ -22,6 +22,8 @@ test -f "${repo_dir}/ansible/playbooks/${playbook_name}"
 
 export ANSIBLE_PYTHON_INTERPRETER=${ANSIBLE_PYTHON_INTERPRETER:-/usr/bin/python3}
 export ANSIBLE_CONFIG=${repo_dir}/ansible/ansible.cfg
+# Per-task wall time (ansible/callback_plugins/task_timing.py) for tuning the initial phase.
+export ANSIBLE_TASK_TIMING_FILE=${ANSIBLE_TASK_TIMING_FILE:-${repo_dir}/.local/ansible-task-timing.tsv}
 exec "${venv_dir}/bin/ansible-playbook" \
   --inventory "${inventory_path}" \
   "${repo_dir}/ansible/playbooks/${playbook_name}" \
