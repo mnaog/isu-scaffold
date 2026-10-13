@@ -16,5 +16,15 @@
     ".isuscope/benchmark.sh",
     "--cleanup"
   ],
-  "idle_timeout_seconds": 300
+  "idle_timeout_seconds": 300,
+  "benchmark_parsers": [
+    {
+      "name": "contest-output",
+      "command": [
+        ".isuscope/parse-benchmark.sh",
+        "{benchmark_stdout}"
+      ],
+      "timeout_seconds": 30
+    }
+  ]
 }
