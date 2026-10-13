@@ -45,6 +45,9 @@ remote_script() {
   local served=$1
   cat <<EOF
 set -eu
+# isuscopeのduring samplerは、非ttyのsshではHUPを受けずに残る（practice-14-forthで1nodeあたり
+# 20本、毎秒sudo mysqlを実行しCPUの約4割を使った）。前回までのsamplerをここで止める。
+sudo pkill -f '[o]ut=/tmp/isuscope-' 2>/dev/null || true
 units="${units}"
 served="${served}"
 for unit in \$units; do
