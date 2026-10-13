@@ -223,9 +223,15 @@ def main() -> int:
         if slow_log and ("db" in roles.get(node, []) or "mysql" in roles.get(node, [])):
             checks[node]["logs"].add(slow_log)
 
+    def collect_node(node: str) -> tuple[str, dict, str | None, str]:
+        # nginx -T rides in the same per-node worker, so no node waits for another's SSH.
+        node, facts, error = collect(ssh_node, node, checks[node])
+        nginx = nginx_config(ssh_node, node) if checks[node]["dropins"] and not error else ""
+        return node, facts, error, nginx
+
     with ThreadPoolExecutor(max_workers=5) as pool:
-        collected = list(pool.map(lambda node: collect(ssh_node, node, checks[node]), application))
-    for node, facts, error in collected:
+        collected = list(pool.map(collect_node, application))
+    for node, facts, error, nginx in collected:
         if error:
             record("FAIL", f"{node}: cannot collect facts over SSH: {error}")
             continue
@@ -254,7 +260,7 @@ def main() -> int:
             else:
                 record("OK" if state == "active" else "FAIL", f"{node}: service {service} is {state}")
         if checks[node]["dropins"]:
-            for file, value in server_access_logs(nginx_config(ssh_node, node)):
+            for file, value in server_access_logs(nginx):
                 record("WARN", f"{node}: server block in {file} sets access_log {value}; its requests are not written to the isuscope LTSV log")
         for dropin in sorted(checks[node]["dropins"]):
             if (facts.get(("dropin", dropin)) or ["no"])[0] != "yes":
