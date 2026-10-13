@@ -8,5 +8,13 @@
     ".isuscope/benchmark.sh",
     "--extract",
     "{benchmark_stdout}"
-  ]
+  ],
+  "identity_command": [
+    "scripts/benchmark-identity.py"
+  ],
+  "cleanup_command": [
+    ".isuscope/benchmark.sh",
+    "--cleanup"
+  ],
+  "idle_timeout_seconds": 300
 }

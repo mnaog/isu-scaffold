@@ -7,7 +7,28 @@ import re
 import tomllib
 
 
-BENCHMARK_KEYS = ('initialize_start_marker', 'initialize_finish_marker', 'prepare_command', 'rescore_command')
+BENCHMARK_KEYS = ('initialize_start_marker', 'initialize_finish_marker', 'prepare_command', 'rescore_command',
+                  'identity_command', 'cleanup_command', 'idle_timeout_seconds', 'timeout_seconds')
+BENCHMARK_ENV = Path(__file__).resolve().parent.parent / 'config/benchmark.env'
+
+
+def benchmark_timeout():
+    """[benchmark] timeout_seconds follows BENCHMARK_TIMEOUT_SECONDS in config/benchmark.env, so
+    isuscope's limit and the adapter's are one value (isuscope passes it back to the adapter)."""
+    try:
+        lines = BENCHMARK_ENV.read_text().splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        match = re.match(r'^\s*BENCHMARK_TIMEOUT_SECONDS=[\'"]?(\d+)[\'"]?\s*$', line)
+        if match and int(match.group(1)) > 0:
+            return int(match.group(1))
+    return None
+
+
+def effective(policy):
+    timeout = benchmark_timeout()
+    return dict(policy, timeout_seconds=timeout) if timeout and not policy.get('timeout_seconds') else policy
 
 
 def toml_value(value):
@@ -59,7 +80,8 @@ def check(text, policy):
         raise ValueError('benchmark parsers differ from repository policy; run make discover')
     for key in BENCHMARK_KEYS:
         if policy.get(key) and config.get('benchmark', {}).get(key) != policy[key]:
-            raise ValueError(f'isuscope benchmark {key} differs from config/isuscope-policy.json; run make discover')
+            raise ValueError(f'isuscope benchmark {key} differs from config/isuscope-policy.json or config/benchmark.env; '
+                             'run python3 scripts/isuscope-policy.py .isuscope/config.toml (or make discover)')
 
 
 def main():
@@ -68,7 +90,7 @@ def main():
     parser.add_argument('--policy', type=Path, default=Path(__file__).resolve().parent.parent / 'config/isuscope-policy.json')
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
-    policy = json.loads(args.policy.read_text())
+    policy = effective(json.loads(args.policy.read_text()))
     text = args.config.read_text()
     if args.check:
         check(text, policy)

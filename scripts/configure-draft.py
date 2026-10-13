@@ -541,10 +541,15 @@ def main() -> int:
         "status_commands": status_commands,
     }
 
-    fingerprint_paths = sorted(set(
-        [candidate for report in reports.values() for candidate in report.get("application_candidates", [])]
-        + service_fragments
-    ))
+    # What deploy sends is what isuscope must see change between runs (its fingerprint and the
+    # rerun check): every synced file and directory, except that a locally built item is
+    # compared by its binary, not by a source tree whose target/ holds gigabytes of cache.
+    built = {build["item"]: build["binary"] for build in local_builds}
+    fingerprint_paths = sorted(
+        {f"{item['remote']}/target/release/{built[item['name']]}" if item["name"] in built else item["remote"]
+         for item in items}
+        | set(service_fragments)
+    )
     available_tools_by_node = {
         node: sorted(
             tool for tool in OBSERVABILITY_TOOLS if report.get("versions", {}).get(tool)

@@ -31,10 +31,10 @@ export ANSIBLE_CONFIG=${repo_dir}/ansible/ansible.cfg
 "${script_dir}/sync-check.sh"
 "${repo_dir}/.isuscope/benchmark.sh" --check
 "${repo_dir}/.isuscope/benchmark.sh" --probe
-# Without initialize markers every run mixes initialize into the load summaries. The first
-# run has no sample yet, so this only warns; set them once its output is the sample.
+# Without an initialize boundary every run mixes initialize into the load summaries. The
+# [initialize] route in .isuscope/routes.toml works from the first run; markers need a sample.
 python3 "${script_dir}/benchmark-markers.py" check ||
-  echo "WARN: set the initialize markers after the first run (python3 scripts/benchmark-markers.py suggest)" >&2
+  echo "WARN: set the initialize route (python3 scripts/benchmark-markers.py suggest-route, then set-route)" >&2
 
 isuscope list --limit 1 >/dev/null
 if [[ "${PHASE1_SKIP_ISUSCOPE_DOCTOR:-false}" != true ]]; then

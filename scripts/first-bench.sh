@@ -72,4 +72,4 @@ else
   stage survey-run isuscope survey-run --hypothesis "${hypothesis}"
   progress baseline-ready "analyze with isuscope brief latest"
 fi
-progress complete "a pending result needs the sample and isuscope rescore; then set the initialize markers (scripts/benchmark-markers.py)"
+progress complete "a pending result needs the sample and isuscope rescore"

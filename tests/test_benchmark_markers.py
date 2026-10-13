@@ -52,6 +52,25 @@ class BenchmarkMarkersTests(unittest.TestCase):
         self.assertEqual(policy['operator_line_pattern'], '\\[ADMIN\\]')
         self.assertEqual(self.markers('check').returncode, 0)
 
+    def test_initialize_route_from_the_code_is_enough(self):
+        source = self.root / 'webapp/rust/src/main.rs'
+        source.parent.mkdir(parents=True)
+        source.write_text('let app = Router::new()\n    .route("/api/initialize", post(initialize));\n')
+        (self.root / '.isuscope').mkdir()
+        (self.root / '.isuscope/routes.toml').write_text(
+            '# 大会固有routeはここへ追加します。\n\n[[routes]]\npattern = "^/a/[0-9]+$"\nreplace = "/a/:id"\n')
+        self.assertIn('POST /api/initialize    (webapp/rust/src/main.rs:2)', self.markers('suggest-route').stdout)
+        self.assertNotEqual(self.markers('set-route', 'post', '/api/initialize').returncode, 0)
+        self.assertEqual(self.markers('set-route', 'POST', '/initialize').returncode, 0)
+        self.assertEqual(self.markers('set-route', 'POST', '/api/initialize').returncode, 0)  # replaces, not adds
+        import tomllib
+        routes = tomllib.loads((self.root / '.isuscope/routes.toml').read_text())
+        self.assertEqual(routes['initialize'], {'method': 'POST', 'path': '/api/initialize'})
+        self.assertEqual(len(routes['routes']), 1)
+        # The route alone satisfies the check, without markers or a sample.
+        (self.root / 'config/benchmark-sample.log').unlink()
+        self.assertEqual(self.markers('check').returncode, 0)
+
 
 if __name__ == '__main__':
     unittest.main()

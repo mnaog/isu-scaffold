@@ -45,9 +45,8 @@ esac
         self.listening = self.root / 'ss.out'
         write(self.root / 'ssh-node.sh', f'#!/bin/sh\nNODE="$1" PATH={stubs}:$PATH exec bash -c "$2"\n', 0o755)
         (self.root / 'prepare.sh').chmod(0o755)
-        # The commit check has its own tests below; the identity is whatever the test sets.
+        # The commit check has its own tests below.
         write(self.root / 'check-deployed-commit.sh', '#!/bin/sh\necho deployed commit matches\n', 0o755)
-        write(self.root / 'benchmark-identity.py', 'import os\nprint(os.environ.get("FAKE_IDENTITY", "a"))\n')
         self.invocation = self.root / 'invocation'
         write(self.invocation, 'first-instance\n')
 
@@ -57,10 +56,7 @@ esac
     def run_prepare(self, wait='2', **env):
         # The script calls ssh-node.sh next to itself.
         base = {k: v for k, v in os.environ.items()
-                if k not in ('INACTIVE', 'REQUIRE_ACTIVE', 'BENCH_REPEAT', 'PREPARE_CHECK_ONLY')}
-        # A new identity per call unless the test sets one, so only the repeat test meets the guard.
-        self.calls_made = getattr(self, 'calls_made', 0) + 1
-        env.setdefault('FAKE_IDENTITY', f'run-{self.calls_made}')
+                if k not in ('INACTIVE', 'REQUIRE_ACTIVE', 'PREPARE_CHECK_ONLY')}
         return subprocess.run([str(self.root / 'prepare.sh')], capture_output=True, text=True, env={
             **base, 'REPO_DIR': str(self.root), 'INVOCATION_FILE': str(self.invocation),
             'SYNC_MANIFEST': str(self.root / 'config/sync.json'),
@@ -89,32 +85,21 @@ esac
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('did not start listening', result.stderr)
 
-    def test_the_same_deployment_is_not_measured_twice_by_accident(self):
-        write(self.listening, 'LISTEN 0 4096 0.0.0.0:8080 0.0.0.0:* users:(("isu-app",pid=4321,fd=9))\n')
-        self.assertEqual(self.run_prepare(FAKE_IDENTITY='same').returncode, 0)
-        repeated = self.run_prepare(FAKE_IDENTITY='same')
-        self.assertNotEqual(repeated.returncode, 0)
-        self.assertIn('BENCH_REPEAT', repeated.stderr)
-        on_purpose = self.run_prepare(FAKE_IDENTITY='same', BENCH_REPEAT='ばらつきの確認')
-        self.assertEqual(on_purpose.returncode, 0, on_purpose.stderr)
-        self.assertIn('ばらつきの確認', on_purpose.stdout)
-        self.assertEqual(self.run_prepare(FAKE_IDENTITY='changed').returncode, 0)
-
     def test_a_process_started_after_the_last_benchmark_is_not_restarted_again(self):
         write(self.listening, 'LISTEN 0 4096 0.0.0.0:8080 0.0.0.0:* users:(("isu-app",pid=4321,fd=9))\n')
-        self.assertEqual(self.run_prepare(FAKE_IDENTITY='1').returncode, 0)
+        self.assertEqual(self.run_prepare().returncode, 0)
         self.assertEqual(len(self.calls.read_text().splitlines()), 2)  # no record yet: restart both nodes
         # deploy restarted the unit after that benchmark: a new InvocationID serves no old requests.
         write(self.invocation, 'after-deploy\n')
-        result = self.run_prepare(FAKE_IDENTITY='2')
+        result = self.run_prepare()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(self.calls.read_text().splitlines()), 2)
         self.assertIn('not restarted', result.stdout)
         # The same process served the last benchmark: restart it.
-        result = self.run_prepare(FAKE_IDENTITY='3')
+        result = self.run_prepare()
         self.assertEqual(len(self.calls.read_text().splitlines()), 4)
         # The first-bench check reads and writes no record.
-        self.assertEqual(self.run_prepare(FAKE_IDENTITY='3', PREPARE_CHECK_ONLY='1').returncode, 0)
+        self.assertEqual(self.run_prepare(PREPARE_CHECK_ONLY='1').returncode, 0)
         self.assertEqual(len(self.calls.read_text().splitlines()), 6)
 
     def test_without_an_application_unit_there_is_nothing_to_restart(self):

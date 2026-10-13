@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""One id for what a benchmark measures: the deployed files and the measurement settings.
+"""isuscope's identity_command: what a benchmark measures, as a JSON object of fields.
 
-The deployed files are those check-deployed-commit.sh compares (sync.json items, the builder
-Dockerfiles, sync.json itself) as committed at HEAD, plus the tracked measurement settings
-(.isuscope/, config/isuscope-policy.json, config/benchmark.env), the generated
-.isuscope/config.toml, and whether the servers run the distributed build or a deploy.
-benchmark-prepare.sh refuses to measure the same id twice in a row unless BENCH_REPEAT says
-why: in practice second a sed that matched nothing left the configuration as it was, and a
-full run measured it again.
+- deployed_files: the files check-deployed-commit.sh compares (sync.json items, the builder
+  Dockerfiles, sync.json itself) as committed at HEAD
+- measurement: the tracked measurement settings (.isuscope/, config/isuscope-policy.json,
+  config/benchmark.env) and the generated .isuscope/config.toml
+- build: whether the servers run the distributed build or a deploy of ours
+
+The deployed commit itself is left out: a docs-only commit followed by a deploy that sends
+nothing must still count as the same configuration.
+
+isuscope compares the fields with the last run whose benchmark started, together with the node
+fingerprints, and refuses an identical run unless `isuscope run --repeat "<reason>"`: in
+practice second a sed that matched nothing left the configuration as it was, and a full run
+measured it again.
 """
 import hashlib
 import json
@@ -28,14 +34,23 @@ def main():
     paths = {manifest_relative, '.isuscope', 'config/isuscope-policy.json', 'config/benchmark.env'}
     paths |= {item['local'] for item in sync.get('items', [])}
     paths |= {build['dockerfile'] for build in sync.get('local_builds', []) if build.get('dockerfile')}
-    tree = subprocess.run(['git', 'ls-tree', '-r', 'HEAD', '--', *sorted(paths)], cwd=ROOT,
-                          capture_output=True, text=True, check=True).stdout
-    digest = hashlib.sha256(tree.encode())
+    measurement_paths = {'.isuscope', 'config/isuscope-policy.json', 'config/benchmark.env'}
+
+    def tree(selected):
+        listing = subprocess.run(['git', 'ls-tree', '-r', 'HEAD', '--', *sorted(selected)], cwd=ROOT,
+                                 capture_output=True, text=True, check=True).stdout
+        return hashlib.sha256(listing.encode())
+
+    measurement = tree(measurement_paths)
     generated = ROOT / '.isuscope/config.toml'
     if generated.exists():
-        digest.update(generated.read_bytes())
-    digest.update(b'deployed' if (ROOT / '.local/current-deploy-commit').exists() else b'distributed')
-    print(digest.hexdigest())
+        measurement.update(generated.read_bytes())
+    deploy_record = ROOT / '.local/current-deploy-commit'
+    print(json.dumps({
+        'deployed_files': tree(paths - measurement_paths).hexdigest()[:16],
+        'measurement': measurement.hexdigest()[:16],
+        'build': 'deployed' if deploy_record.exists() else 'distributed',
+    }, sort_keys=True))
 
 
 if __name__ == '__main__':

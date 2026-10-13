@@ -91,7 +91,37 @@ class AdapterTest(unittest.TestCase):
         completed = self.adapter()
         self.assertEqual(completed.returncode, 124, completed.stderr)
         remote = (self.root / 'remote-command').read_text()
-        self.assertTrue(remote.startswith("timeout -k 10 1 sh -c 'printf "), remote)
+        self.assertTrue(remote.startswith("echo $$ > /tmp/isuscope-benchmark.pid; exec timeout -k 10 1 sh -c 'printf "), remote)
+
+    def test_isuscope_timeout_wins_and_cleanup_stops_the_remote_group(self):
+        fake = self.root / 'scripts/ssh-node.sh'
+        fake.write_text('#!/bin/bash\nprintf "%s\\n" "$2" >> "$(dirname "$0")/../remote-commands"\n'
+                        'case "$2" in *isuscope-benchmark.pid*kill*) exit 0 ;; esac\nexec bash -c "$2"\n')
+        fake.chmod(0o755)
+        (self.root / '.local').mkdir(exist_ok=True)
+        (self.root / '.local/ansible-inventory.json').write_text(json.dumps(
+            {'all': {'children': {'benchmark': {'hosts': {'bench': {}}}}}}))
+        self.configure('', BENCHMARK_TRANSPORT='ssh', BENCHMARK_NODE='bench', BENCHMARK_TIMEOUT_SECONDS='900',
+                       BENCHMARK_COMMAND="printf 'started\\n'; sleep 30")
+        run_dir = self.root / 'run'
+        run_dir.mkdir(exist_ok=True)
+        environment = dict(os.environ, ISUSCOPE_PROJECT_ROOT=str(self.root), ISUSCOPE_RUN_DIR=str(run_dir),
+                           ISUSCOPE_LOCK_HELD='1', ISUSCOPE_BENCHMARK_TIMEOUT_SECONDS='1')
+        completed = subprocess.run(['bash', str(ROOT / '.isuscope/benchmark.sh')], capture_output=True, text=True,
+                                   env=environment)
+        self.assertEqual(completed.returncode, 124, completed.stderr)
+        self.assertIn('exec timeout -k 10 1 sh -c', (self.root / 'remote-commands').read_text())
+        # A run killed outright leaves its lock; cleanup stops the remote group and frees the lock.
+        lock = self.root / '.local/benchmark.lock'
+        lock.mkdir()
+        (lock / 'pid').write_text('999999\n')
+        cleanup = subprocess.run(['bash', str(ROOT / '.isuscope/benchmark.sh'), '--cleanup'], capture_output=True,
+                                 text=True, env=environment)
+        self.assertEqual(cleanup.returncode, 0, cleanup.stderr)
+        self.assertFalse(lock.exists())
+        last = (self.root / 'remote-commands').read_text().splitlines()[-1]
+        self.assertIn('/tmp/isuscope-benchmark.pid', last)
+        self.assertIn('kill -$signal -- -$pid', last)
 
     def test_final_score_is_not_taken_from_trailing_tag_numbers(self):
         self.configure(FINAL_OUTPUT)
