@@ -4,8 +4,9 @@ set -eu
 # 各nodeで今動いている構成を識別する値を出します。isuscopeは直前のベンチと比べ、配ったものや
 # 設定が何も変わっていないrunを（`--repeat`で理由を書かない限り）始めません。
 # 比べたいfileやdirectoryは、1行に1つのpathで/usr/local/lib/isuscope/fingerprint-pathsへ並べます
-# （app binary、配置したsource、systemd unit、環境変数fileなど。配る対象から機械的に作るのが確実です）。
-# 大きなdirectory（build cacheなど）は時間がかかるので、配る成果物に絞ります。
+# （app binary、systemd unit、環境変数fileなど。configure-draftがsync.jsonから作ります）。
+# directoryも渡せますが、毎回のベンチ前に全fileを読むので、draftは入れません。配るdirectoryの
+# 中身はidentity_command（scripts/benchmark-identity.py）がcommit済みの内容で比べます。
 
 escape_json() {
   sed 's/\\/\\\\/g; s/"/\\"/g; s/[[:cntrl:]]/ /g'

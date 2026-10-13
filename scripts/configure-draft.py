@@ -541,14 +541,16 @@ def main() -> int:
         "status_commands": status_commands,
     }
 
-    # What deploy sends is what isuscope must see change between runs (its fingerprint and the
-    # rerun check): every synced file and directory, except that a locally built item is
-    # compared by its binary, not by a source tree whose target/ holds gigabytes of cache.
+    # The fingerprint checks what the nodes actually run, before every benchmark: a locally built
+    # item by its binary, synced single files, and the units defined in /etc/systemd/system.
+    # Synced directories are left out: identity_command already compares their committed content,
+    # and hashing a large tree (static files, a source tree with target/) on every node before
+    # every run costs seconds. Package units are covered by the nginx/MySQL versions.
     built = {build["item"]: build["binary"] for build in local_builds}
     fingerprint_paths = sorted(
-        {f"{item['remote']}/target/release/{built[item['name']]}" if item["name"] in built else item["remote"]
-         for item in items}
-        | set(service_fragments)
+        {f"{item['remote']}/target/release/{built[item['name']]}" for item in items if item["name"] in built}
+        | {item["remote"] for item in items if item.get("type") == "file"}
+        | {path for path in service_fragments if path.startswith("/etc/systemd/system/")}
     )
     available_tools_by_node = {
         node: sorted(

@@ -2,6 +2,7 @@
   "schema_version": 1,
   "files": [
     ".isuscope/benchmark.sh",
+    ".isuscope/fingerprint.sh",
     "AGENTS.md",
     "Makefile",
     "ansible/playbooks/inspect.yml",
