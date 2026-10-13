@@ -25,12 +25,14 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/local-build.py \
   "${source_repo}"/scripts/sync-check.sh \
   "${source_repo}"/scripts/deploy.sh \
+  "${source_repo}"/scripts/deploy-plan.py \
   "${source_repo}"/scripts/rollback.sh \
   "${source_repo}"/scripts/status.sh \
   "${source_repo}"/scripts/import.sh \
   "${source_repo}"/scripts/parallel-lib.sh \
   "${source_repo}"/scripts/schema-archive.py \
   "${source_repo}"/scripts/tree-digest.py \
+  "${source_repo}"/scripts/imported-state.py \
   "${source_repo}"/scripts/configure-draft.py \
   "${source_repo}"/scripts/review-draft.py \
   "${source_repo}"/scripts/configure-draft.sh \
@@ -345,6 +347,8 @@ grep -q '^remote application$' "${fixture_repo}/webapp/main.txt"
 # 同期itemのexcludeはdigestと転送の両方から外し、build成果物を回収しません。
 test ! -e "${fixture_repo}/webapp/rust/target"
 test "$(wc -l <"${fixture_repo}/.local/import-comparison.tsv" | tr -d ' ')" -eq 5
+# importは配布状態のdigestを残し、make first-benchはHEADがそれと一致するかで配布状態のまま測れるか決めます。
+(cd "${fixture_repo}" && python3 scripts/imported-state.py >/dev/null)
 # 内容が一致するlocal itemは再転送しません。除外したpathがlocalだけにあっても同じです。
 mkdir -p "${fixture_repo}/webapp/rust/target"
 printf 'local build output\n' >"${fixture_repo}/webapp/rust/target/local.bin"
@@ -352,6 +356,8 @@ reimport_output=$(cd "${fixture_repo}" && \
   FAKE_REMOTE_ROOT="${fake_remote}" TREE_DIGEST="${fixture_repo}/scripts/tree-digest.py" \
   ./scripts/import.sh 2>/dev/null)
 grep -q 'reusing unchanged local item' <<<"${reimport_output}"
+# localだけのbuild成果物（除外path）は配布状態との比較に入りません。
+(cd "${fixture_repo}" && python3 scripts/imported-state.py >/dev/null)
 if grep -q '^importing ' <<<"${reimport_output}"; then
   echo "unchanged import transferred items again" >&2
   exit 1
@@ -368,6 +374,8 @@ if grep -q divergent "${fixture_repo}/webapp/main.txt"; then
   echo "divergent import changed local files before approval" >&2
   exit 1
 fi
+# 回収を止めたimportは前の配布状態の記録を残しません（nodeごとに違う状態は1つの配布状態ではない）。
+test ! -e "${fixture_repo}/.local/imported-state.json"
 
 # SSHがstdinを読む処理を含んでも全node・全itemを処理することをfake remoteで確認します。
 printf 'fixture\n' >"${fixture_repo}/webapp/README.txt"
@@ -452,6 +460,12 @@ test "$(cat "${fixture_repo}/.local/current-commit")" = \
   "$(git -C "${fixture_repo}" rev-parse HEAD)"
 
 # 同じcommitを続けてdeployしてもtransaction IDが衝突しません。
+# 変更のないcommitを続けてdeployしても、何も送らずreleaseも変えません。
+unchanged_output=$(cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" ./scripts/deploy.sh 2>&1)
+grep -q 'nothing to send' <<<"${unchanged_output}"
+test "$(cat "${fixture_repo}/.local/current-release")" = "${first_release}"
+# 以降はtransaction・build・rollbackの検査なので、変更の有無によらず全itemを送ります。
+export DEPLOY_ALL=1
 (cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" ./scripts/deploy.sh)
 second_release=$(cat "${fixture_repo}/.local/current-release")
 test "${first_release}" != "${second_release}"

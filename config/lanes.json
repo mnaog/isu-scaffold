@@ -1,0 +1,75 @@
+{
+  "description": "AI lanes: each runs `claude -p` once in its own worktree and branch (lane/<name>), commits there and stops; the main session reads the result and merges. scripts/lane.py starts them; make kickoff starts `kickoff` right after the early import (KICKOFF_LANES overrides it, empty disables). Permission mode dontAsk denies every tool outside allowed_tools without asking: no web access, no remote command, no push (curl is allowed, and tool-guard limits it to localhost in a lane). tool-guard (ISUCON_LANE) also refuses remote nodes, deploy, benchmarks and the operation lock.",
+  "claude": {
+    "command": "claude",
+    "model": "claude-opus-5-5",
+    "effort": "high",
+    "permission_mode": "dontAsk",
+    "allowed_tools": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Edit",
+      "Write",
+      "Bash(cargo:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git grep:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(make local-up:*)",
+      "Bash(make local-check:*)",
+      "Bash(make local-down:*)",
+      "Bash(make local-logs:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(cat:*)",
+      "Bash(sed -n:*)",
+      "Bash(make local-reset:*)",
+      "Bash(cp:*)",
+      "Bash(mkdir:*)",
+      "Bash(curl:*)"
+    ],
+    "timeout_minutes": 60
+  },
+  "kickoff": [
+    "code-map",
+    "indexes",
+    "obvious-fixes",
+    "local-env"
+  ],
+  "lanes": {
+    "code-map": {
+      "purpose": "回収したコードからdocs/code-map.mdを書く",
+      "prompt": "config/lanes/code-map.md",
+      "timeout_minutes": 40
+    },
+    "indexes": {
+      "purpose": "索引不足だけを1索引1commitで先行実装する（baselineまでdeployしない）",
+      "prompt": "config/lanes/indexes.md",
+      "timeout_minutes": 30
+    },
+    "obvious-fixes": {
+      "purpose": "索引以外の自明なボトルネックを1件1commitで先行実装する（baselineまでdeployしない）",
+      "prompt": "config/lanes/obvious-fixes.md",
+      "timeout_minutes": 90
+    },
+    "local-env": {
+      "purpose": "ローカル実行環境を構成してmake local-checkを通し、docs/local-verification.mdを書く",
+      "prompt": "config/lanes/local-env.md",
+      "timeout_minutes": 45
+    },
+    "scenario": {
+      "purpose": "公式資料とコードからdocs/benchmark-scenario.mdを書く（mainがdocs/officialをcommitしてから起動）",
+      "prompt": "config/lanes/scenario.md",
+      "timeout_minutes": 40
+    }
+  }
+}

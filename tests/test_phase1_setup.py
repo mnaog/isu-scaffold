@@ -12,6 +12,28 @@ spec.loader.exec_module(policy)
 
 
 class Phase1SetupTest(unittest.TestCase):
+    def test_hooks_and_the_benchmark_timeout_reach_the_generated_config(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            env = Path(d) / 'benchmark.env'
+            env.write_text("BENCHMARK_TRANSPORT=ssh\nBENCHMARK_TIMEOUT_SECONDS='240'\n")
+            original = policy.BENCHMARK_ENV
+            policy.BENCHMARK_ENV = env
+            try:
+                settings = policy.effective({'history_dir': 'docs/agent-history', 'operator_line_pattern': 'x',
+                                             'identity_command': ['scripts/benchmark-identity.py'],
+                                             'cleanup_command': ['.isuscope/benchmark.sh', '--cleanup'],
+                                             'idle_timeout_seconds': 300})
+            finally:
+                policy.BENCHMARK_ENV = original
+        text = policy.apply('[benchmark]\ncommand = ["bench"]\n', settings)
+        import tomllib
+        benchmark = tomllib.loads(text)['benchmark']
+        self.assertEqual(benchmark['timeout_seconds'], 240)
+        self.assertEqual(benchmark['idle_timeout_seconds'], 300)
+        self.assertEqual(benchmark['cleanup_command'], ['.isuscope/benchmark.sh', '--cleanup'])
+        self.assertEqual(benchmark['identity_command'], ['scripts/benchmark-identity.py'])
+
     def test_regeneration_preserves_declared_policy_and_collectors(self):
         settings = {'history_dir': 'docs/agent-history', 'operator_line_pattern': r'\[ADMIN\]'}
         template = '[benchmark]\ncommand = ["bench"]\n\n[[collectors]]\nname = "cpu"\n'

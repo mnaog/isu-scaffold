@@ -22,8 +22,9 @@ stage configure-apply "${script_dir}/configure-apply.sh"
 # Start the Rust implementation where the draft found another language running.
 stage switch-language "${script_dir}/switch-language-service.sh"
 stage discover "${script_dir}/discover.sh"
-# The applied draft may set the session source for the measurement log; rewrite only that drop-in.
-stage nginx-log "${script_dir}/run-ansible-playbook.sh" bootstrap.yml --tags observability_nginx_log
+# The applied draft may set the session source for the measurement log and the fingerprint
+# paths (the synced files); rewrite only that drop-in and the isuscope node helpers.
+stage nginx-log "${script_dir}/run-ansible-playbook.sh" bootstrap.yml --tags observability_nginx_log,observability_helpers
 stage sync-check "${script_dir}/sync-check.sh"
 stage import "${script_dir}/import.sh"
 

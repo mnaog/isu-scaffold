@@ -42,11 +42,15 @@ class ToolGuardTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def decide(self, tool, tool_input, root=None):
+    def decide(self, tool, tool_input, root=None, lane=None):
         payload = {'hook_event_name': 'PreToolUse', 'tool_name': tool, 'tool_input': tool_input,
                    'cwd': str(self.root)}
+        env = {k: v for k, v in os.environ.items() if k != 'ISUCON_LANE'}
+        env['TOOL_GUARD_ROOT'] = str(root or self.root)
+        if lane:
+            env['ISUCON_LANE'] = lane
         result = subprocess.run(['python3', str(GUARD)], input=json.dumps(payload), text=True,
-                                capture_output=True, env={**os.environ, 'TOOL_GUARD_ROOT': str(root or self.root)})
+                                capture_output=True, env=env)
         self.assertEqual(result.returncode, 0, result.stderr)
         if not result.stdout.strip():
             return None
@@ -169,6 +173,47 @@ class ToolGuardTest(unittest.TestCase):
         app = subprocess.run([str(ROOT / 'scripts/ssh-node.sh'), 'isucon14-app1', 'uptime'],
                              env=env, capture_output=True, text=True)
         self.assertNotIn('refusing', app.stderr)
+
+    def test_ai_lane_stays_off_remote_nodes_benchmarks_and_the_lock(self):
+        for command in [
+            './scripts/ssh-node.sh isucon14-app1 uptime',
+            'ssh isucon@18.180.96.31 uptime',
+            'rsync -a webapp/ isucon14-app1:/home/isucon/webapp/',
+            'make deploy',
+            'make -j2 kickoff',
+            'make first-bench',
+            'isuscope survey-run --hypothesis "初期状態"',
+            'bash scripts/deploy.sh',
+            './scripts/import.sh',
+            'python3 scripts/tare.py',
+            'isuscope run --hypothesis "index"',
+            'isuscope analyze 1234abcd supported --analysis x',
+            'isuscope lock --path .local/operation.lock -- true',
+            'flock /repo/.local/operation.lock true',
+            '.isuscope/benchmark.sh --probe',
+            'git push origin lane/code-map',
+            'python3 scripts/lane.py start another',
+            'claude -p "write more"',
+            'ansible-playbook ansible/playbooks/verify.yml',
+            'curl -s http://18.180.96.31/api/initialize',
+            'cd webapp/rust && cargo build && ./../../scripts/sync-check.sh',
+        ]:
+            with self.subTest(command=command):
+                self.assertIsNotNone(self.decide('Bash', {'command': command}, lane='code-map'), command)
+        for command in [
+            'cargo build --release',
+            'git add -A && git commit -m "Add index"',
+            'git log --oneline main..HEAD',
+            'make local-up && make local-check',
+            'isuscope brief latest',
+            'isuscope query latest --metric-prefix benchmark.',
+            'curl -s http://127.0.0.1:38080/api/health',
+            'rg -n "SELECT" webapp/rust/src',
+        ]:
+            with self.subTest(command=command):
+                self.assertIsNone(self.decide('Bash', {'command': command}, lane='code-map'), command)
+        # Outside a lane the same main-session work is allowed.
+        self.assert_allowed('Bash', {'command': 'make deploy'})
 
     def test_hook_settings_call_the_guard(self):
         claude = json.loads((ROOT / '.claude/settings.json').read_text())

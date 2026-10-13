@@ -512,10 +512,17 @@ def main() -> int:
 
     post_commands = []
     if any("nginx" in roles for roles in roles_by_node.values()):
+        # "when": deploy runs these only when an nginx item changed (scripts/deploy-plan.py).
         post_commands += [
-            {"node_group": "role_nginx", "command": "sudo nginx -t"},
-            {"node_group": "role_nginx", "command": "sudo systemctl reload nginx"},
+            {"node_group": "role_nginx", "command": "sudo nginx -t", "when": ["nginx-*"]},
+            {"node_group": "role_nginx", "command": "sudo systemctl reload nginx", "when": ["nginx-*"]},
         ]
+    for command in language_commands:
+        text = command["command"]
+        if "daemon-reload" in text:
+            command["when"] = ["rust-service"]
+        elif "systemctl restart" in text:
+            command["when"] = ["rust-app", "rust-service", "app-env*"]
     post_commands += language_commands
     post_commands += [f"sudo systemctl is-active --quiet {service}" for service in common_services]
     status_commands = language_status + [
@@ -534,10 +541,15 @@ def main() -> int:
         "status_commands": status_commands,
     }
 
-    fingerprint_paths = sorted(set(
-        [candidate for report in reports.values() for candidate in report.get("application_candidates", [])]
-        + service_fragments
-    ))
+    # What deploy sends is what isuscope must see change between runs (its fingerprint and the
+    # rerun check): every synced file and directory, except that a locally built item is
+    # compared by its binary, not by a source tree whose target/ holds gigabytes of cache.
+    built = {build["item"]: build["binary"] for build in local_builds}
+    fingerprint_paths = sorted(
+        {f"{item['remote']}/target/release/{built[item['name']]}" if item["name"] in built else item["remote"]
+         for item in items}
+        | set(service_fragments)
+    )
     available_tools_by_node = {
         node: sorted(
             tool for tool in OBSERVABILITY_TOOLS if report.get("versions", {}).get(tool)

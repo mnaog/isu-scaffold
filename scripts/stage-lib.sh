@@ -5,6 +5,7 @@
 stage_timing_file=${STAGE_TIMING_FILE:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)/.local/stage-timing.tsv}
 # The first script that sources this names the operation; nested scripts keep it.
 export STAGE_OPERATION=${STAGE_OPERATION:-$(basename -- "$0")}
+stage_lib_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 stage_now() {
   python3 -c 'import time; print("%.3f" % time.time())'
@@ -24,5 +25,9 @@ at = time.strftime('%Y-%m-%dT%H:%M:%S%z', time.localtime(float(started)))
 with open(path, 'a') as out:
     out.write(f'{at}\t{operation}\t{name}\t{float(ended) - float(started):.1f}\t{code}\n')
 EOF
+  if [[ "${code}" -ne 0 ]]; then
+    # The agent following .local/progress.log learns of the failure without waiting for the end.
+    python3 "${stage_lib_dir}/progress.py" emit "${STAGE_OPERATION}" failed "${name} (exit ${code})" >/dev/null 2>&1 || true
+  fi
   return "${code}"
 }

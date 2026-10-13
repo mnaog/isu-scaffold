@@ -46,12 +46,14 @@ sync_validate() {
       (type == "string" and length > 0 and (test("[\\t\\r\\n]") | not)) or
       (type == "object" and
         (.node_group | type == "string" and test("^[A-Za-z0-9_.-]+$")) and
-        (.command | type == "string" and length > 0 and (test("[\\t\\r\\n]") | not))))) and
+        (.command | type == "string" and length > 0 and (test("[\\t\\r\\n]") | not)) and
+        ((.when // []) | type == "array" and all(.[]; type == "string" and test("^[A-Za-z0-9_.*?-]+$")))))) and
     ((.rollback_commands // []) | type == "array" and all(.[];
       (type == "string" and length > 0 and (test("[\\t\\r\\n]") | not)) or
       (type == "object" and
         (.node_group | type == "string" and test("^[A-Za-z0-9_.-]+$")) and
-        (.command | type == "string" and length > 0 and (test("[\\t\\r\\n]") | not))))) and
+        (.command | type == "string" and length > 0 and (test("[\\t\\r\\n]") | not)) and
+        ((.when // []) | type == "array" and all(.[]; type == "string" and test("^[A-Za-z0-9_.*?-]+$")))))) and
     (.status_commands | type == "array" and all(.[];
       (type == "string" and length > 0 and (test("[\\t\\r\\n]") | not)) or
       (type == "object" and

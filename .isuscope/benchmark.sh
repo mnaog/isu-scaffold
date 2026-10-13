@@ -23,6 +23,12 @@ load_config() {
   fi
   set +a
   python3 "${project_root}/scripts/benchmark-contract.py" --root "${project_root}" >&2
+  # isuscope passes its [benchmark] timeout_seconds and stops the run itself only after a
+  # grace period, so the adapter's own wall-clock limit follows it. The contract above checks
+  # the reviewed settings; this only bounds how long the adapter waits.
+  if [[ -n "${ISUSCOPE_BENCHMARK_TIMEOUT_SECONDS:-}" ]]; then
+    BENCHMARK_TIMEOUT_SECONDS=${ISUSCOPE_BENCHMARK_TIMEOUT_SECONDS}
+  fi
 }
 
 validate_regex() {
@@ -253,6 +259,28 @@ if [[ "${1:-}" == --probe ]]; then
   exit 0
 fi
 
+# isuscopeのcleanup_command。isuscopeが期限切れ・出力の途絶・signalでベンチを止めたときに動き、
+# ベンチnodeに残ったベンチ（run時に記録したprocess group）を止め、持ち主の消えたadapterのlockを外す。
+# ベンチnodeへ触れてよいのはこのadapterだけなので、後始末もここで行う。
+remote_pid_file=/tmp/isuscope-benchmark.pid
+if [[ "${1:-}" == --cleanup ]]; then
+  load_config
+  if [[ "${BENCHMARK_TRANSPORT:-}" == ssh && -n "${BENCHMARK_NODE:-}" ]]; then
+    ISUCON_ALLOW_BENCHMARK_NODE=1 "${project_root}/scripts/ssh-node.sh" "${BENCHMARK_NODE}" \
+      "pid=\$(cat ${remote_pid_file} 2>/dev/null) || exit 0; for signal in TERM KILL; do sudo -n kill -\$signal -- -\$pid 2>/dev/null || kill -\$signal -- -\$pid 2>/dev/null || true; sleep 5; done; rm -f ${remote_pid_file}" ||
+      echo "cleanup: could not reach ${BENCHMARK_NODE}" >&2
+  fi
+  stale_lock=${project_root}/.local/benchmark.lock
+  if [[ -d "${stale_lock}" ]]; then
+    owner=$(cat "${stale_lock}/pid" 2>/dev/null || true)
+    if [[ -z "${owner}" ]] || ! kill -0 "${owner}" 2>/dev/null; then
+      rm -rf -- "${stale_lock}"
+      echo "cleanup: removed the adapter lock left by a stopped benchmark"
+    fi
+  fi
+  exit 0
+fi
+
 if [[ "${ISUSCOPE_LOCK_HELD:-}" != 1 ]]; then
   exec isuscope lock --path "${project_root}/.local/operation.lock" -- "$0" "$@"
 fi
@@ -264,12 +292,13 @@ mkdir -p "${run_dir}/tmp" "${project_root}/.local"
 raw_output=$(mktemp "${run_dir}/tmp/benchmark-output.XXXXXX")
 lock_dir=${project_root}/.local/benchmark.lock
 if ! mkdir "${lock_dir}" 2>/dev/null; then
-  echo "another benchmark adapter appears to be running: ${lock_dir}" >&2
+  echo "another benchmark adapter appears to be running: ${lock_dir} (after a killed run: .isuscope/benchmark.sh --cleanup)" >&2
   exit 1
 fi
+printf '%s\n' "$$" >"${lock_dir}/pid"
 cleanup() {
   rm -f -- "${raw_output}"
-  rmdir "${lock_dir}" 2>/dev/null || true
+  rm -rf -- "${lock_dir}" 2>/dev/null || true
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -300,8 +329,13 @@ elif [[ "${BENCHMARK_TRANSPORT}" == ssh ]]; then
   # scripts/ssh-node.shはこの変数がないとベンチnodeへの接続を断る。
   export ISUCON_ALLOW_BENCHMARK_NODE=1
   if [[ "${BENCHMARK_TIMEOUT_SECONDS}" -gt 0 ]]; then
+    # ローカルのSSHを止めても、pty無しのremoteのベンチは走り続け、次のrunと重なり得る。
+    # ベンチnode側でも同じ時間で止め（TERMの10秒後にKILL）、ローカルはその後の30秒を待つ。
+    # sshdが起動したshellはprocess groupの先頭なので、そのPIDを残せば--cleanupが配下ごと止められる。
+    remote_command="echo \$\$ > ${remote_pid_file}; exec timeout -k 10 ${BENCHMARK_TIMEOUT_SECONDS} sh -c $(python3 -c 'import shlex, sys; print(shlex.quote(sys.argv[1]))' "${BENCHMARK_COMMAND}")"
+    timeout_prefix[${#timeout_prefix[@]}-1]=$((BENCHMARK_TIMEOUT_SECONDS + 30))
     "${timeout_prefix[@]}" "${project_root}/scripts/ssh-node.sh" \
-      "${BENCHMARK_NODE}" "${BENCHMARK_COMMAND}" 2>&1 | tee "${raw_output}"
+      "${BENCHMARK_NODE}" "${remote_command}" 2>&1 | tee "${raw_output}"
   else
     "${project_root}/scripts/ssh-node.sh" \
       "${BENCHMARK_NODE}" "${BENCHMARK_COMMAND}" 2>&1 | tee "${raw_output}"

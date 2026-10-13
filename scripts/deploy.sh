@@ -100,8 +100,29 @@ if [[ -e "${state_file}" ]]; then
   echo "unset RELEASE, or choose a name that has not been deployed" >&2
   exit 1
 fi
-# Complete the local build once, before contacting or mutating any node.
-python3 "${script_dir}/local-build.py" build --strict --manifest "${sync_manifest}" --index "${artifact_file}"
+# Send only what changed since the last successful deploy (scripts/deploy-plan.py): unchanged
+# items are neither staged nor switched, and commands with "when" run only for their items.
+# DEPLOY_ALL=1 sends everything, e.g. after the servers were changed outside deploy.
+changed_file=${transaction_dir}/${release}.changed
+python3 "${script_dir}/deploy-plan.py" changed --manifest "${sync_manifest}" \
+  --previous "${previous_commit}" --head "${head_commit}" | sed '/^$/d' >"${changed_file}"
+if [[ ! -s "${changed_file}" ]]; then
+  rm -f -- "${changed_file}"
+  printf '%s\n' "${head_commit}" >"${sync_repo_dir}/.local/current-commit"
+  printf '%s\n' "${head_commit}" >"${sync_repo_dir}/.local/current-deploy-commit"
+  echo "no sync item changed since the deployed ${previous_commit:0:12}; nothing to send (recorded ${commit_short} as deployed)"
+  exit 0
+fi
+echo "changed items: $(tr '\n' ' ' <"${changed_file}")"
+# Complete the local build once, before contacting or mutating any node. A build that no
+# changed item uses is skipped: the binary on the servers is already the right one.
+if jq -e --rawfile changed "${changed_file}" \
+  '(.local_builds // []) as $builds | ([$builds[].item] - ($changed | split("\n")) | length) < ($builds | length)' \
+  "${sync_manifest}" >/dev/null; then
+  python3 "${script_dir}/local-build.py" build --strict --manifest "${sync_manifest}" --index "${artifact_file}"
+else
+  echo '[]' >"${artifact_file}"
+fi
 : >"${plan_file}"
 : >"${build_plan_file}"
 : >"${post_plan_file}"
@@ -121,6 +142,7 @@ else
 fi
 
 while IFS=$'\t' read -r name type node_group local_path remote_path owner owner_group <&3; do
+  grep -qxF -- "${name}" "${changed_file}" || continue
   size_bytes=$(git ls-tree -r -l HEAD -- "${local_path}" | awk '{total += $4} END {print total + 0}')
   artifact_bytes=$(jq --arg item "${name}" '[.[] | select(.item == $item) | .size] | add // 0' "${artifact_file}")
   size_bytes=$((size_bytes + artifact_bytes))
@@ -160,6 +182,7 @@ build_input_id() {
 }
 
 while IFS=$'\t' read -r build_name build_group build_item build_command <&3; do
+  grep -qxF -- "${build_item}" "${changed_file}" || continue
   remote_path=$(jq -r --arg item "${build_item}" '.items[] | select(.name == $item) | .remote' \
     "${sync_manifest}")
   inputs_unchanged=false
@@ -181,11 +204,13 @@ expand_command_plan() {
     while IFS= read -r node <&4; do
       printf '%s\t%s\n' "${node}" "${command}" >>"${output_file}"
     done 4< <(sync_group_nodes "${command_group}")
-  done 3< <(sync_commands "${command_key}")
+  done 3< <(python3 "${script_dir}/deploy-plan.py" commands --manifest "${sync_manifest}" \
+    --key "${command_key}" --changed "${changed_file}")
 }
 expand_command_plan post_deploy_commands "${post_plan_file}"
 expand_command_plan rollback_commands "${rollback_plan_file}"
-awk -F '\t' '{print $3}' "${plan_file}" | sort -u >"${nodes_file}"
+# Nodes that receive an item, and nodes that only run a selected command (a reload elsewhere).
+{ awk -F '\t' '{print $3}' "${plan_file}"; cut -f1 "${post_plan_file}"; } | sed '/^$/d' | sort -u >"${nodes_file}"
 
 deploy_started_epoch=$(date +%s)
 active_pids=()
@@ -288,6 +313,8 @@ staging_node() {
     done < <(jq -r --arg item "${name}" '.[] | select(.item == $item) | [.destination, .sha256] | @tsv' "${artifact_file}")
   done 3<"${plan_file}"
   command+="; sudo rm -rf '${bundle}'"
+  # A node that only runs a command receives nothing; an archive of no paths would be the whole tree.
+  [[ "${#local_paths[@]}" -gt 0 ]] || return 0
   printf 'staging %s committed paths on %s\n' "${#local_paths[@]}" "${target_node}"
   python3 "${script_dir}/local-build.py" archive --index "${artifact_file}" --commit "${head_commit}" -- "${local_paths[@]}" | \
     "${script_dir}/ssh-node.sh" "${target_node}" "${command}"
@@ -317,13 +344,17 @@ switching_node() {
   "${script_dir}/ssh-node.sh" "${target_node}" "${command}"
 }
 
+# All of a node's commands in one SSH, in order, each in its own subshell so that one
+# command's cd or set does not leak into the next; the first failure stops the node.
 run_commands_node() {
-  local target_node=$1 command_file=$2 node remote_command
+  local target_node=$1 command_file=$2 node remote_command script="set -eu; export ISUCON_DEPLOY_RELEASE='${release}'" count=0
   while IFS=$'\t' read -r node remote_command <&3; do
     [[ "${node}" == "${target_node}" ]] || continue
-    "${script_dir}/ssh-node.sh" "${target_node}" \
-      "set -eu; export ISUCON_DEPLOY_RELEASE='${release}'; ${remote_command}"
+    script+="; (set -eu; ${remote_command})"
+    count=$((count + 1))
   done 3<"${command_file}"
+  [[ "${count}" -gt 0 ]] || return 0
+  "${script_dir}/ssh-node.sh" "${target_node}" "${script}"
 }
 
 validating_node() { run_commands_node "$1" "${post_plan_file}"; }

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# One entry point for the first hour: early code import and asynchronous build, then
-# full setup up to a reviewed configuration draft. It stops before anything is applied;
-# `CONFIRM_DRAFT=true make kickoff-apply` continues after the draft review.
+# One entry point for the first hour: early code import, the asynchronous build and the AI
+# lanes, then full setup up to a reviewed configuration draft. It stops before anything is
+# applied; `CONFIRM_DRAFT=true make kickoff-apply` continues after the draft review.
+# Milestones go to .local/progress.log, so the agent can run this in the background.
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "${script_dir}/.." && pwd)
 if [[ "${ISUSCOPE_LOCK_HELD:-}" != 1 ]]; then
@@ -20,7 +21,10 @@ schema_path=${CODE_SCHEMA_PATH:-webapp/sql}
 inventory=${ANSIBLE_INVENTORY:-${repo_dir}/.local/ansible-inventory.json}
 code_paths=(config/application.env "${application_path}" "${schema_path}")
 
+progress() { python3 "${script_dir}/progress.py" emit kickoff "$@" || true; }
+
 cd "${repo_dir}"
+progress started "make kickoff"
 if git ls-files --error-unmatch -- "${application_path}" >/dev/null 2>&1 &&
   [[ -z "$(git status --porcelain --untracked-files=all -- "${code_paths[@]}")" ]]; then
   echo "== code: ${application_path} is already imported and committed; skipping early import"
@@ -45,19 +49,31 @@ else
   fi
 fi
 
+progress code-ready "${application_path} and ${schema_path} at $(git rev-parse --short HEAD)"
+
 source_node=${CODE_SOURCE_NODE:-$(jq -r '.all.children.application.hosts | keys[0] // empty' "${inventory}")}
-echo "== parallel build lane: inspect source node and start with reviewed settings"
+echo "== parallel build lane: inspect source node and start with reviewed or proposed settings"
 stage build-dispatch python3 "${script_dir}/phase1-build.py" start --node "${source_node}" --application "${application_path}"
+echo "== AI lanes: claude -p in their own worktrees (config/lanes.json; KICKOFF_LANES= disables)"
+# A lane that fails to start never stops the setup; progress.log and lane.py status show it.
+stage lanes python3 "${script_dir}/lane.py" kickoff || echo "some AI lanes did not start: python3 scripts/lane.py status" >&2
 echo ">> Phase 1 local environment: adapt config/local/compose.example.yaml; run make local-up in parallel (docs/local-development.md). Baseline does not wait for it."
 
 echo "== setup: bootstrap, inspection and configuration draft"
 stage bootstrap "${script_dir}/bootstrap.sh"
 stage inspect "${script_dir}/inspect-environment.sh"
+# docs/environment.md from the inspection, without AI; never stops the setup.
+stage environment-report python3 "${script_dir}/environment-report.py" || true
 stage configure-draft "${script_dir}/configure-draft.sh"
 
 echo "== draft review"
 review_status=0
 stage review-draft python3 "${script_dir}/review-draft.py" || review_status=$?
+if [[ "${review_status}" -eq 0 ]]; then
+  progress draft-ready "read .local/draft/review.md, then CONFIRM_DRAFT=true make kickoff-apply"
+else
+  progress draft-failed "fix the FAILs in .local/draft/review.md"
+fi
 
 echo
 echo "kickoff stopped before applying the draft"
