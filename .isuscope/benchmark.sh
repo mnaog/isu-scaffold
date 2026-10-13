@@ -187,7 +187,7 @@ check_sample() {
   sample_verified=true
 }
 
-PENDING_HINT='save this run'"'"'s output (isuscope-data/runs/<run>/logs/benchmark-stdout.zst) as BENCHMARK_SAMPLE_FILE, set BENCHMARK_SAMPLE_SCORE and BENCHMARK_SAMPLE_PASS from it, make --check pass, then run isuscope rescore <run>'
+PENDING_HINT='run python3 scripts/benchmark-sample.py <run> to see how its saved output is read, then --apply --score N --pass true|false with the values you read (writes the sample, reseals the contract, runs --check and isuscope rescore)'
 
 # 出力からscoreと合否を読み、isuscope protocolの結果を1行出します。
 emit_result() {
@@ -216,6 +216,25 @@ emit_result() {
     '{type:"isuscope.result", score:$score, pass:$pass, messages:$ARGS.positional}' \
     --args "${messages[@]}" "$@"
 }
+
+# 保存したベンチ出力（平文）を、今のregexでどう読むかだけを出します（scripts/benchmark-sample.py）。
+# regexを直している途中はcontractと食い違うので、contractもsampleも確かめません。ベンチも動かしません。
+if [[ "${1:-}" == --read ]]; then
+  command -v jq >/dev/null
+  input=${2:?usage: .isuscope/benchmark.sh --read OUTPUT_FILE}
+  set -a
+  # shellcheck disable=SC1090
+  source "${benchmark_config}"
+  set +a
+  validate_regex BENCHMARK_SCORE_REGEX "${BENCHMARK_SCORE_REGEX:?}"
+  validate_regex BENCHMARK_PASS_REGEX "${BENCHMARK_PASS_REGEX:?}"
+  validate_regex BENCHMARK_FAIL_REGEX "${BENCHMARK_FAIL_REGEX:?}"
+  extract_result "${input}"
+  jq -nc --arg score "${score}" --arg result "${result}" --arg score_line "${score_line}" --arg result_line "${result_line}" \
+    '{score: (if $score == "" then null else ($score | tonumber) end), pass: ({"true": true, "false": false}[$result]),
+      score_line: $score_line, result_line: $result_line}'
+  exit 0
+fi
 
 if [[ "${1:-}" == --check ]]; then
   command -v jq >/dev/null

@@ -41,7 +41,7 @@ survey_run() {
   [[ "${code}" -eq 0 ]] && return 0
   read -r id state <<<"$(latest_run)"
   if [[ "${state}" == pending && -n "${id}" && "${id}" != "${before%% *}" ]]; then
-    echo "survey-run ${id} is pending: save its output as the adapter's sample, then isuscope rescore ${id}"
+    echo "survey-run ${id} is pending: check how its output is read with python3 scripts/benchmark-sample.py ${id}, then --apply --score N --pass true|false"
     return 0
   fi
   return "${code}"
@@ -98,4 +98,4 @@ else
   stage survey-run survey_run
   progress baseline-ready "analyze with isuscope brief latest"
 fi
-progress complete "a pending result needs the sample and isuscope rescore"
+progress complete "a pending result: python3 scripts/benchmark-sample.py <run>, then --apply"

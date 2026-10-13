@@ -94,7 +94,8 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
   → HEADが完全importの内容のままで、アプリのunitが全nodeで動いていれば、配布されたbuildのままsurvey-runで初回ベンチ
     （ローカルbuildとdeployを待たない。baseline-readyで分析を始める）。その後に同じcommitをmake deploy
   → そうでなければ、make deploy（初期buildの完了を待つ）の後にsurvey-run
-  → 出力の形を確かめる前ならresultはPENDING。保存された出力をsampleにして--checkを通し、isuscope rescoreで確定
+  → 出力の形を確かめる前ならresultはPENDING。python3 scripts/benchmark-sample.py <run>で読み取りを確かめ、
+    --apply --score N --pass true|false（自分で読んだ値）でsample・contract・--check・rescoreまで済ませる
 初回runの分析後に観測に基づいて改善を実装・検証
   → lane indexes・obvious-fixesのcommitをbaselineの観測と照合して選んで取り込む（laneの途中でもcommit単位で取り込める）
   → deployし、通常のisuscope runでbaselineと比較

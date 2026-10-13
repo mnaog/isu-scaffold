@@ -12,6 +12,7 @@
     "docs/initial-automation.md",
     "docs/phases/Phase1.md",
     "scripts/benchmark-contract.py",
+    "scripts/benchmark-sample.py",
     "scripts/check-deployment.py",
     "scripts/check-phase0.py",
     "scripts/configure-draft.py",
@@ -136,7 +137,8 @@
     "scripts/benchmark-markers.py",
     "scripts/rollback.sh",
     "tests/test_benchmark_markers.py",
-    "scripts/deploy.sh"
+    "scripts/deploy.sh",
+    "tests/test_benchmark_sample.py"
   ],
   "remove_files": [
     "docs/roles/operator.md",

@@ -94,7 +94,7 @@ class FirstBenchTests(unittest.TestCase):
         result = self.run_first_bench(HYPOTHESIS='初期状態を記録する')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.lines()[-2:], ['isuscope survey-run --hypothesis 初期状態を記録する', 'deploy'])
-        self.assertIn('isuscope rescore new-run', result.stdout)
+        self.assertIn('scripts/benchmark-sample.py new-run', result.stdout)
         self.assertEqual(self.states(), ['started', 'checked', 'distributed', 'baseline-ready', 'deployed', 'complete'])
 
     def test_a_failed_baseline_stops_before_deploy(self):
