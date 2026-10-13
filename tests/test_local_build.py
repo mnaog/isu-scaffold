@@ -139,6 +139,19 @@ class LocalBuildTests(unittest.TestCase):
                 os.killpg(child.pid, signal.SIGKILL)
                 child.wait()
 
+    def test_prepared_builder_image_is_the_one_the_build_uses(self):
+        (self.repo / "config/rust-builder/bases.json").write_text(json.dumps(
+            {"bases": [{"image": "rust:fixture-toolchain", "glibc": "2.36"}], "targets": ["x86_64-unknown-linux-gnu"]}))
+        self.command("python3", "scripts/local-build.py", "prepare-images")
+        prepared = next(c for c in self.calls("docker") if c[0] == "build")
+        tag = prepared[prepared.index("-t") + 1]
+        self.assertIn("BASE_IMAGE=rust:fixture-toolchain", prepared)
+        self.build()
+        builds = [c for c in self.calls("docker") if c[0] == "build"]
+        self.assertEqual(len(builds), 1, "the build reused the prepared image")
+        inspected = [c[2] for c in self.calls("docker") if c[:2] == ["image", "inspect"] and not c[2].startswith("--")]
+        self.assertTrue(inspected and all(t == tag for t in inspected))
+
     def test_cache_reuses_artifact_and_dependencies_after_source_change(self):
         self.build()
         first = self.record()

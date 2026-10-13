@@ -21,6 +21,7 @@
 - `./scripts/ansible-install.sh --all`を実行し、legacy・modernの両controllerのlocalhostでAnsible moduleが動くことを確認する。Pythonと解決した依存版を記録する。対象nodeのPythonはPhase 1で`ansible-runtime.py`が調べて選ぶ。
 - 使用版のisuscopeをbuild/installし、`lock`、`pin`、`routes`等の必要なコマンドがあることを確認する。version表示だけで同一buildとは判定しない。
 - Rust、Cargo、linker、採用予定の汎用開発ツールを確認し、問題を使わない小さなRustプログラムでbuild・testする。事前に分かるRust版は準備し、配布アプリの正確なtoolchain・Cargo依存・DB schemaは公開後に合わせる。
+- `make builder-images`で`config/rust-builder/bases.json`の候補base×targetのbuilder imageを作り、所要時間と取得できなかったtagを記録する。問題のコードは使わない。
 - 配布可能な計測toolの取得元・版を固定する。ローカルへ事前取得する場合はhashと再取得手順を残す。サーバーのOS・architecture・kernelに依存するpackageの選択と導入は公開後に行う。
 - `bash tests/initial-automation.sh`と`make test`で、問題や実サーバーを使わずimport/deploy/rollback、worktree、ボードの動作を確認する。
 
@@ -28,6 +29,7 @@
 
 - 利用予定のAIについて、CLI導入・認証・利用モデルでの新規セッション応答を確認する。代替モデルへ黙って切り替えない。
 - 各利用予定CLIで会話履歴の保存を確認する。短い接続確認を使い、問題の探索は開始しない。
+- AI laneが使う`claude -p`を、`config/lanes.json`のmodel・effort・permission modeで短く実行して応答を確認する（例: `echo "Reply OK" | claude -p --model claude-opus-5-5 --effort high --permission-mode dontAsk`）。問題の探索は開始しない。
 - Phase 1のコード先行回収と非同期buildの手順を確認する。
 - ボード（`make board`）のローカル表示を確認する。テストデータ・常駐processは開始前に残さない。
 - 禁止操作を止めるhookを確認する。Claude Codeは`.claude/settings.json`、Codexは`.codex/hooks.json`から`scripts/tool-guard.py`を呼ぶ。Codexでは初めて開いたときにhookを信頼する。練習では`config/tool-guard.json`に、対象の開催回を表す語（`contest_keywords`、例: `isucon14`。アプリのhost名に含まれる語は入れない）とベンチマーカーの置き場所（`benchmarker_paths`、例: `/home/isucon/bench`）を書く。練習の資料を取得し終えてから書くか、取得してよい資料のURLを`allowed_urls`に入れる。練習が終わったら空に戻す。ベンチnodeへの直接の接続は、設定がなくても止まる。

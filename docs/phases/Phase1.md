@@ -6,20 +6,20 @@
 
 また、アプリケーションコードと設定ファイルをすべてローカルリポジトリで管理し、コマンドからサーバーへデプロイできる状態を作る。
 
-SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。初期buildと環境準備の待ち時間にコード読解を進める。別セッション・worktreeの自動起動は行わない。
+SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を2本起動する。`code-map`が`docs/code-map.md`を書き、`obvious-fixes`が自明な修正を1件1commitで先行実装する。mainのセッションはその間に公式資料・ベンチ接続・初期build設定・draftの判断を進める。
 
-調査・修正・ローカル検証・deploy・ベンチ・採否判断は同じセッションで進める。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
+調査・修正・ローカル検証・deploy・ベンチ・採否判断の責任はmainのセッションが持つ。laneの成果は根拠を照合してからmergeする。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
 
 ## 初動と改善の流れ
 
-1. コードとschemaを先行回収し、初期状態をcommitする。
-2. 非同期buildの調査結果と配布コードを照合し、`config/phase1-build.json`を確定する。
-3. 全台準備・完全import・role・deploy・benchmark adapter・isuscopeを準備する。
-4. `phase1-check`が通ったら、人間の確認を待たずに初期状態の`survey-run`を明示実行し、スコア・エラー・HTTP・SQL・ホスト負荷を分析する。
-5. 観測とコードから改善を選び、実装・ローカル検証・commit・deployを進める。
+1. `make kickoff`をバックグラウンドで始め、`.local/progress.log`を追う。コードとschemaの先行回収・commitの後、build laneとAI laneが並行で始まる。
+2. kickoffと並行して、公式資料の保存、`config/benchmark.env`・`benchmark-contract`の用意、`--check`・`--probe`を済ませる。build設定が自動生成されたら確認してcommitし、設定待ちなら`config/phase1-build.json`を作る。
+3. draftを判断して`kickoff-apply`し、完全importをcommitする。初期buildの完了を待つ間に`phase1-check`を流し、`make deploy`する。
+4. `phase1-check`とdeployが通ったら、人間の確認を待たずに初期状態の`survey-run`を明示実行し、スコア・エラー・HTTP・SQL・ホスト負荷を分析する。lane `code-map`の地図を照合に使う。
+5. 観測とコードから改善を選ぶ。lane `obvious-fixes`のcommitは観測と照合して取り込み、残りは実装・ローカル検証・commit・deployを進める。
 6. 通常の`isuscope run`で比較し、仮説の判定と変更の採否を記録する。障害があれば原因調査から修正・再評価まで続ける。
 
-先行importは読解用の暫定snapshotであり、全配布先のdigest一致と設定の正本化は完全importで確認する。並行作業が必要な場合のみworktreeを作成する。remote操作はmain側で共通lockを使う。
+先行importは読解用の暫定snapshotであり、全配布先のdigest一致と設定の正本化は完全importで確認する。並行作業はlane（`scripts/lane.py`）か`make worktree`で行う。remote操作はmain側で共通lockを使う。
 
 ## ローカル実行環境を構築する
 
@@ -118,7 +118,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - 整合性チェックと失格条件
 - 得点へ直接つながる処理
 
-主要な処理について、次のつながりを`docs/code-map.md`（コードの地図）へ整理する。コードの先行回収の後、初期buildや全台準備を待つ間に作り始める。
+主要な処理について、次のつながりを`docs/code-map.md`（コードの地図）へ整理する。コードの先行回収の直後にlane `code-map`が書き始め、mainのセッションは`lane/code-map`をmergeしてから、公式資料と初回runの観測で得点・失敗の対応を補う。
 
 ```text
 シナリオ
@@ -143,7 +143,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 インデックスは、対象のSQL、初期化後の行数、効果を確かめたrun IDを`docs/indexes.md`へ残す。読み取りのキャッシュ・メモリ化と、DB・アプリ・nginxを別のnodeへ分ける配置変更は、次節の条件でPhase 1でも入れてよい。整合性条件を変えるもの、非同期化、write-behindなど永続化の時機を変えるものはPhase 1では実装しない。
 
-この一掃は初動の待ち時間と並行して進める作業であり、次の判断を止めるgateではない。初回runから得た上位SQL・HTTP・エラーと候補を照合し、根拠が弱い変更は保留する。変更を反映した最初の`isuscope run`で大きく改善することを確認し、その後はボトルネックごとの短いサイクルに切り替える。
+この一掃は初動の待ち時間と並行して進める作業であり、次の判断を止めるgateではない。先行回収の直後からlane `obvious-fixes`が`lane/obvious-fixes`へ1件1commitで実装する（deployはしない）。初回runから得た上位SQL・HTTP・エラーとそのcommitを照合し、効くものだけを選んで取り込む。根拠が弱い変更は保留する。変更を反映した最初の`isuscope run`で大きく改善することを確認し、その後はボトルネックごとの短いサイクルに切り替える。
 
 ## baselineの後に次の変更を選ぶ
 
@@ -200,9 +200,11 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 ## 非同期buildの開始と確認
 
-`make kickoff`は先行回収・commit後、独立した初期build処理を開始して全台bootstrapを進める。worktreeやAIセッションの作成は行わない。
+`make kickoff`は先行回収・commit後、独立した初期build処理を開始して全台bootstrapを進める。
 
-全台準備を待たず、`.local/phase1-build/status.json`と`environment.txt`を確認する。`needs_configuration`なら`config/phase1-build.example.json`を参考に、回収したCargo.toml・Cargo.lock・toolchain指定、remoteのCPU・OS・glibc・Rust版、追加Cライブラリを照合して`config/phase1-build.json`を作る。対象は`base_image`・`target`・`binary`・`dockerfile`。未記入のexampleを実設定へコピーしたままにしない。完成内容を一時ファイルに書き、renameで一括配置する。操作者自身の判断でよく、人間への追加承認は不要。
+build処理はremoteのCPU・glibc・OpenSSLと回収したCargo.toml・Cargo.lockから設定を提案し、`.local/phase1-build/proposal.json`へ残す。判断できる場合は`config/phase1-build.json`を書いてすぐbuildを始める（`configured`）。判断できる場合とは、単一binaryのpackageで、systemライブラリに依存する-sys crateがなく、`config/rust-builder/bases.json`にnodeのglibc以下（OpenSSLを使うならlibsslのmajorも一致）のbaseがあることを指す。自動生成された設定も内容を確認してcommitする。workspace、複数binary、`mysqlclient-sys`などのsystemライブラリ、合うbaseがない場合は理由を残して設定を待つ。`PHASE1_BUILD_AUTO_CONFIG=0`なら常に待つ。
+
+全台準備を待たず、`.local/progress.log`の`phase1-build`の行か`.local/phase1-build/status.json`と`environment.txt`を確認する。`needs_configuration`なら`config/phase1-build.example.json`を参考に、回収したCargo.toml・Cargo.lock・toolchain指定、remoteのCPU・OS・glibc・Rust版、追加Cライブラリを照合して`config/phase1-build.json`を作る。対象は`base_image`・`target`・`binary`・`dockerfile`。未記入のexampleを実設定へコピーしたままにしない。完成内容を一時ファイルに書き、renameで一括配置する。操作者自身の判断でよく、人間への追加承認は不要。
 
 初期build処理は設定を最大30分待ち、設定完了後は既存の`local-build.py`を使って共有キャッシュへbuildする。設定が既にあれば調査・CPU照合後すぐbuildする。全台準備とbaselineはbuild処理の完了待ちを入れない。deployに必要なbuild完了は従来どおりdeployが保証する。
 

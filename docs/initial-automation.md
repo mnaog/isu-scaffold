@@ -14,19 +14,55 @@ cp config/environment.example.env .local/environment.env
 初動は次の2コマンドで進めます。採用言語はRustに固定しており、`config/application.env`の`APPLICATION_LANGUAGE=rust`、`APPLICATION_PATH=webapp/rust`を使います。問題にRust実装がない場合だけ、このファイルを書き換えてから始めます。
 
 ```bash
-make kickoff
-# kickoffが先行回収・commit後に初期build環境の調査を並行開始する
-# 全台準備の終了を待たず、初期build設定を確認する
+make kickoff   # バックグラウンドで実行し、tail -n +1 -f .local/progress.log を追う
+# 先行回収・commit後に、初期buildの調査とAI lane（code-map、obvious-fixes）が並行で始まる
+# 実行中に: 公式資料の保存、config/benchmark.env・benchmark-contract、benchmark.sh --check/--probe
+# 実行中に: 自動生成されたbuild設定を確認してcommit（設定待ちなら作る）
 # .local/draft/review.mdのFAILを直し、WARNを判断する
 CONFIRM_DRAFT=true make kickoff-apply
 # importを確認して初期状態をcommit
+make phase1-check   # 初期buildの完了待ちに重ねる
 make deploy
-make phase1-check
 ```
 
 `kickoff`はまずnode発見後、回収元の1台（既定では最初のapplication node）だけSSHを確立し、`/home/isucon/webapp/rust`と`/home/isucon/webapp/sql`のDDL・初期化script（`.sql`、`.sh`、`.py`、`.rb`、`.pl`）だけを先行回収します。1ファイル1MiB・合計16MiBを超えるものやそれ以外の初期データは後回しにし、`.local/code-schema-manifest.log`へ`INCLUDED`／`DEFERRED`として記録します。上限は`CODE_SCHEMA_MAX_FILE_BYTES`、`CODE_SCHEMA_MAX_TOTAL_BYTES`で変更できます。生成物の`target`、`node_modules`、`.git`は除外します。pathが異なる場合は`CODE_SOURCE_NODE`、`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`、`CODE_SCHEMA_PATH`を環境変数で明示します。回収した`config/application.env`、`webapp/rust`、`webapp/sql`だけを自動commitし、他の未commit変更は含めません。この回収はコード読解開始用の暫定snapshotであり、全node一致の保証は後続の完全importが担当します。
 
-続いて初期build処理が1台目のCPU・OS・Rust版を調査します。全台準備を待たず、`docs/phases/Phase1.md`の「非同期buildの開始と確認」に従ってbuild設定を確定します。設定が保存されると初期buildが始まります。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。worktreeや別AIセッションは自動作成しません。並行作業が必要な場合のみ`make worktree BRANCH=<name> PURPOSE="目的"`を使います。目的はbranchのdescriptionへ保存し、作業情報を`<worktree>/.local/lane.md`へ生成します。
+続いて初期build処理が1台目のCPU・OS・glibc・OpenSSL・Rust版を調査し、回収したCargo.toml・Cargo.lockと合わせてbuild設定を提案します。判断できれば`config/phase1-build.json`を書いてすぐbuildを始め、判断できなければ理由を`.local/phase1-build/proposal.json`へ残して設定を待ちます（`docs/phases/Phase1.md`の「非同期buildの開始と確認」）。同時に`config/lanes.json`の`kickoff`にあるAI laneを起動します。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。
+
+### 進行の通知
+
+`kickoff`、初期build処理、AI laneは、次に操作できることを`.local/progress.log`へ1行ずつ書きます（開始時刻、出どころ、状態、内容をtab区切り）。worktreeから書いてもルートrepoのfileへ集まります。kickoffの終了を待たず、この行を見て次の操作へ移ります。
+
+| 出どころ | 状態 | 次の操作 |
+| --- | --- | --- |
+| `kickoff` | `code-ready` | コードを読める。laneはここから動く |
+| `phase1-build` | `configured` | 自動生成された`config/phase1-build.json`を確認してcommit |
+| `phase1-build` | `needs_configuration` | `proposal.json`の理由を読み、設定を作る |
+| `phase1-build` | `complete`／`failed` | deployできる／`build.log`を読んで直し、`phase1-build.py start` |
+| `lane:<名前>` | `complete`／`failed`／`timeout` | 結果を読んでmergeを判断／`lane.py status <名前>`で原因を見る |
+| `kickoff` | `draft-ready`／`draft-failed` | `review.md`を判断して`kickoff-apply`／FAILを直す |
+| `kickoff.sh`など | `failed` | その段階のlogを読んで直す |
+
+### AI lane
+
+並行させるAIは、すべてClaude Codeのheadless実行（`claude -p`）にします。`scripts/lane.py`がlaneごとに`make worktree`と同じ方法でworktreeとbranch（`lane/<名前>`、場所はルートrepoの隣の`<repo>-<名前>`）を作り、`config/lanes/<名前>.md`のpromptをstdinで渡して1回だけ実行します。laneはそのbranchへcommitして終わり、mainのセッションが結果を読んでmergeします。
+
+```bash
+make lanes                                   # 全laneの状態
+python3 scripts/lane.py status code-map      # status.jsonと最後の回答
+python3 scripts/lane.py start <名前> --prompt-file <path> --purpose "..."   # 任意のlane
+python3 scripts/lane.py stop <名前>
+git merge lane/code-map                      # 取り込みはmainのセッションが判断して行う
+```
+
+- **設定**: `config/lanes.json`の`claude`にcommand、model（既定`claude-opus-5-5`）、effort（既定`high`）、permission mode、`allowed_tools`、時間上限を置きます。permission modeは`dontAsk`で、`allowed_tools`にないtool（Web、remote command、任意のshell）は確認なしで拒否されます。人間が途中で承認しないので、laneが自分の権限を広げられないようにするためです。
+- **remote操作の禁止**: laneは環境変数`ISUCON_LANE`付きで動きます。`scripts/tool-guard.py`はこれを見て、SSH・コピー、Ansible、deploy・import・kickoffなどremoteへ触れるscriptとmake target、ベンチ、isuscopeの記録系command、`.local/operation.lock`、`git push`、laneやAI CLIの起動を拒否します。
+- **起動**: `make kickoff`は先行回収のcommit直後に`kickoff`のlane（既定は`code-map`と`obvious-fixes`）を起動します。完了・実行中のlaneは再実行しません。`KICKOFF_LANES=`で止め、`KICKOFF_LANES=code-map`で選べます。laneの起動に失敗してもkickoffは続きます。
+- **記録**: `.local/lanes/<名前>/`に`status.json`（状態、branch、worktree、commit一覧、秒数、費用）、`stream.jsonl`（stream-json出力）、`result.md`（最後の回答）が残ります。Claudeが最後のcommitの後に書いた会話履歴（`docs/agent-history/`）は、lane.pyがbranchへcommitします。所要時間は`.local/stage-timing.tsv`へ`lane`として入ります。
+- **時間上限**: laneごとの`timeout_minutes`を過ぎるとprocess groupを止めて`timeout`にします。それまでのcommitはbranchに残ります。
+- **後始末**: mergeが済んだlaneは、worktreeで`make local-down`してから`git worktree remove`します。
+
+手で並行作業を行う場合は`make worktree BRANCH=<name> PURPOSE="目的"`を使います。目的はbranchのdescriptionへ保存し、作業情報を`<worktree>/.local/lane.md`へ生成します。
 
 Rustを採用しているため、draftは`webapp/`全体ではなく、`webapp/rust`（`sync.rust.example.json`のbuild設定とCargo.tomlのbinary名つき）、Rustのsystemd unit、`webapp/sql`内の1MiB以下の`.sql`・`.sh`、nginx・MySQL設定だけを同期対象に提案します。初期データはnodeに残し、配布しません。初期状態でRust用unitがない場合（他言語のunitだけが動いている場合）はrestart commandを入れずWARNにするので、unitを`config/systemd/`へ作ってitemとcommandを足してから切り替えます。
 
@@ -45,7 +81,7 @@ draft reviewはnodeごとに1回のSSHで事実を集め、次をFAILにしま�
 
 draft生成は、採用言語のコードからsessionを識別するheaderやcookie（`x-session`、`Cookie::build("app_session"`、`const SESSION_ID_KEY: &str = "SESSIONID"`など）を探し、`observability_nginx_session_source`の候補（例: `$http_x_session`、`$cookie_SESSIONID`）を`ansible-vars.json`へ入れてWARNで確認を促します。見つからなければ設定を促すWARNになります。`kickoff-apply`は反映後に計測用logのdrop-inだけを書き直します。アプリがSQLiteやPostgreSQLに依存する場合、またはPostgreSQLが動いている場合は、DB計測がMySQL slow logだけであることをWARNにします。結果は`.local/draft/review.md`へ残ります。FAILがある場合`kickoff`は非0で終わり、draftを直して`python3 scripts/review-draft.py`で再検査します。`kickoff-apply`は反映前にもう一度同じ検査を行い、FAILなら何も変更しません。WARNの判断は、`review.md`を読んだ操作者（人間またはその作業セッション）が行います。
 
-`kickoff-apply`は検査済みdraftの反映、再discover、sync検査、完全import、採用言語の固定まで進めます。ベンチ前gateは`make phase1-check`を一度だけ実行します。個別の段階をやり直す場合は、以下の各節にある`scripts/`のscriptを直接実行します。初回`survey-run`、deploy、mergeは自動実行しません。
+`kickoff-apply`は検査済みdraftの反映、再discover、sync検査、完全import、採用言語の固定まで進めます。ベンチ前gateは`make phase1-check`を一度だけ実行します。`phase1-check`はdeployに依存しないので、完全importのcommit後、初期buildの完了を待つ間に実行してからdeployします。deployで設定（nginx、MySQL、unit）を変えたときだけ再実行します。個別の段階をやり直す場合は、以下の各節にある`scripts/`のscriptを直接実行します。初回`survey-run`、deploy、mergeは自動実行しません。
 
 SSH確立はinventoryのnode名で重複排除し、`SSH_MAX_PARALLEL_NODES`（既定5）台ずつ並列に行います。完全importはnodeごとに全itemのdigestを1回のSSHでまとめて計算し（`IMPORT_MAX_PARALLEL_NODES`、既定5）、localの内容がsourceのdigestと一致するitemは再転送しません。全itemのstagingと検証が終わるまで既存のlocalを置き換えず、途中で失敗した場合は元へ戻します。Ansible requirementsは内容hashが同じなら再installせず、bootstrap内のapplication nodeのfact収集も一度だけです。
 
@@ -155,7 +191,7 @@ commandは単なる文字列なら全application node、`{"node_group":"role_ngi
 
 build成果物は`ISUCON_DEPLOY_STAGING_PATH`配下へ配置し、実行ファイルなど必要なartifactを最後に検証します。失敗した場合はlive pathを切り替えず、transactionを中断してstagingを除去します。node上の永続build cacheはtransaction外に残るため、cacheには再生成可能なartifactだけを置き、秘密情報やruntime dataを保存しません。
 
-Rustは`local_builds`を既定とし、配布サーバーではコンパイルしません。`config/sync.rust.example.json`の`binary`・service名・配置先に加えて、`base_image`（Linuxディストリビューションとglibc互換性）、`target`、`dockerfile`を配布環境に合わせて確認します。標準コンパイラはRust 1.99.0です。Dockerfile内で公式rustupから取得し、`RUSTUP_TOOLCHAIN=1.99.0`で選択します。Phase 0ではOSを推測せず、`rust:replace-with-compatible-distribution`を残します。Phase 1で配布コードと実行環境を確認し、互換性のある既存のRust公式イメージを設定します。例えば既存のbullseye環境ならbaseを維持し、Rust版だけを更新します。配布サーバーのRust版は`docs/environment.md`へ残し、標準版の選択とは分けます。厳密に固定する場合は`base_image`をdigest指定にします。追加のCライブラリなどが必要なら、Git管理するDockerfileへ明示します。
+Rustは`local_builds`を既定とし、配布サーバーではコンパイルしません。`config/sync.rust.example.json`の`binary`・service名・配置先に加えて、`base_image`（Linuxディストリビューションとglibc互換性）、`target`、`dockerfile`を配布環境に合わせて確認します。標準コンパイラはRust 1.99.0です。Dockerfile内で公式rustupから取得し、`RUSTUP_TOOLCHAIN=1.99.0`で選択します。Phase 0ではOSを推測せず、`rust:replace-with-compatible-distribution`を残します。その代わり、`config/rust-builder/bases.json`の候補base（bullseye・bookworm・trixieのRust公式イメージと、そのglibc・libssl）×targetのbuilder imageを`make builder-images`（`local-build.py prepare-images`）で事前に作っておきます。当日の初回buildではrustup、apt、cross linkerの準備が省かれ、依存crateのcompileから始まります。取得できないtagがあれば止まるので、bases.jsonを直します。Phase 1では初期build処理が配布コードと実行環境からこの候補を選ぶか、操作者が互換性のある既存のRust公式イメージを設定します。例えば既存のbullseye環境ならbaseを維持し、Rust版だけを更新します。配布サーバーのRust版は`docs/environment.md`へ残し、標準版の選択とは分けます。厳密に固定する場合は`base_image`をdigest指定にします。追加のCライブラリなどが必要なら、Git管理するDockerfileへ明示します。
 
 ```bash
 make build                   # SSH/inventory不要。先行回収のcommit後から準備可能

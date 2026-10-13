@@ -97,19 +97,8 @@ def verified(record):
     return data
 
 
-def build_one(build, item, cache, strict):
-    if "replace-with" in build["base_image"] or "replace-with" in build["binary"]:
-        raise ValueError("Phase 1: configure the Rust image and binary from the imported app before building")
-    source = item["local"]
-    source_root = build.get("source_root", source)
-    clean(source_root)
-    if strict:
-        clean(build["dockerfile"])
-        clean("scripts/local-build.py")
-    tree = capture("git", "rev-parse", f"HEAD:{source_root}")
-    if subprocess.run(["git", "cat-file", "-e", f"HEAD:{source_root}/Cargo.lock"], cwd=REPO,
-                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
-        raise ValueError(f"missing {source_root}/Cargo.lock: import the workspace root and its path dependencies, then set source_root/manifest_dir; do not regenerate the distribution lockfile")
+def builder_image(build):
+    """The builder image for a base/target/toolchain; prepare-images makes the same tag in advance."""
     recipe = (REPO / build["dockerfile"]).read_bytes()
     platform = capture("docker", "info", "--format", "{{.OSType}}/{{.Architecture}}")
     platform = platform.replace("/aarch64", "/arm64").replace("/x86_64", "/amd64")
@@ -125,7 +114,42 @@ def build_one(build, item, cache, strict):
         run("docker", "build", "--platform", platform,
             *[arg for k, v in build_args.items() for arg in ("--build-arg", f"{k}={v}")], "-t", tag, "-", input=recipe,
             stdout=sys.stderr)
-    image = capture("docker", "image", "inspect", "--format", "{{.Id}}", tag)
+    return capture("docker", "image", "inspect", "--format", "{{.Id}}", tag), platform
+
+
+def prepare_images(bases_path, dockerfile):
+    """Phase 0: build every candidate builder image before any application code exists."""
+    config = json.loads(Path(bases_path).read_text())
+    failed = []
+    for base in config["bases"]:
+        for target in config.get("targets", ["x86_64-unknown-linux-gnu"]):
+            if target not in TARGETS:
+                raise ValueError(f"unsupported Rust target: {target}")
+            started = time.monotonic()
+            try:
+                image, _ = builder_image({"base_image": base["image"], "target": target, "dockerfile": dockerfile})
+                print(f"builder ready: {base['image']} {target} {image[:19]} ({time.monotonic() - started:.0f}s)", file=sys.stderr)
+            except subprocess.CalledProcessError as error:
+                failed.append(f"{base['image']} {target}")
+                print(f"builder failed: {base['image']} {target}: {error}", file=sys.stderr)
+    if failed:
+        raise ValueError("fix or remove these bases in config/rust-builder/bases.json: " + ", ".join(failed))
+
+
+def build_one(build, item, cache, strict):
+    if "replace-with" in build["base_image"] or "replace-with" in build["binary"]:
+        raise ValueError("Phase 1: configure the Rust image and binary from the imported app before building")
+    source = item["local"]
+    source_root = build.get("source_root", source)
+    clean(source_root)
+    if strict:
+        clean(build["dockerfile"])
+        clean("scripts/local-build.py")
+    tree = capture("git", "rev-parse", f"HEAD:{source_root}")
+    if subprocess.run(["git", "cat-file", "-e", f"HEAD:{source_root}/Cargo.lock"], cwd=REPO,
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+        raise ValueError(f"missing {source_root}/Cargo.lock: import the workspace root and its path dependencies, then set source_root/manifest_dir; do not regenerate the distribution lockfile")
+    image, platform = builder_image(build)
     # Tree/lock changes invalidate the final artifact, but retain dependency caches.
     environment = digest(json.dumps([image, build["target"], source, build["binary"]]).encode())
     input_id = digest(json.dumps([tree, build, environment,
@@ -228,16 +252,21 @@ def interrupted(signum, _frame):
 def main():
     signal.signal(signal.SIGTERM, interrupted)
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["build", "validate", "archive"])
+    parser.add_argument("action", choices=["build", "validate", "archive", "prepare-images"])
     parser.add_argument("--manifest", default=str(REPO / "config/sync.json"))
     parser.add_argument("--index")
     parser.add_argument("--commit", default="HEAD")
     parser.add_argument("--strict", action="store_true")
+    parser.add_argument("--bases", default=str(REPO / "config/rust-builder/bases.json"))
+    parser.add_argument("--dockerfile", default="config/rust-builder/Dockerfile")
     parser.add_argument("paths", nargs="*")
     # Python 3.12's parse_args rejects trailing paths after options when nargs='*'.
     args = parser.parse_intermixed_args()
     if args.action == "archive":
         archive_with_artifacts(args.index, args.paths, args.commit)
+        return
+    if args.action == "prepare-images":
+        prepare_images(args.bases, safe_path(args.dockerfile))
         return
     manifest = json.loads(Path(args.manifest).read_text())
     builds = definitions(manifest)

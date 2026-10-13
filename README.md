@@ -8,11 +8,13 @@
 mkdir -p .local
 cp config/environment.example.env .local/environment.env   # provider、SSH、node分類を設定
 
-make kickoff                           # コード先行回収・初期build・draft生成と実nodeでの検査
+make kickoff                           # コード先行回収・初期build・AI lane起動・draft生成と実nodeでの検査
+                                       # 実行中は.local/progress.logを追い、ベンチ接続を並行して準備する
 CONFIRM_DRAFT=true make kickoff-apply  # .local/draft/review.mdを判断してから反映・完全import
+make phase1-check                      # 初期buildの完了待ちに重ねる
 make deploy
-make phase1-check
 isuscope survey-run --hypothesis "初期状態の負荷構造を記録する"
+make lanes                             # AI lane（code-map、obvious-fixes）の結果を読んでmergeする
 ```
 
 | 資料 | 内容 |

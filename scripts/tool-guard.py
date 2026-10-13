@@ -47,6 +47,21 @@ HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 # Programs whose heredoc or arguments are text being written, not something read or run.
 DATA_WRITERS = {'cat', 'tee', 'echo', 'printf'}
 WRITE_HINT = '説明や設定に書くだけなら、Write・Editツールで書く。'
+LANE_HINT = 'laneはremote node・deploy・ベンチ・操作lockに触れない。必要な操作は最後の回答でmainのセッションへ頼む。'
+# Scripts and make targets that reach remote nodes, the benchmark or the operation lock.
+LANE_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-apply.sh', 'bootstrap.sh',
+                'bootstrap-ssh.sh', 'discover.sh', 'configure-draft.sh', 'configure-apply.sh',
+                'inspect-environment.sh', 'phase1-check.sh', 'quick-import-code.sh', 'run-ansible-playbook.sh',
+                'status.sh', 'switch-language-service.sh', 'sync-check.sh', 'benchmark.sh',
+                'benchmark-prepare.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'phase1-build.py',
+                'lane.py', 'review-draft.py', 'check-deployed-commit.sh'}
+LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap',
+                     'phase1-check', 'tare', 'practice-check', 'practice-create', 'practice-status',
+                     'practice-delete'}
+# Read-only isuscope commands; everything else records, benchmarks or reaches nodes.
+LANE_ISUSCOPE = {'list', 'brief', 'query', 'sql', 'help', '--help', '-h', '--version', 'version'}
+LANE_PROGRAMS = {'ansible', 'ansible-playbook', 'aws', 'gh', 'claude', 'codex', 'opencode'}
+LOCAL_URL = re.compile(r'^(?:https?://)?(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:/|$)')
 
 
 class Denied(Exception):
@@ -135,6 +150,7 @@ class Guard:
         self.keywords = [k.lower() for k in config.get('contest_keywords', []) if k]
         self.allowed_urls = [u for u in config.get('allowed_urls', []) if u]
         self.bench_ids = benchmark_ids(root)
+        self.lane = os.environ.get('ISUCON_LANE')
         patterns = [re.escape(p.rstrip('/')) + r'(?![\w.-])' for p in config.get('benchmarker_paths', []) if p]
         patterns += [r'(?<![\w.-])' + re.escape(k) + r'[\w.-]*/bench(?![\w.-])' for k in self.keywords]
         self.bench_paths = re.compile('|'.join(patterns), re.I) if patterns else None
@@ -229,6 +245,8 @@ class Guard:
                     if head == 'nice' and option == '-n' and words:
                         words.pop(0)
             elif head == 'isuscope' and len(words) > 1 and words[1] == 'lock':
+                if self.lane:
+                    raise Denied(LANE_HINT)
                 words = words[words.index('--') + 1:] if '--' in words else []
             elif head in SHELLS and len(words) > 2 and re.match(r'^-[a-z]*c[a-z]*$', words[1]):
                 self.check_shell(words[2], depth + 1)
@@ -243,6 +261,8 @@ class Guard:
         if not writing_text or program == 'cat':
             # cat with arguments reads files; only its heredoc body was dropped as text.
             self.check_arguments(words)
+        if self.lane:
+            self.check_lane(program, args)
         if program == 'ssh-node.sh':
             if args:
                 self.check_bench_host(args[0])
@@ -276,6 +296,25 @@ class Guard:
             if any(k in lowered for k in self.keywords):
                 raise Denied('現在練習中の開催回のコードや攻略情報をGitHubから取得・検索しない。')
 
+    def check_lane(self, program, args):
+        """An AI lane works on its own branch; remote, benchmark and lock work stays with main."""
+        script = program
+        if program in SHELLS | {'python', 'python3'}:
+            script = os.path.basename(next((a for a in args if not a.startswith('-')), ''))
+        if (program in SSH_PROGRAMS | COPY_PROGRAMS | LANE_PROGRAMS or program == 'ssh-node.sh'
+                or script in LANE_SCRIPTS or program in LANE_SCRIPTS
+                or any('operation.lock' in a for a in args)):
+            raise Denied(LANE_HINT)
+        if program == 'make' and any(a in LANE_MAKE_TARGETS for a in args if not a.startswith('-')):
+            raise Denied(LANE_HINT)
+        if program == 'isuscope' and (not args or args[0] not in LANE_ISUSCOPE):
+            raise Denied(LANE_HINT)
+        if program == 'git' and 'push' in args:
+            raise Denied(LANE_HINT)
+        if program in {'curl', 'wget'} and not all(LOCAL_URL.match(a) for a in args if not a.startswith('-')
+                                                  and ('.' in a or ':' in a or '/' in a)):
+            raise Denied(LANE_HINT)
+
     # --- tool calls --------------------------------------------------------------------
     def check(self, payload):
         tool = str(payload.get('tool_name') or '')
@@ -290,6 +329,8 @@ class Guard:
             else:
                 command = shlex.join(words)
         if isinstance(command, str):
+            if self.lane and 'operation.lock' in command:
+                raise Denied(LANE_HINT)
             self.check_shell(command)
         searching = 'search' in tool.lower()
         for key, value in tool_input.items():

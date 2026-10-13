@@ -51,8 +51,9 @@
 
 ## 作業の進め方
 
-作業するAIは、調査・実装・検証・deploy・ベンチ・採否判断まで一貫して進める。固定の役割分担や別セッションの起動を必須にしない。問題を理解したセッションで修正と評価を続ける。
-並行作業が必要な場合のみworktreeを使う。remote変更・deploy・共有ベンチはmain側で既存の共通lockを使い、実行中の操作と競合させない。作業中の他worktreeを変更・削除しない。
+作業するAI（mainのセッション）は、調査・実装・検証・deploy・ベンチ・採否判断まで一貫して進める。問題を理解したセッションで修正と評価を続ける。
+並行させるAIは、すべてClaude Codeのheadless実行（`claude -p`）のlaneにする。laneは`scripts/lane.py`が自分のworktreeとbranch（`lane/<名前>`）で1回だけ動かし、そのbranchへcommitして終わる。mainのセッションは結果（`python3 scripts/lane.py status <名前>`）を読み、根拠を照合してから`git merge`で取り込む。laneは出力が決まった有限のタスクだけに使い、常駐させない。モデル・effort・使えるtool・時間上限・promptは`config/lanes.json`と`config/lanes/`が正で、laneは許可したtool以外を確認なしで拒否される。laneのremote node・deploy・ベンチ・isuscopeの記録・`.local/operation.lock`・push・laneの起動は`scripts/tool-guard.py`が止める。
+remote変更・deploy・共有ベンチはmain側で既存の共通lockを使い、実行中の操作と競合させない。作業中の他worktreeを変更・削除しない。
 人間は`make board`で開く読み取り専用の画面（ボード）で、スコアの推移、runの比較と負荷、必ず残す記録を見る。詳細は`docs/board.md`。
 
 ## sfs
@@ -68,36 +69,44 @@ Phase 0は本番開始前に利用できる情報だけで行える準備をす�
 大会開始後は、`config/environment.example.env`を`.local/environment.env`へコピーしてprovider、SSH、node分類を設定し、次の順で初動を進める。
 
 ```text
-make kickoff
-  → 回収元1台のSSH確立後、webapp/rustとDDLを先行回収し、その範囲だけ自動commit
-  → 並行して1台目のbuild環境を調査。config/phase1-build.jsonを確定すると初期buildを自動開始
-  → 並行してローカル実行環境を構成し、make local-up / local-checkで初期改善に使う
+make kickoff（バックグラウンドで実行し、.local/progress.logを追う）
+  → 回収元1台のSSH確立後、webapp/rustとDDLを先行回収し、その範囲だけ自動commit（code-ready）
+  → 並行して1台目のbuild環境を調査。build設定を自動生成できれば即build、できなければ設定待ち
+  → 並行してlane code-map（docs/code-map.md）とlane obvious-fixes（自明な修正を1件1commit）を起動
   → 全nodeのSSH確立、Ansible導入、初期収束、初期構成の調査
   → node role、同期対象、Ansible変数、log pathの候補を.local/draftへ生成
-  → draftを実nodeと照合し、.local/draft/review.mdを出して停止
+  → draftを実nodeと照合し、.local/draft/review.mdを出して停止（draft-ready）
+kickoffの実行中にmainのセッションが並行して進める
+  → 公式資料をdocs/official/へ保存し、config/benchmark.envとbenchmark-contractを用意
+  → .isuscope/benchmark.sh --check、--probe（discoverの後なら実行できる）
+  → build設定待ちならconfig/phase1-build.jsonを作る。自動生成されたら確認してcommit
+  → ローカル実行環境を構成し、make local-up / local-checkで初期改善に使う
 review.mdのFAILを直し、WARNをすべて判断してからCONFIRM_DRAFT=true make kickoff-apply
   → draftを再検査して反映し、全配布先のdigest一致を確認して完全import
-make build（先行回収のcommit後、設定確認済みなら初動と並行可能）
-  → ローカルDockerでLinux向けRustをbuildし、ルートrepoのcacheへ保存
+完全importを確認して初期状態をcommit
+make phase1-check（初期buildの完了待ちに重ねて、deployの前に流す）
+  → 全node、同期、ベンチadapterと接続先、isuscope doctorをベンチなしで検査
 make deploy
   → ローカル成果物を再利用・必要時buildし、同じbinaryを全台stagingへ配布
   → 全台preflight・staging検査後に切り替え、失敗時はtransaction全体を復旧
-config/benchmark.envを設定して.isuscope/benchmark.sh --check、--probe
-make phase1-check
-  → 全node、同期、ベンチadapterと接続先、isuscope doctorをベンチなしで検査
 isuscope survey-run --hypothesis "..."
   → phase1-checkが通ったら、人間の確認を待たずに初回ベンチを一度だけ実行
   → 出力の形を確かめる前ならresultはPENDING。保存された出力をsampleにして--checkを通し、isuscope rescoreで確定
 初回runの分析後に観測に基づいて改善を実装・検証
+  → lane obvious-fixesのcommitをbaselineの観測と照合して選んで取り込む
   → deployし、通常のisuscope runでbaselineと比較
 ```
 
-採用言語はRustに固定する（`config/application.env`）。先行回収は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は`kickoff-apply`のimportで完了する。`kickoff`は再実行でき、回収済みならimportを飛ばし、初期buildは重複起動しない。draftの判断は`review.md`を読んだ操作者（人間またはこのセッション）が行い、`make`の中で別のAIを呼んで承認させない。`make`は初動・deploy・検査とボードの入口に絞っており、個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
+時間の大半は「kickoffが終わるのを待つ間」と「deployから初回ベンチまで」に出る。mainのセッションは`make kickoff`の終了を待たず、`.local/progress.log`の行（`code-ready`、`phase1-build configured / needs_configuration / complete / failed`、`lane:<名前> complete / failed`、`draft-ready / draft-failed`、段階の`failed`）を見て次の操作へ移る。Claude Codeならkickoffを`run_in_background`で起動し、Monitorで`tail -n +1 -f .local/progress.log`を追う。Codexでは別のshellでkickoffを動かし、同じfileを作業の区切りごとに読む。ベンチ接続の準備はkickoffの結果を使わないので、kickoffの開始と同時に始める。`phase1-check`はdeployに依存しないので、deployの前に流して初期buildの待ち時間に重ねる。deployで設定（nginx、MySQL、unit）を変えたときだけ再実行する。
+
+採用言語はRustに固定する（`config/application.env`）。先行回収は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は`kickoff-apply`のimportで完了する。`kickoff`は再実行でき、回収済みならimportを飛ばし、初期buildと完了・実行中のlaneは重複起動しない。draftの判断は`review.md`を読んだ操作者（人間またはこのセッション）が行い、`make`の中で別のAIを呼んで承認させない。`make`は初動・deploy・検査とボードの入口に絞っており、個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
 
 - 計測と運用の土台（計測tool、LTSV access log、時刻同期、journal、自動更新停止）は初動のAnsibleで固定化し（SQLはisuscopeがperformance_schemaから取るので、slow logは既定で無効）、レギュレーションで禁止された項目だけ変数で外す。性能を変える設定（`config/nginx/tare`、networking sysctl、MySQLの性能設定）は初回baselineの後に1つの変更として入れる。接続・fdの上限（nginxのworker_connections・backlog・keepalive、アプリのLimitNOFILE、sysctl、MySQLのmax_connectionsとbuffer pool）は`make tare`が1つのcommitにするので、baselineの後に早めにdeployして`isuscope run`で測る。
 - ベンチの前には毎回、isuscopeの`prepare_command`（`scripts/benchmark-prepare.sh`）が動いているアプリのunitを再起動し、listenを待つ。前のベンチが途中で切ったrequestのtransactionが、次のinitializeを止めないようにするため。その前に、最後にdeployしたcommitとHEADを、deployが配るファイルに限って照合し、ずれていればベンチを始めない（`scripts/check-deployed-commit.sh`）。止まったら、commitして`make deploy`するか、HEADを戻す。
 - `kickoff`、`bootstrap`、`phase1-check`からベンチを起動しない。`isuscope survey-run`は必ず独立した明示操作にし、`phase1-check`が通ったら作業中のAIが人間の確認を待たずに実行する。
-- 並行作業が必要なら`make worktree BRANCH=<name> PURPOSE="..."`で作る。目的はbranchへ記録する。変更目的ごとにcommitを分け、検証結果と評価したcommitを残す。
+- kickoffが起動するlaneは`config/lanes.json`の`kickoff`（既定は`code-map`と`obvious-fixes`）。`KICKOFF_LANES=`で止め、`KICKOFF_LANES="code-map"`のように選べる。baseline後に並行させたい調査や実装は、promptを書いて`python3 scripts/lane.py start <名前> --prompt-file <path> --purpose "..."`で起動する。進行は`make lanes`で見る。
+- laneの`code-map`は文書だけなので、終わり次第mainへmergeしてよい。`obvious-fixes`のcommitは初回baselineの分析の後、観測と照合して選んで取り込み（`git merge`、または一部なら`git cherry-pick`）、deployして`isuscope run`で測る。laneの最後の回答にある「実装しなかった候補」も次の変更を選ぶ材料にする。
+- 並行作業を手で行うなら`make worktree BRANCH=<name> PURPOSE="..."`で作る。目的はbranchへ記録する。変更目的ごとにcommitを分け、検証結果と評価したcommitを残す。
 - 並行worktreeでも目的に必要なコード・設定・文書を扱ってよい。remote変更、deploy、ベンチ、`.local/operation.lock`を使う操作はmain側だけが行う。
 - Phase 1のローカル実行環境は各worktreeで`make local-up / local-check / local-down`で操作してよい。worktree専用のDB・network・port・lockを使う。初回baselineの開始はローカル環境の完成を待たない。詳細は`docs/local-development.md`を参照する。
 - 自明な修正は初回baselineを取るまでremoteへ反映しない。baselineの分析後にmainの最新設定を取り込み、変更根拠を照合してから統合する。

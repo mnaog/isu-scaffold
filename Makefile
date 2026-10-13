@@ -1,13 +1,15 @@
-.PHONY: help discover kickoff kickoff-apply build deploy rollback status phase1-check tare
+.PHONY: help discover kickoff kickoff-apply build deploy rollback status phase1-check tare lanes builder-images
 
 help:
 	@printf '%s\n' \
 		'make discover                         providerからnodeと全設定を再生成する' \
 		'make kickoff                          コード先行回収・初期buildからdraft生成と検査まで進める' \
+		'make lanes                            claude -pのAI lane（code-map、obvious-fixesなど）の状態を見る' \
 		'make worktree BRANCH=<name> PURPOSE="..."  目的つきで並行laneのworktreeを作る' \
 		'CONFIRM_DRAFT=true make kickoff-apply  検査済みdraftを反映して完全importする' \
 		'make local-up / local-check / local-down  worktree専用のローカル実行環境を操作する' \
 		'make build                            ローカルでLinux向けRust成果物を準備する' \
+		'make builder-images                   Phase 0: 候補baseのRust builder imageを事前に作る' \
 		'make deploy                           commit済みのlocal状態を全nodeへ反映する' \
 		'make rollback RELEASE=<id>            deploy前のremote状態へ戻す' \
 		'make status                           全application nodeを検査する' \
@@ -21,6 +23,12 @@ discover:
 
 kickoff:
 	@./scripts/kickoff.sh
+
+lanes:
+	@python3 scripts/lane.py status
+
+builder-images:
+	@python3 scripts/local-build.py prepare-images
 
 worktree:
 	@test -n "$(BRANCH)" || { echo 'BRANCH=<name>を指定してください' >&2; exit 2; }

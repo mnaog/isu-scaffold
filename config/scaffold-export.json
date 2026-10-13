@@ -99,7 +99,14 @@
     "scripts/stage-lib.sh",
     "ansible/ansible.cfg",
     "ansible/callback_plugins/task_timing.py",
-    "tests/fixtures/sync.json"
+    "tests/fixtures/sync.json",
+    "scripts/lane.py",
+    "scripts/progress.py",
+    "config/lanes.json",
+    "config/lanes/code-map.md",
+    "config/lanes/obvious-fixes.md",
+    "config/rust-builder/bases.json",
+    "tests/test_lane.py"
   ],
   "remove_files": [
     "docs/roles/operator.md",
