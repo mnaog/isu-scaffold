@@ -102,7 +102,8 @@ class Phase1SetupTest(unittest.TestCase):
 case "$1" in
 list-unit-files) echo 'isu-rust.service disabled enabled';;
 list-units) echo 'nginx.service loaded active running';;
-show) echo "/etc/systemd/system/$2";;
+show) shift; test "$1" = --property=FragmentPath && shift 2
+  for unit; do printf 'FragmentPath=/etc/systemd/system/%s\n\n' "$unit"; done;;
 esac
 """)
             binary.chmod(0o755)

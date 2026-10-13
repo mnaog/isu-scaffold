@@ -154,7 +154,7 @@ nginx.confがhttpの中で`/etc/nginx/conf.d/*.conf`をincludeしていない場
 ./scripts/inspect-environment.sh
 ```
 
-remoteを変更せず、OS、CPU、memory、running service、listen port、process名、主要runtime、application root・設定・systemd unit・log path・計測toolの候補を`.local/inspection/<node>.json`へ保存します。process引数や環境変数は収集しません。
+remoteを変更せず、OS、CPU、memory、running service、listen port、process名、主要runtime、application root・設定・systemd unit・log path・計測toolの候補を`.local/inspection/<node>.json`へ保存します。process引数や環境変数は収集しません。`make kickoff`の中では、bootstrapが集めたOS・CPU・memoryのfactsをその実行限りのcache（`ANSIBLE_FACT_CACHE_DIR`、終了時に削除）から読み、集め直しません。実行をまたいでcacheを残さないのは、同じnode名の前の環境を読まないためです。systemd unitのfragment pathは1回の`systemctl show`でまとめて引きます。
 
 調査結果から設定候補を作ります。
 

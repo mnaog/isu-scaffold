@@ -73,6 +73,9 @@ stage lanes python3 "${script_dir}/lane.py" kickoff || echo "some AI lanes did n
 echo ">> Phase 1 local environment: adapt config/local/compose.example.yaml; run make local-up in parallel (docs/local-development.md). Baseline does not wait for it."
 
 echo "== setup: bootstrap, inspection and configuration draft"
+ANSIBLE_FACT_CACHE_DIR=$(mktemp -d "${repo_dir}/.local/ansible-facts.XXXXXX")
+export ANSIBLE_FACT_CACHE_DIR
+trap 'rm -rf -- "${ANSIBLE_FACT_CACHE_DIR}"' EXIT
 stage bootstrap env ${bootstrap_env[@]+"${bootstrap_env[@]}"} "${script_dir}/bootstrap.sh"
 stage inspect "${script_dir}/inspect-environment.sh"
 # docs/environment.md from the inspection, without AI; never stops the setup.

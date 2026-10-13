@@ -58,16 +58,22 @@
 
     - name: Find systemd service fragment paths
       ansible.builtin.shell: |
-        {
+        units=$({
           systemctl list-unit-files --type=service --no-legend --no-pager 2>/dev/null
           systemctl list-units --type=service --all --no-legend --no-pager 2>/dev/null
-        } |
-        awk '$1 ~ /\.service$/ {print $1}' | sort -u | while IFS= read -r unit; do
-          fragment=$(systemctl show "$unit" -p FragmentPath --value 2>/dev/null || true)
-          if test -n "$fragment"; then
-            printf '%s\t%s\n' "$unit" "$fragment"
-          fi
-        done
+        } | awk '$1 ~ /\.service$/ && $1 !~ /@\.service$/ {print $1}' | sort -u)
+        test -n "$units" || exit 0
+        # One systemctl call for every unit: it prints one block per argument, in argument order.
+        # Templates (foo@.service) have no FragmentPath and would make the whole call fail.
+        # Each value keeps a leading "=" so that empty paths still count as lines.
+        fragments=$(systemctl show --property=FragmentPath -- $units 2>/dev/null | sed -n 's/^FragmentPath=/=/p')
+        if test "$(printf '%s\n' "$fragments" | grep -c '^=')" -ne "$(printf '%s\n' "$units" | grep -c .)"; then
+          fragments=$(printf '%s\n' "$units" | while IFS= read -r unit; do
+            printf '=%s\n' "$(systemctl show "$unit" -p FragmentPath --value 2>/dev/null || true)"
+          done)
+        fi
+        paste <(printf '%s\n' "$units") <(printf '%s\n' "$fragments") |
+          awk -F '\t' '$2 != "=" {print $1 "\t" substr($2, 2)}'
       args:
         executable: /bin/bash
       register: inspection_service_fragments
@@ -90,10 +96,9 @@
 
     # Units defined for this machine often read an environment file (DB host, ports) outside the app tree.
     - name: Find environment files of locally defined services
+      # Reuses the fragment paths above instead of asking systemctl for every unit again.
       ansible.builtin.shell: |
-        systemctl list-unit-files --type=service --no-legend --no-pager 2>/dev/null |
-        awk '$1 ~ /\.service$/ {print $1}' | sort -u | while IFS= read -r unit; do
-          fragment=$(systemctl show "$unit" -p FragmentPath --value 2>/dev/null || true)
+        while IFS=$'\t' read -r unit fragment; do
           case "$fragment" in /etc/systemd/system/*) ;; *) continue ;; esac
           systemctl cat "$unit" 2>/dev/null | sed -n 's/^[[:space:]]*EnvironmentFile=-\{0,1\}//p' |
             while IFS= read -r file; do
@@ -104,6 +109,7 @@
         done
       args:
         executable: /bin/bash
+        stdin: "{{ inspection_service_fragments.stdout }}"
       register: inspection_service_environment_files
       changed_when: false
 
