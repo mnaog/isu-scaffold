@@ -77,6 +77,30 @@ class AdapterTest(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         return json.loads(completed.stdout.strip().splitlines()[-1])
 
+    def ssh_inventory(self, benchmark_hosts):
+        fake = self.root / 'scripts/ssh-node.sh'
+        fake.write_text('#!/bin/bash\nprintf "%s\\n" "$1" > "$(dirname "$0")/../ssh-target"\nexec bash -c "$2"\n')
+        fake.chmod(0o755)
+        (self.root / '.local').mkdir(exist_ok=True)
+        (self.root / '.local/ansible-inventory.json').write_text(json.dumps(
+            {'all': {'children': {'application': {'hosts': {'app1': {}}},
+                                  'benchmark': {'hosts': {name: {} for name in benchmark_hosts}}}}}))
+
+    def test_an_empty_benchmark_node_is_the_only_benchmark_host(self):
+        # practice-12-sixth: discover named the node <stack>-bench, and the old default `bench`
+        # failed --check. Empty means the inventory's single benchmark node.
+        self.ssh_inventory(['practice-12-sixth-20261013-bench'])
+        self.configure(FINAL_OUTPUT, BENCHMARK_TRANSPORT='ssh', BENCHMARK_NODE='')
+        self.assertTrue(self.result()['pass'])
+        self.assertEqual((self.root / 'ssh-target').read_text().strip(), 'practice-12-sixth-20261013-bench')
+
+    def test_an_empty_benchmark_node_needs_exactly_one_benchmark_host(self):
+        self.ssh_inventory(['bench1', 'bench2'])
+        self.configure(FINAL_OUTPUT, BENCHMARK_TRANSPORT='ssh', BENCHMARK_NODE='')
+        completed = self.adapter('--check')
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn('does not have exactly one node', completed.stderr)
+
     # The fake ssh runs the node-side command here, and the benchmark node has GNU timeout and setsid.
     @unittest.skipUnless(shutil.which('timeout') and shutil.which('setsid'), 'needs GNU timeout and setsid')
     def test_ssh_benchmark_is_stopped_on_the_benchmark_node_too(self):

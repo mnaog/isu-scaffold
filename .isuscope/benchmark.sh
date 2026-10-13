@@ -29,6 +29,12 @@ load_config() {
   if [[ -n "${ISUSCOPE_BENCHMARK_TIMEOUT_SECONDS:-}" ]]; then
     BENCHMARK_TIMEOUT_SECONDS=${ISUSCOPE_BENCHMARK_TIMEOUT_SECONDS}
   fi
+  # An empty BENCHMARK_NODE means the only node of the inventory's benchmark group: discover names
+  # nodes per provider (practice-12-sixth: <stack>-bench), so a fixed default did not match.
+  if [[ "${BENCHMARK_TRANSPORT:-}" == ssh && -z "${BENCHMARK_NODE:-}" && -f "${inventory_path}" ]]; then
+    BENCHMARK_NODE=$(jq -r '(.all.children.benchmark.hosts // {}) | keys | if length == 1 then .[0] else empty end' \
+      "${inventory_path}")
+  fi
 }
 
 validate_regex() {
@@ -86,7 +92,10 @@ validate_config() {
       test -n "${BENCHMARK_PROBE_COMMAND:-}" || { echo "BENCHMARK_PROBE_COMMAND is empty" >&2; return 1; }
       ;;
     ssh)
-      test -n "${BENCHMARK_NODE:-}" || { echo "BENCHMARK_NODE is required for ssh transport" >&2; return 1; }
+      test -n "${BENCHMARK_NODE:-}" || {
+        echo "BENCHMARK_NODE is empty and the inventory's benchmark group does not have exactly one node; set it in config/benchmark.env" >&2
+        return 1
+      }
       test -f "${inventory_path}" || { echo "run make discover first" >&2; return 1; }
       jq -e --arg name "${BENCHMARK_NODE}" \
         '[.all.children[].hosts | keys[]] | index($name) != null' \
