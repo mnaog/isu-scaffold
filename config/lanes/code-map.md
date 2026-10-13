@@ -4,7 +4,7 @@
 
 ## 前提
 
-- 作業場所はこのworktreeとbranchだけ。`AGENTS.md`と`practice.md`の規則に従う。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。
+- 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。
 - 読むもの: `webapp/`配下の回収済みコードとschema（`webapp/rust`、`webapp/sql`）。`docs/official/`があれば読む。公式資料がまだ無い場合、得点や失敗条件は推測として書く。
 - 書くもの: `docs/code-map.md`だけ。コードは変更しない。
 

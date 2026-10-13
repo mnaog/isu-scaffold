@@ -4,7 +4,7 @@
 
 ## 前提
 
-- 作業場所はこのworktreeとbranchだけ。`AGENTS.md`と`practice.md`の規則に従う。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。
+- 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。
 - 変更してよいのは`config/local/`と`docs/local-verification.md`だけ。アプリのコード・schemaは変えない。
 - 初期データは許可された取得元（回収済みの`webapp/sql`など）だけを使う。サーバーからデータを取りに行かない。
 

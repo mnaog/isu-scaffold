@@ -4,7 +4,7 @@
 
 ## 前提
 
-- 作業場所はこのworktreeとbranchだけ。`AGENTS.md`と`practice.md`の規則に従う。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。
+- 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。
 - 読むもの: `docs/official/`（参加者向けの公式資料）、`webapp/`のコードとschema、あれば`docs/code-map.md`。ベンチマーカーの内部コード、運営向けの出力（ISUCON12の`[ADMIN]`行など）、過去の改善結果は使わない。
 - 書くもの: `docs/benchmark-scenario.md`だけ。
 

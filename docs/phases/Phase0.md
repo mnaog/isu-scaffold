@@ -10,7 +10,7 @@
 
 ## repoと再現条件
 
-- 現在のscaffoldから独立したGit repoを作り、privateのGitHub repoへpushしてprivateであることを確認する。過去の履歴・別大会の成果物・接続情報はコピーしない。
+- 現在のscaffoldから独立したGit repoを作り、privateのGitHub repoへpushしてprivateであることを確認する。過去の履歴・別大会の成果物・接続情報はコピーしない。scaffoldのrootで`python3 scripts/new-contest-repo.py <新しいdirectory> --github <owner>/<name>`を実行すると、commit済みのscaffoldから`config/new-repo.json`の除外（scaffold自身の会話履歴、AI比較の実験、別件の資料）を除いてコピーし、新しい履歴で始め、privateのrepoを作ってpushする。本番では`practice.md`とAGENTS.mdの練習用の2行も消す（練習の開始用repoなら`--practice`で残す）。コピー元のcommitは`docs/phase0/scaffold-source.json`、準備状況のひな形は`docs/phase0/readiness.md`に入り、以降の確認はそのrepoで記録する。
 - scaffold、isuscope、agent-history、各AI CLIの使用版を記録する。未コミットのテンプレ変更を使う場合はファイルのhashまたは差分も残す。
 - 会話履歴以外のAI初期入力、起動プロンプト、モデル、推論設定、ハーネス設定を明示する。入力に別の問題の分析・コードを混ぜない。
 - Gitのcommit・push、SSH鍵管理、`.local/`の除外、ClaudeのAGENTS symlinkを確認する。
