@@ -269,6 +269,15 @@ class ScoutTests(unittest.TestCase):
         self.assertFalse(runner.attempt(self.repo,self.cfg,'codex',bundle=self.bundle))
         self.assertIn('timeout',self.query("SELECT error FROM scouts WHERE name='codex'")[0]['error'])
 
+    def test_no_time_limit_by_default(self):
+        self.assertIsNone(json.loads((SOURCE/'config/scout.json').read_text())['timeout_seconds'])
+        self.cfg['timeout_seconds']=None
+        (self.repo/'config/scout.json').write_text(json.dumps(self.cfg))
+        self.assertIsNone(store.config(self.repo)['timeout_seconds'])
+        self.cli.write_text('import sys,time\nsys.stdin.read()\ntime.sleep(.5)\nprint("遅い報告")\n')
+        self.assertTrue(runner.attempt(self.repo,self.cfg,'codex',bundle=self.bundle))
+        self.assertIn('遅い報告',self.query("SELECT report FROM scouts WHERE name='codex'")[0]['report'])
+
     def test_daemon_repeats_with_short_interval_in_fresh_sessions(self):
         self.cfg['wait_after_report_seconds'] = .3
         (self.repo/'config/scout.json').write_text(json.dumps(self.cfg))

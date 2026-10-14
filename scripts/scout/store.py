@@ -42,6 +42,9 @@ def config(repo):
         path = repo / 'config' / 'scout.json'
     value = json.loads(path.read_text())
     for key in ('wait_after_report_seconds', 'timeout_seconds', 'retry_max_seconds'):
+        # timeout_seconds null: no limit, the scout runs until it reports or is stopped.
+        if value[key] is None and key == 'timeout_seconds':
+            continue
         if value[key] <= 0:
             raise ValueError(f'{key} must be positive')
     return value

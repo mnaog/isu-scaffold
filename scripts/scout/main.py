@@ -16,6 +16,9 @@ import sys
 import threading
 from inputs import current, generate
 from runner import active, attempt, daemon, export_reports, initialize, start, stop_daemon
+
+# The connection check stays bounded even when the scouts themselves run without a time limit.
+SMOKE_TIMEOUT_SECONDS = 600
 from store import config, connect, local, root, rows
 
 
@@ -111,7 +114,7 @@ def main():
                 path = local(repo) / 'smoke' / args.name / session
                 path.mkdir(parents=True)
                 text = (repo / 'docs/roles/scout-prompt.txt').read_text() + '\n今回は接続確認です。探索・ツール操作は不要です。「接続確認済み」とだけ回答してください。'
-                report = invoke(repo, spec, text, path, threading.Event(), cfg['timeout_seconds'], session, lock_fd=held.fileno())
+                report = invoke(repo, spec, text, path, threading.Event(), cfg['timeout_seconds'] or SMOKE_TIMEOUT_SECONDS, session, lock_fd=held.fileno())
                 if not report.strip():
                     raise ValueError('接続応答が空です')
                 print(json.dumps({'scout': args.name, 'report': report.strip(), 'log': str(path)}, ensure_ascii=False))

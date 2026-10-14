@@ -89,10 +89,11 @@ def invoke(repo, spec, text, directory, stop, timeout, session, lock_fd=None, ro
     env.update(extra_env or {})
     (directory / 'prompt.txt').write_text(text)
     with (directory / 'prompt.txt').open() as stdin, (directory / 'stdout.log').open('w') as stdout, (directory / 'stderr.log').open('w') as stderr:
-        guarded = [sys.executable, str(Path(__file__).with_name('process_guard.py')), str(os.getpid()), str(timeout + 5), *argv]
+        limit = float('inf') if timeout is None else timeout
+        guarded = [sys.executable, str(Path(__file__).with_name('process_guard.py')), str(os.getpid()), str(limit + 5), *argv]
         p = subprocess.Popen(guarded, cwd=repo, stdin=stdin, stdout=stdout, stderr=stderr, env=env, start_new_session=True, pass_fds=(() if lock_fd is None else (lock_fd,)))
         (directory / 'process.json').write_text(json.dumps({'pid': p.pid, 'invocation_id': session, 'argv': argv, 'started_at': time.time()}))
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + limit
         try:
             while p.poll() is None:
                 if stop.wait(0.1):

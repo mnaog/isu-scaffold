@@ -1,7 +1,7 @@
 {
-  "description": "Scouts (scripts/scout): each starts again wait_after_report_seconds after its last report was saved. Copy the whole file to .local/scout.json to override it on one machine.",
+  "description": "Scouts (scripts/scout): each starts again wait_after_report_seconds after its last report was saved. timeout_seconds null lets a scout run until it reports. Copy the whole file to .local/scout.json to override it on one machine.",
   "wait_after_report_seconds": 480,
-  "timeout_seconds": 600,
+  "timeout_seconds": null,
   "retry_max_seconds": 3600,
   "scenario": "docs/benchmark-scenario.md",
   "base_run": null,

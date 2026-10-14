@@ -20,7 +20,7 @@ make scout-status
 make scout-stop     # 最新の報告をdocs/scout-reports.mdへ残す
 ```
 
-`make first-bench`は、初回baseline（survey-run）がPASSまたはPENDINGで残った直後に`make scout-start`と同じ処理でscoutを起動し、続けてdeployする。scoutの1回目の探索はbaselineを読む。起動できなかった場合（実行中、設定不備など）は`.local/progress.log`へ`scout-not-started`を出し、ベンチとdeployは止めない。それ以外の自動起動はしない。起動したセッション（`CLAUDE_CODE_SESSION_ID`、`CODEX_SESSION_ID`・`CODEX_THREAD_ID`。isuscopeが会話を紐付けるのと同じ環境変数）を、scoutが読む会話として登録する。常駐処理は作業セッションの終了から独立して動く。各scoutは新しいCLIセッションで入力生成→探索→最新状況の再確認→報告保存を行い、報告を保存し`.local/scout/reports.md`へ書き出した時刻から`wait_after_report_seconds`（480秒＝8分）後に次回実行する。開始時刻からの固定間隔ではないので、探索に時間がかかった回はその分だけ次回も後ろへずれる。3体の時刻は独立している。
+`make first-bench`は、初回baseline（survey-run）がPASSまたはPENDINGで残った直後に`make scout-start`と同じ処理でscoutを起動し、続けてdeployする。scoutの1回目の探索はbaselineを読む。起動できなかった場合（実行中、設定不備など）は`.local/progress.log`へ`scout-not-started`を出し、ベンチとdeployは止めない。それ以外の自動起動はしない。起動したセッション（`CLAUDE_CODE_SESSION_ID`、`CODEX_SESSION_ID`・`CODEX_THREAD_ID`。isuscopeが会話を紐付けるのと同じ環境変数）を、scoutが読む会話として登録する。常駐処理は作業セッションの終了から独立して動く。各scoutは新しいCLIセッションで入力生成→探索→最新状況の再確認→報告保存を行い、報告を保存し`.local/scout/reports.md`へ書き出した時刻から`wait_after_report_seconds`（480秒＝8分）後に次回実行する。開始時刻からの固定間隔ではないので、探索に時間がかかった回はその分だけ次回も後ろへずれる。3体の時刻は独立している。探索の時間上限は既定で設けない（`timeout_seconds`が`null`）。遅いモデルでも報告まで走らせ、途中で打ち切って何も残らない回をなくすため。上限を付けるときは`timeout_seconds`へ秒数を書く。接続確認（`--smoke`）だけは600秒で打ち切る。
 停止時は待機と実行中CLIを終了する。再開時は保存済みの次回予定を尊重する。失敗時は480秒から倍に延ばし（960、1920秒）、最大3600秒とする。空回答も失敗とし、最後の成功報告は残す。
 
 同じscoutの手動実行と常駐実行にも共通のOSファイルlockを使う。これはローカル実行の多重起動防止のみであり、作業担当の調整や実験leaseではない。lockファイルは削除しない。
