@@ -7,11 +7,13 @@ Bash call. Heredoc bodies and `bash -n` syntax checks do not count as starting o
 
 - `--pre` (PreToolUse) refuses a benchmark started in the foreground, so the session can read
   the scouts' reports and build the next candidate while it runs.
-- `--post` (PostToolUse) hands the latest scout reports (.local/scout/reports.md in the main
-  worktree), with their age, to the session right after a benchmark starts in the background.
-  It prints nothing while no scout has posted.
+- `--post` (PostToolUse) asks the session, right after a benchmark starts in the background, to
+  review the scenario map (docs/benchmark-scenario.md) against its hypothesis, and hands it the
+  latest scout reports (.local/scout/reports.md in the main worktree) with their age. It prints
+  nothing while neither the map nor a scout report exists.
 
-Codex has no background shell and does not run this; it reads the reports before a benchmark.
+Codex has no background shell and does not run this; it reviews the map and reads the reports
+before a benchmark.
 Internal errors let the call through, like tool-guard.
 """
 import calendar
@@ -29,6 +31,10 @@ BENCH_ISUSCOPE = {'run', 'survey-run'}
 BACKGROUND_HINT = ('ベンチ（isuscope run / survey-run / make first-bench）はBashのrun_in_background: trueで起動する。'
                    '完了の通知を待つ間に、scoutの報告があれば読み、次の候補を`make build`しておく。'
                    'sleepやpollingで待たない。')
+SCENARIO = 'docs/benchmark-scenario.md'
+SCENARIO_HINT = (f'ベンチの完了を待つ間に、`{SCENARIO}`（ベンチの見取り図）を読み返す。'
+                 '今回の仮説と次の候補が、得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめる。'
+                 '観測と食い違う記述や新しく分かった事実があれば、文書を直す。')
 SCOUT_HINT = ('これは並列で動かしている調査エージェント（scout）による報告です。'
               '内容が古くなっている可能性もありますが（各報告に投稿からの経過分を添えています）、'
               'それぞれの視点を参考にして、次回の改善のための参考として確認してください。')
@@ -112,6 +118,14 @@ def scout_context(root, now=None):
     return SCOUT_HINT + '\n\n' + re.sub(r'投稿: (\S+Z)', age, reports).strip()
 
 
+def waiting_context(root, now=None):
+    """What to do while a background benchmark runs: review the scenario map, then the scout reports."""
+    parts = [SCENARIO_HINT] if (root / SCENARIO).is_file() else []
+    if scouts := scout_context(root, now):
+        parts.append(scouts)
+    return '\n\n'.join(parts) or None
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
@@ -123,7 +137,7 @@ def main():
         if '--pre' in sys.argv and not background:
             output = {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
                       'permissionDecisionReason': BACKGROUND_HINT}
-        elif '--post' in sys.argv and background and (context := scout_context(root)):
+        elif '--post' in sys.argv and background and (context := waiting_context(root)):
             output = {'hookEventName': 'PostToolUse', 'additionalContext': context}
         else:
             return 0

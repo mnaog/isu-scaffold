@@ -73,11 +73,26 @@ class BenchHookTest(unittest.TestCase):
                 self.assertIsNone(self.hook(tool_input, '--post'))
         # tool-guard keeps its own rules (a benchmark node here); bench-hook only looks for benchmarks.
         self.assertIsNone(self.hook({'command': 'ssh bench && isuscope run', 'run_in_background': True}, '--pre'))
-        # No report yet (scouts not started, or none has posted): nothing to add.
+        self.assertNotIn('benchmark-scenario.md', output['additionalContext'])  # no map written yet
+        # No map and no report yet (scouts not started, or none has posted): nothing to add.
         write(reports, '# Scout reports\n\n## claude\n\n未投稿\n')
         self.assertIsNone(self.hook(started, '--post'))
         reports.unlink()
         self.assertIsNone(self.hook(started, '--post'))
+
+    def test_a_background_benchmark_asks_to_review_the_scenario_map(self):
+        started = {'command': 'isuscope run --hypothesis x', 'run_in_background': True}
+        write(self.root / 'docs/benchmark-scenario.md', '# ベンチの見取り図\n')
+        output = self.hook(started, '--post')
+        self.assertIn('docs/benchmark-scenario.md', output['additionalContext'])
+        self.assertNotIn('調査エージェント', output['additionalContext'])
+        # With scout reports, the review comes first and the reports follow.
+        write(self.root / '.local/scout/reports.md', '# Scout reports\n\n## codex\n\n'
+              '投稿: 2026-10-14T00:00:00Z / commit: `abc` / run: `12345678` / base: `なし`\n\n> 遅い\n')
+        context = self.hook(started, '--post')['additionalContext']
+        self.assertLess(context.index('docs/benchmark-scenario.md'), context.index('調査エージェント'))
+        self.assertIn('> 遅い', context)
+        self.assertIsNone(self.hook({'command': 'isuscope run --hypothesis x'}, '--post'))
 
     def test_claude_settings_run_both_hooks(self):
         claude = json.loads((ROOT / '.claude/settings.json').read_text())
