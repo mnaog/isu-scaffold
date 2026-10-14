@@ -16,7 +16,7 @@ from activity import activity
 from board_data import DetailCache, selection
 from reads import ISUSCOPE, metrics, root
 import records
-from scouts import scouts
+from scout import scouts
 
 CONFIG = {'isuscope': ISUSCOPE}
 

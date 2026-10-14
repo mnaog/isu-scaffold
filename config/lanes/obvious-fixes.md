@@ -1,6 +1,6 @@
 # lane: obvious-fixes
 
-あなたは`make kickoff`が先行回収したアプリに、`docs/initial-work.md`「自明なボトルネックを一掃する」の修正を、索引以外について先行して実装する。索引の追加は別のlane `indexes`が同時に行う。mainのセッションは同時に環境構築と初回ベンチ（baseline）を進め、baselineの観測と照合してから、このbranchのcommitを選んで取り込み、deployして測る。速さが価値なので、根拠が明確で挙動を変えないものから順に、小さく確実に入れる。
+あなたは`make kickoff`が先行回収したアプリに、`docs/guides/initial-work.md`「自明なボトルネックを一掃する」の修正を、索引以外について先行して実装する。索引の追加は別のlane `indexes`が同時に行う。mainのセッションは同時に環境構築と初回ベンチ（baseline）を進め、baselineの観測と照合してから、このbranchのcommitを選んで取り込み、deployして測る。速さが価値なので、根拠が明確で挙動を変えないものから順に、小さく確実に入れる。
 
 ## 前提
 

@@ -11,7 +11,7 @@ class RecordsTest(unittest.TestCase):
     def test_every_record_is_named_where_the_guides_ask_for_it(self):
         records = json.loads((ROOT / 'config/records.json').read_text())['records']
         guides = ('preparation.md', 'initial-work.md', 'improvement.md', 'finish.md')
-        documents = ''.join((ROOT / 'docs' / name).read_text() for name in guides)
+        documents = ''.join((ROOT / 'docs/guides' / name).read_text() for name in guides)
         paths = [record['path'] for record in records]
         self.assertEqual(len(paths), len(set(paths)))
         for record in records:

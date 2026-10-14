@@ -68,13 +68,13 @@ board:
 	@python3 scripts/board/main.py
 
 scout-start:
-	@python3 scripts/scouts/main.py start
+	@python3 scripts/scout/main.py start
 
 scout-stop:
-	@python3 scripts/scouts/main.py stop
+	@python3 scripts/scout/main.py stop
 
 scout-status:
-	@python3 scripts/scouts/main.py status
+	@python3 scripts/scout/main.py status
 
 test:
 	@python3 -m unittest discover -s tests -p 'test_*.py' -v
@@ -93,7 +93,7 @@ local-reset:
 
 .PHONY: preparation-check
 preparation-check:
-	@python3 scripts/check-preparation.py
+	@python3 scripts/preparation-check.py
 
 .PHONY: practice-check practice-create practice-status practice-delete
 practice-check practice-create practice-status practice-delete:

@@ -50,7 +50,7 @@
 - 一時的なトレース
 - 調査用プロセス
 
-初動で固定化したNginxのLTSV access logと、有効にしていた場合のMySQL slow logは、`ansible/playbooks/group_vars/all.yml`の`observability_nginx_ltsv`と`observability_mysql_slow_log`をfalseにしてbootstrapを該当tagだけ再実行し、撤去する（手順は`docs/initial-automation.md`）。停止後も、障害調査に最低限必要なログは残す。計測の有無を比べるためのベンチは行わず、最終構成への切り替えとして外す。
+初動で固定化したNginxのLTSV access logと、有効にしていた場合のMySQL slow logは、`ansible/playbooks/group_vars/all.yml`の`observability_nginx_ltsv`と`observability_mysql_slow_log`をfalseにしてbootstrapを該当tagだけ再実行し、撤去する（手順は`docs/reference/automation.md`）。停止後も、障害調査に最低限必要なログは残す。計測の有無を比べるためのベンチは行わず、最終構成への切り替えとして外す。
 
 ## 再現性を確認する
 
@@ -102,7 +102,7 @@
 
 ## scoutの停止
 
-最終構成の確認に入る際は`make scout-stop`で定期探索を止め、`make scout-status`で停止を確認する。最新の`docs/scout-board.md`を通常のコミットへ含める。
+最終構成の確認に入る際は`make scout-stop`で定期探索を止め、`make scout-status`で停止を確認する。`make scout-stop`が最新の報告を`docs/scout-reports.md`へ書くので、通常のコミットへ含める。
 
 ## 終了前の確認
 

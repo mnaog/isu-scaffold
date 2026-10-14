@@ -1,4 +1,4 @@
-"""Shared scout state in the main worktree's .local/scouts, whichever worktree runs the command."""
+"""Shared scout state in the main worktree's .local/scout, whichever worktree runs the command."""
 import contextlib
 import fcntl
 import json
@@ -19,7 +19,7 @@ def root(cwd=None):
 
 
 def local(repo):
-    p = repo / '.local' / 'scouts'
+    p = repo / '.local' / 'scout'
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -28,13 +28,7 @@ def local(repo):
 def connect(repo):
     db = sqlite3.connect(local(repo) / 'state.sqlite3', timeout=15)
     db.row_factory = sqlite3.Row
-    schema = (HERE / 'schema.sql').read_text()
-    db.executescript(schema)
-    # Reports were limited to 300 characters before; rebuild that table without the limit.
-    old = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='scouts'").fetchone()
-    if old and 'BETWEEN 1 AND 300' in old[0]:
-        db.executescript('ALTER TABLE scouts RENAME TO scouts_limited;' + schema +
-                         'INSERT INTO scouts SELECT * FROM scouts_limited; DROP TABLE scouts_limited;')
+    db.executescript((HERE / 'schema.sql').read_text())
     try:
         with db:
             yield db
@@ -43,11 +37,11 @@ def connect(repo):
 
 
 def config(repo):
-    path = repo / '.local' / 'scouts.json'
+    path = repo / '.local' / 'scout.json'
     if not path.exists():
-        path = repo / 'config' / 'scouts.json'
+        path = repo / 'config' / 'scout.json'
     value = json.loads(path.read_text())
-    for key in ('interval_seconds', 'timeout_seconds', 'retry_max_seconds'):
+    for key in ('wait_after_report_seconds', 'timeout_seconds', 'retry_max_seconds'):
         if value[key] <= 0:
             raise ValueError(f'{key} must be positive')
     return value

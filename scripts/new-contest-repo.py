@@ -4,7 +4,7 @@
 The new repo gets every committed file except what config/new-repo.json excludes: the
 scaffold's own conversation history, experiments and unrelated material. It starts a fresh
 Git history, records the source commit in docs/preparation/scaffold-source.json, writes
-docs/preparation/readiness.md from the template and runs scripts/check-preparation.py on the result.
+docs/preparation/readiness.md from the template and runs scripts/preparation-check.py on the result.
 Without --practice it also removes practice.md and the practice-only lines of AGENTS.md.
 With --github OWNER/NAME it creates that private GitHub repo and pushes to it.
 """
@@ -104,7 +104,7 @@ def main():
 
     subprocess.run(['git', 'init', '-q', '-b', 'main', str(target)], check=True)
     subprocess.run(['git', '-C', str(target), 'add', '-A'], check=True)
-    subprocess.run([sys.executable, str(target / 'scripts/check-preparation.py')], check=True)
+    subprocess.run([sys.executable, str(target / 'scripts/preparation-check.py')], check=True)
     subprocess.run(['git', '-C', str(target), 'commit', '-q', '-m',
                     f'Start from isu-scaffold {commit[:12]}\n\nCreated by scripts/new-contest-repo.py; '
                     'see docs/preparation/scaffold-source.json.'], check=True)
@@ -123,7 +123,7 @@ def main():
             sys.exit(f'{args.github} is {visibility}, not PRIVATE; fix it before adding anything')
         print(f'pushed to {args.github} (private)')
     print('next: start a new Codex or Claude Code session inside ' + str(target) + ' (benchmarks are linked to '
-          'the conversation recorded there), then fill docs/preparation/readiness.md along docs/preparation.md')
+          'the conversation recorded there), then fill docs/preparation/readiness.md along docs/guides/preparation.md')
     return 0
 
 

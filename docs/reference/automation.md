@@ -1,4 +1,4 @@
-# 初動自動化
+# 自動化の仕様（初動・deploy・rollback・ベンチ接続）
 
 大会ごとに変わる接続先、配布path、ベンチ起動方法だけを宣言し、node発見からisuscopeの初回`survey-run`直前までを再現可能にします。生成されるIP、SSH秘密鍵、調査結果は`.local/`へ置き、コード、同期規則、ベンチ接続はGitへ残します。
 
@@ -27,7 +27,7 @@ make first-bench   # bench-check → 配布状態のままsurvey-run → deploy�
 
 `kickoff`は最初に、実行したCodex・Claude Codeのセッションがこのrepoの`docs/agent-history/`へ会話を記録しているかを`scripts/check-agent-session.py`で確かめます。別のdirectoryで起動したセッションは、ここで止まります（ベンチをこの会話へ結び付けられず、`bench-check`の`isuscope doctor`で止まるため）。AIの外の端末から実行した場合は確かめません。続いてnode発見後、回収元の1台（既定では最初のapplication node）だけSSHを確立し、`/home/isucon/webapp/rust`と`/home/isucon/webapp/sql`のDDL・初期化script（`.sql`、`.sh`、`.py`、`.rb`、`.pl`）だけを先行回収します。1ファイル1MiB・合計16MiBを超えるものやそれ以外の初期データは後回しにし、`.local/code-schema-manifest.log`へ`INCLUDED`／`DEFERRED`として記録します。上限は`CODE_SCHEMA_MAX_FILE_BYTES`、`CODE_SCHEMA_MAX_TOTAL_BYTES`で変更できます。生成物の`target`、`node_modules`、`.git`は除外します。pathが異なる場合は`CODE_SOURCE_NODE`、`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`、`CODE_SCHEMA_PATH`を環境変数で明示します。回収した`config/application.env`、`webapp/rust`、`webapp/sql`だけを自動commitし、他の未commit変更は含めません。この回収はコード読解開始用の暫定snapshotであり、全node一致の保証は後続の完全importが担当します。残りのnodeのSSH確立はこの転送と並行して行い（log は`.local/kickoff-other-ssh.log`）、同じkickoffの`bootstrap`はnodeの発見をやり直さず、全nodeへ届いていればSSHの確認も飛ばします。届かなかったnodeがあれば`bootstrap`のSSH段階が改めて確立し、失敗を報告します。
 
-続いて初期build処理が1台目のCPU・OS・glibc・OpenSSL・Rust版を調査し、回収したCargo.toml・Cargo.lockと合わせてbuild設定を提案します。判断できれば`config/initial-build.json`を書いてすぐbuildを始め、判断できなければ理由を`.local/initial-build/proposal.json`へ残して設定を待ちます（`docs/initial-work.md`の「非同期buildの開始と確認」）。同時に`config/lanes.json`の`kickoff`にあるAI laneを起動します。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。inspectionの直後には`scripts/environment-report.py`が、inventory、inspection、初期build処理の調査（`environment.txt`）、`progress.log`から`docs/environment.md`（台数とrole、OS・kernel・CPU・memory、ミドルウェアの版、配布サーバーのRust、kickoffからの計時）をAIを使わずに書きます。1行目の生成markerが残っている間は再実行で上書きし、markerを消した（手で直した）fileは上書きせず`.local/environment-report.md`へ書きます。
+続いて初期build処理が1台目のCPU・OS・glibc・OpenSSL・Rust版を調査し、回収したCargo.toml・Cargo.lockと合わせてbuild設定を提案します。判断できれば`config/initial-build.json`を書いてすぐbuildを始め、判断できなければ理由を`.local/initial-build/proposal.json`へ残して設定を待ちます（`docs/guides/initial-work.md`の「非同期buildの開始と確認」）。同時に`config/lanes.json`の`kickoff`にあるAI laneを起動します。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。inspectionの直後には`scripts/environment-report.py`が、inventory、inspection、初期build処理の調査（`environment.txt`）、`progress.log`から`docs/environment.md`（台数とrole、OS・kernel・CPU・memory、ミドルウェアの版、配布サーバーのRust、kickoffからの計時）をAIを使わずに書きます。1行目の生成markerが残っている間は再実行で上書きし、markerを消した（手で直した）fileは上書きせず`.local/environment-report.md`へ書きます。
 
 ### 進行の通知
 
@@ -42,7 +42,7 @@ make first-bench   # bench-check → 配布状態のままsurvey-run → deploy�
 | `lane:<名前>` | `commit` | そのcommitを観測と照合し、効くなら`git cherry-pick`（laneの完了を待たない） |
 | `lane:<名前>` | `complete`／`failed`／`timeout` | 結果を読んでmergeを判断／`lane.py status <名前>`で原因を見る |
 | `first-bench` | `baseline-ready` | `isuscope brief latest`で分析を始める（deployは続いている） |
-| `first-bench` | `scouts-started` / `scouts-not-started` | scoutがbaselineを読み始めた／起動できなかった（`make scout-status`）。ベンチとdeployは続く |
+| `first-bench` | `scout-started` / `scout-not-started` | scoutがbaselineを読み始めた／起動できなかった（`make scout-status`）。ベンチとdeployは続く |
 | `kickoff` | `draft-ready`／`draft-failed` | `review.md`を判断して`kickoff-apply`／FAILを直す |
 | `kickoff.sh`など | `failed` | その段階のlogを読んで直す |
 
@@ -145,7 +145,7 @@ alp・slpのreleaseとFlameGraphのscriptは、準備のうちに`./scripts/fetc
 | 自動更新 | `apt-daily`、`apt-daily-upgrade`、`unattended-upgrades`を停止 | `observability_stop_auto_updates` |
 | Rust build cache | `/home/isucon/.cache/isucon-cargo-target`を作成し、cargoとrustcの有無を表示 | — |
 
-nginx.confがhttpの中で`/etc/nginx/conf.d/*.conf`をincludeしていない場合、LTSV logは追加されず、draft検査がFAILにします。レギュレーションで禁止された項目だけ変数をfalseにします。終了前（`docs/finish.md`）に計測を外すときは`observability_nginx_ltsv`と`observability_mysql_slow_log`をfalseにして`./scripts/run-ansible-playbook.sh bootstrap.yml --tags observability_nginx_log,observability_mysql_slow_log`を実行すると、設定を撤去してreload・再起動します。性能のためのNginx設定は[config/nginx/tare](../config/nginx/tare/README.md)にあり、初回baselineの後にdeployで入れます。これら以外に事前に取得したtoolは`.local/tools/`へ置き、`observability_local_tools`で配布できます。
+nginx.confがhttpの中で`/etc/nginx/conf.d/*.conf`をincludeしていない場合、LTSV logは追加されず、draft検査がFAILにします。レギュレーションで禁止された項目だけ変数をfalseにします。終了前（`docs/guides/finish.md`）に計測を外すときは`observability_nginx_ltsv`と`observability_mysql_slow_log`をfalseにして`./scripts/run-ansible-playbook.sh bootstrap.yml --tags observability_nginx_log,observability_mysql_slow_log`を実行すると、設定を撤去してreload・再起動します。性能のためのNginx設定は[config/nginx/tare](../../config/nginx/tare/README.md)にあり、初回baselineの後にdeployで入れます。これら以外に事前に取得したtoolは`.local/tools/`へ置き、`observability_local_tools`で配布できます。
 
 `isuscope_fingerprint_paths`には、全nodeで実体を比較したい絶対pathを列挙します。draftは、Rustの配った実行ファイルと、sync.jsonの`type: file`のitem（アプリのunit、env、nginx・MySQLの設定など）を書きます。directoryのitemは入れません（中身は`identity_command`がcommit済みの内容で比べるので、毎回のベンチ前に全nodeで大きなtreeを読み直さない）。kernel、OS、Nginx、MySQL、running serviceは宣言なしでも記録します。
 
@@ -288,7 +288,7 @@ isuscope routes suggest <run-id> --output .local/route-suggestions.toml
 make first-bench   # 次を続けて実行する（配布状態で測れないときはdeployが先）
 # make bench-check
 # isuscope survey-run --hypothesis "初期状態の負荷構造とベンチシナリオを記録する"
-# make scout-start（baselineの後。FIRST_BENCH_SCOUTS=0なら起動しない）
+# make scout-start（baselineの後。FIRST_BENCH_SCOUT=0なら起動しない）
 # make deploy
 ```
 

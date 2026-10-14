@@ -33,7 +33,7 @@
 - AI laneが使う`claude -p`を、`config/lanes.json`のmodel・effort・permission modeで短く実行して応答を確認する（例: `echo "Reply OK" | claude -p --model claude-opus-5-5 --effort high --permission-mode dontAsk`）。問題の探索は開始しない。
 - 開始後のコード先行回収と非同期buildの手順を確認する。
 - ボード（`make board`）のローカル表示を確認する。テストデータ・常駐processは開始前に残さない。
-- scout（Claude Code・Codex・Kimi Code）を`python3 scripts/scouts/main.py once <name> --smoke`で接続確認する。探索とscoutの定期実行は開始しない。smokeセッションをscoutの会話入力として登録しない。Kimiは任意で、CLI・認証・正確なモデル設定が揃わなければ利用不可のまま他の2体を使う。詳細は[scout](roles/scout.md)。
+- scout（Claude Code・Codex・Kimi Code）を`python3 scripts/scout/main.py once <name> --smoke`で接続確認する。探索とscoutの定期実行は開始しない。smokeセッションをscoutの会話入力として登録しない。Kimiは任意で、CLI・認証・正確なモデル設定が揃わなければ利用不可のまま他の2体を使う。詳細は[scout](../roles/scout.md)。
 - 禁止操作を止めるhookを確認する。Claude Codeは`.claude/settings.json`、Codexは`.codex/hooks.json`から`scripts/tool-guard.py`を呼ぶ。Codexでは初めて開いたときにhookを信頼する。練習では`config/tool-guard.json`に、対象の開催回を表す語（`contest_keywords`、例: `isucon14`。アプリのhost名に含まれる語は入れない）とベンチマーカーの置き場所（`benchmarker_paths`、例: `/home/isucon/bench`）を書く。練習の資料を取得し終えてから書くか、取得してよい資料のURLを`allowed_urls`に入れる。練習が終わったら空に戻す。ベンチnodeへの直接の接続は、設定がなくても止まる。
 
 ## アカウント・接続・参加準備

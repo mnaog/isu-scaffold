@@ -5,7 +5,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/tool-guard.py\" --agent claude",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/tool-guard.py\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/bench-hook.py\" --pre",
             "timeout": 10
           }
         ]
@@ -17,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/tool-guard.py\" --agent claude --post",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/bench-hook.py\" --post",
             "timeout": 10
           }
         ]

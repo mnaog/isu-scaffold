@@ -23,7 +23,7 @@ SSH確立直後に採用言語のコードとDB schemaを先行importし、初�
 
 ## ローカル実行環境を構築する
 
-準備ではDockerと汎用の起動・検証コマンドだけを用意する。開始後のコード先行回収の後、lane `local-env`（`config/lanes/local-env.md`）が`config/local/compose.example.yaml`から`config/local/compose.yaml`を作り、採用Rust版・DB・追加service・schema・初期化・health endpointを実アプリに合わせる。手順は[ローカル実行環境](local-development.md)を参照する。
+準備ではDockerと汎用の起動・検証コマンドだけを用意する。開始後のコード先行回収の後、lane `local-env`（`config/lanes/local-env.md`）が`config/local/compose.example.yaml`から`config/local/compose.yaml`を作り、採用Rust版・DB・追加service・schema・初期化・health endpointを実アプリに合わせる。手順は[ローカル実行環境](../local-development.md)を参照する。
 
 構成をcommitしたら、各worktreeで`make local-up`、`make local-check`、`make local-down`を実行してよい。DB・network・portはworktree単位で分離し、remote変更用lockを取らない。構築は初動と並行し、完成を初回baselineのgateにはしない。
 
@@ -53,7 +53,7 @@ SSH確立直後に採用言語のコードとDB schemaを先行importし、初�
 
 ## 環境を立ち上げて初期状態を保存する
 
-コマンドと各段階の詳細は[初動自動化](initial-automation.md)を正とする。ここでは判断基準だけを定める。
+コマンドと各段階の詳細は[自動化の仕様](../reference/automation.md)を正とする。ここでは判断基準だけを定める。
 
 - 練習でAWS環境を自分で作る場合は、構成定義を`infra/`へ保存し、停止・再開・削除をコマンドで行えるようにする。認証情報はGitへ保存しない
 - `make kickoff`が出す`.local/draft/review.md`のFAILはすべて直し、WARNは内容を読んで判断してから`make kickoff-apply`へ進む。draftのremote path、owner、service、roleは推測にすぎない
@@ -94,7 +94,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。initializeと負荷走行の境界は、初回runより前に`.isuscope/routes.toml`の`[initialize]`で決めておく（`scripts/benchmark-markers.py suggest-route`→`set-route`）。完全importのcommit後に`make first-bench`で、人間の確認を待たずに実行する。
 
-最初のdeployの前は、サーバーが完全importと同じ内容（配布状態）で動いている。`make first-bench`は、HEADがimportしたdigestのままで（`scripts/imported-state.py`）、アプリのunitが全nodeで動いてlistenしていれば、そのcommitを稼働中として記録し（`.local/current-import-commit`）、ローカルbuildとdeployを待たずにbaselineを取る。その後に同じcommitをdeployし、deploy経路を最初の改善より前に確かめる。baselineの実行ファイルは配布されたbuild、2本目以降は自前のbuild（Rust 1.99.0）になるので、最初の改善runの比較にはその差が混ざり得る。配布サーバーのRust版（`.local/initial-build/environment.txt`）が大きく違う場合は`docs/baseline.md`に書き、小さな差の判定に注意する。配布状態で測れないとき（記録がない、importの後に配る対象を変えた、unitが動いていない、既にdeployした）は、deployしてから測る。`FIRST_BENCH_MODE=deploy`なら常にdeployが先になる。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[初動自動化](initial-automation.md)の「ベンチ前gateと初回run」を参照する。
+最初のdeployの前は、サーバーが完全importと同じ内容（配布状態）で動いている。`make first-bench`は、HEADがimportしたdigestのままで（`scripts/imported-state.py`）、アプリのunitが全nodeで動いてlistenしていれば、そのcommitを稼働中として記録し（`.local/current-import-commit`）、ローカルbuildとdeployを待たずにbaselineを取る。その後に同じcommitをdeployし、deploy経路を最初の改善より前に確かめる。baselineの実行ファイルは配布されたbuild、2本目以降は自前のbuild（Rust 1.99.0）になるので、最初の改善runの比較にはその差が混ざり得る。配布サーバーのRust版（`.local/initial-build/environment.txt`）が大きく違う場合は`docs/baseline.md`に書き、小さな差の判定に注意する。配布状態で測れないとき（記録がない、importの後に配る対象を変えた、unitが動いていない、既にdeployした）は、deployしてから測る。`FIRST_BENCH_MODE=deploy`なら常にdeployが先になる。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[自動化の仕様](../reference/automation.md)の「ベンチ前gateと初回run」を参照する。
 
 確認するもの：
 

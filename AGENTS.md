@@ -17,7 +17,7 @@
 | `ansible/` | 全nodeの初期access、toolchain、observability前提を冪等に揃えるplaybookと変数。 |
 | `scripts/` | `import`、`deploy`、`restart`、`status`、`rollback`など、ローカルから環境を操作する処理。通常操作はMakefileから呼び出す。 |
 | `docs/` | `official/`へ一次情報、`preparation.md`（準備）・`initial-work.md`（初動）・`improvement.md`（改善）・`finish.md`（終了前）へ進め方、`agent-history/`へCodex・Claude Code・OpenCodeの会話・操作履歴（自動生成）を保存する。調査やシナリオ分析もここへ残す。 |
-| `.claude/` | Claude Codeがこの`AGENTS.md`を起動時に読み込むためのrule symlinkと、禁止操作・foregroundのベンチを止め、ベンチ中にscout報告を渡すhook（`settings.json`）。`CLAUDE.md`は作成しない。 |
+| `.claude/` | Claude Codeがこの`AGENTS.md`を起動時に読み込むためのrule symlinkと、禁止操作を止めるhook（`tool-guard.py`）と、foregroundのベンチを止めてベンチ中にscout報告を渡すhook（`bench-hook.py`）の設定（`settings.json`）。`CLAUDE.md`は作成しない。 |
 | `.codex/` | Codexが同じhookを読む`hooks.json`。初めて開いたときにCodexでhookを信頼する。 |
 | `.isuscope/` | node、collector、route正規化、ベンチ実行方法など、isuscopeの計測設定。 |
 | `isuscope-data/` | スコア、仮説、分析、Git状態など、isuscopeのrun。生ログは既定で除外し、重要なrunだけ強制追加する。 |
@@ -44,7 +44,7 @@
 - サーバーごとにコードを複製せず、役割の違いは設定とデプロイ処理で扱う。サーバー上のファイルを直接編集しない。
 - 秘密情報は`.local/`へ置く。再現に必要な定義は`webapp/`、`config/`、`infra/`、`scripts/`へ残す。
 - 公式情報は要約だけで済ませず、可能な限り原文を`docs/official/`へ保存する。
-- 本番開始前の準備は`docs/preparation.md`に従う。開始後は区切りを設けず、初動は`docs/initial-work.md`、改善は`docs/improvement.md`、終了前の固定は`docs/finish.md`を状況に応じて参照する。
+- 本番開始前の準備は`docs/guides/preparation.md`に従う。開始後は区切りを設けず、初動は`docs/guides/initial-work.md`、改善は`docs/guides/improvement.md`、終了前の固定は`docs/guides/finish.md`を状況に応じて参照する。
 - isuscopeの軽量なrun履歴は通常のコミットへ含める。重要なrunの生ログを残す場合は`git add -f isuscope-data/runs/<run-id>`でstageする。
 - ベンチnodeへの直接の接続、ベンチマーカーの閲覧・コピー、現在練習中の開催回のコードの取得と攻略法の検索は、Claude CodeとCodexのPreToolUse hook（`scripts/tool-guard.py`）が止める。対象の開催回とベンチマーカーの置き場所は`config/tool-guard.json`で宣言する。`scripts/ssh-node.sh`も、ベンチadapterと初動の検査が付ける`ISUCON_ALLOW_BENCHMARK_NODE=1`がない限りベンチnodeへ接続しない。止められたら別経路で回避せず、ベンチは`isuscope run`・`survey-run`から動かす。
 - `.local/operation.lock`を変更系操作の共通排他とする。実行中のlockは基本的に手作業で消さず、別セッションの終了を待つ。status・checkなどのread-only操作は並行してよい。
@@ -55,7 +55,7 @@
 並行させるAIは、すべてClaude Codeのheadless実行（`claude -p`）のlaneにする。laneは`scripts/lane.py`が自分のworktreeとbranch（`lane/<名前>`）で1回だけ動かし、そのbranchへcommitして終わる。mainのセッションは結果（`python3 scripts/lane.py status <名前>`）を読み、根拠を照合してから`git merge`で取り込む。laneは出力が決まった有限のタスクだけに使い、常駐させない。モデル・effort・使えるtool・時間上限・promptは`config/lanes.json`と`config/lanes/`が正で、laneは許可したtool以外を確認なしで拒否される。laneのremote node・deploy・ベンチ・isuscopeの記録・`.local/operation.lock`・push・laneの起動は`scripts/tool-guard.py`が止める。
 remote変更・deploy・共有ベンチはmain側で既存の共通lockを使い、実行中の操作と競合させない。作業中の他worktreeを変更・削除しない。
 人間は`make board`で開く読み取り専用の画面（ボード）で、スコアの推移、runの比較と負荷、必ず残す記録を見る。詳細は`docs/board.md`。
-scout（Claude Code・Codex・Kimi Code）は`make first-bench`が初回baselineの後に起動し（`FIRST_BENCH_SCOUTS=0`なら起動しない。手では`make scout-start`）、`make scout-stop`で止める。各scoutは前回の報告を保存してから8分後に新しいセッションで探索し、報告を`docs/scout-board.md`へ書く（通常のコミットに含める）。参照する会話は`python3 scripts/scouts/main.py conversation <agent> <実セッションID>`で明示し、更新時刻から推測しない。報告はmainのセッションがベンチの待ち時間に読む。詳細は`docs/roles/scout.md`。
+scout（Claude Code・Codex・Kimi Code）は`make first-bench`が初回baselineの後に起動し（`FIRST_BENCH_SCOUT=0`なら起動しない。手では`make scout-start`）、`make scout-stop`で止める。各scoutは前回の報告を保存してから8分後に新しいセッションで探索し、最新の報告を`.local/scout/reports.md`へ書く（Gitには入れない。`make scout-stop`が`docs/scout-reports.md`へ残すので、それをcommitする）。参照する会話は、scoutを起動したセッション（`make first-bench`・`make scout-start`を実行したmainのセッション）が自動で登録される。別の会話にするときは`python3 scripts/scout/main.py conversation <agent> <実セッションID>`で明示し、更新時刻から推測しない。報告はmainのセッションがベンチの待ち時間に読む。詳細は`docs/roles/scout.md`。
 
 ## sfs
 
@@ -107,7 +107,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 採用言語はRustに固定する（`config/application.env`）。先行回収は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は`kickoff-apply`のimportで完了する。`kickoff`は再実行でき、回収済みならimportを飛ばし、初期buildと完了・実行中のlaneは重複起動しない。draftの判断は`review.md`を読んだ操作者（人間またはこのセッション）が行い、`make`の中で別のAIを呼んで承認させない。`make`は初動・deploy・検査とボード・scout常駐処理の入口に絞っており、個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
 
 - 計測と運用の土台（計測tool、LTSV access log、時刻同期、journal、自動更新停止）は初動のAnsibleで固定化し（SQLはisuscopeがperformance_schemaから取るので、slow logは既定で無効）、レギュレーションで禁止された項目だけ変数で外す。性能を変える設定（`config/nginx/tare`、networking sysctl、MySQLの性能設定）は初回baselineの後に1つの変更として入れる。接続・fdの上限（nginxのworker_connections・backlog・keepalive、アプリのLimitNOFILE、sysctl、MySQLのmax_connectionsとbuffer pool）は`make tare`が1つのcommitにするので、baselineの後に早めにdeployして`isuscope run`で測る。
-- ベンチ（`isuscope run`・`survey-run`・`make first-bench`）は、Claude CodeではBashの`run_in_background`で起動する。foregroundの起動はPreToolUseのhook（`scripts/tool-guard.py --agent claude`）が止める。起動するとPostToolUseのhookが並列で動く調査エージェント（scout）の最新報告を投稿からの経過分つきで渡すので、完了の通知を待つ間に確認し、古くなっている可能性を踏まえてそれぞれの視点を次回の改善の参考にする。同じ待ち時間に次の候補を`make build`しておく。sleepやpollingで完了を待たない。Codexはbackgroundで起動できないので、ベンチを起動する直前に`docs/scout-board.md`を読む。
+- ベンチ（`isuscope run`・`survey-run`・`make first-bench`）は、Claude CodeではBashの`run_in_background`で起動する。foregroundの起動はPreToolUseのhook（`scripts/bench-hook.py`）が止める。起動すると同じhookがPostToolUseで並列で動く調査エージェント（scout）の最新報告を投稿からの経過分つきで渡すので、完了の通知を待つ間に確認し、古くなっている可能性を踏まえてそれぞれの視点を次回の改善の参考にする。同じ待ち時間に次の候補を`make build`しておく。sleepやpollingで完了を待たない。Codexはbackgroundで起動できないので、ベンチを起動する直前に`.local/scout/reports.md`を読む。
 - ベンチの前には毎回、isuscopeの`prepare_command`（`scripts/benchmark-prepare.sh`）が、前回のベンチを処理したprocessがまだ動いているアプリのunitを再起動し、listenを待つ。前のベンチが途中で切ったrequestのtransactionが、次のinitializeを止めないようにするため（deployで起動し直したprocessは再起動しない）。前回のベンチと同じ配布物・計測設定なら、isuscopeがベンチを始めない（`identity_command`とfingerprintで比べる）ので、意図した再測定だけ`isuscope run --repeat "理由"`を付ける。その前に、最後にdeployしたcommitとHEADを、deployが配るファイルに限って照合し、ずれていればベンチを始めない（`scripts/check-deployed-commit.sh`）。止まったら、commitして`make deploy`するか、HEADを戻す。
 - `kickoff`、`bootstrap`、`bench-check`、laneからベンチを起動しない。初回ベンチは`make first-bench`（または`isuscope survey-run`）を独立した明示操作としてmainのセッションから実行し、runへその会話を紐付ける。import のcommitが済んだら、作業中のAIが人間の確認を待たずに実行する。
 - kickoffが起動するlaneは`config/lanes.json`の`kickoff`（既定は`code-map`、`indexes`、`obvious-fixes`、`local-env`）。`scenario`は公式資料が要るので、mainが`docs/official/`をcommitした直後に`python3 scripts/lane.py start scenario`で起動する。`KICKOFF_LANES=`で止め、`KICKOFF_LANES="code-map"`のように選べる。baseline後に並行させたい調査や実装は、promptを書いて`python3 scripts/lane.py start <名前> --prompt-file <path> --purpose "..."`で起動する。進行は`make lanes`で見る。
@@ -119,13 +119,13 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 - `config/sync.json`のitemとcommandには対象node groupを明示し、役割を持たないnodeへ設定や再起動を配らない。再起動・reloadのcommandには`"when"`で対象のitem名（pattern）を書き、そのitemが変わったdeployでだけ実行させる。deployは前回のdeployから変わったitemだけを送る（全部送るなら`DEPLOY_ALL=1`）。
 - ベンチの間（`isuscope run`が操作lockを持つ間）に、次の候補のcommitを`make build`でbuildしておく。`make build`は操作lockを取らないので、ベンチ後の`make deploy`はbuild済みの成果物を使い、lockの中は配布・切替・検証だけになる。
 - `.local/`の接続情報や生成物をGitへ追加しない。固定化すべき構成だけを`ansible/`、`config/`、`scripts/`へ残す。
-- deploy、rollback、import、ベンチ接続、isuscope設定の詳しい契約は`docs/initial-automation.md`を正とする。
+- deploy、rollback、import、ベンチ接続、isuscope設定の詳しい契約は`docs/reference/automation.md`を正とする。
 
 ## isuscopeの使い方
 
 このリポジトリでは、ベンチマークの測定結果と改善履歴をisuscopeで管理する。isuscopeは、ベンチ1回ごとにscore、仮説、Gitの状態、HTTP・SQL・CPUの計測、会話の位置を1つのrunとして記録する自作CLIである。仕様とオプションは`isuscope --help`とリポジトリ（github.com/mnaog/isuscope）のREADMEを正とする。
 
-初回は[初動自動化](docs/initial-automation.md)の手順でisuscopeを設定し、`isuscope doctor`を通してから`isuscope survey-run`で初期状態と行動遷移を一度だけ記録する。
+初回は[自動化の仕様](docs/reference/automation.md)の手順でisuscopeを設定し、`isuscope doctor`を通してから`isuscope survey-run`で初期状態と行動遷移を一度だけ記録する。
 
 ```bash
 isuscope survey-run --hypothesis "初期状態の負荷構造を記録する"

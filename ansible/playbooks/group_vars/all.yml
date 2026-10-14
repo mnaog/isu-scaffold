@@ -42,7 +42,7 @@ observability_persistent_journal: true
 observability_journal_max_use: 512M
 observability_stop_auto_updates: true
 
-# isuscope/alp用のLTSV access logとMySQL slow logを専用fileへ出します。終了前（docs/finish.md）にfalseにして外します。
+# isuscope/alp用のLTSV access logとMySQL slow logを専用fileへ出します。終了前（docs/guides/finish.md）にfalseにして外します。
 observability_nginx_ltsv: true
 observability_nginx_ltsv_path: /var/log/nginx/isuscope-access.log
 # 行動遷移に使うsessionのnginx変数。問題に合わせて$http_x_sessionなどへ変えます。

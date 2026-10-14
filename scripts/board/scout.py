@@ -7,8 +7,8 @@ FIELDS = ('name', 'state', 'error', 'next_at', 'posted_at', 'report', 'code_comm
 
 
 def configured(repo):
-    """Scout names in the order of .local/scouts.json, or config/scouts.json without it."""
-    for path in (repo / '.local' / 'scouts.json', repo / 'config' / 'scouts.json'):
+    """Scout names in the order of .local/scout.json, or config/scout.json without it."""
+    for path in (repo / '.local' / 'scout.json', repo / 'config' / 'scout.json'):
         try:
             return list(json.loads(path.read_text()).get('scouts', {}))
         except (OSError, ValueError, AttributeError):
@@ -19,7 +19,7 @@ def configured(repo):
 def daemon_running(repo):
     # The daemon holds an exclusive lock on this file while it runs; a shared try never blocks it.
     try:
-        with (repo / '.local' / 'scouts' / 'daemon.lock').open('rb') as handle:
+        with (repo / '.local' / 'scout' / 'daemon.lock').open('rb') as handle:
             try:
                 fcntl.flock(handle, fcntl.LOCK_SH | fcntl.LOCK_NB)
             except BlockingIOError:
@@ -33,7 +33,7 @@ def daemon_running(repo):
 def scouts(repo):
     result = {'running': daemon_running(repo), 'reports': [], 'error': None}
     saved = {}
-    database = repo / '.local' / 'scouts' / 'state.sqlite3'
+    database = repo / '.local' / 'scout' / 'state.sqlite3'
     if database.exists():
         try:
             db = sqlite3.connect(database.as_uri() + '?mode=ro', uri=True, timeout=2)

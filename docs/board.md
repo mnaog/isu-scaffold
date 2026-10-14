@@ -55,9 +55,9 @@ HTTP・SQLの合計時間と差分を視覚的に強調する。差分の色は�
 
 ## scout
 
-実行状況の下に、`config/scouts.json`（`.local/scouts.json`があればそちら）の順でscoutごとの最新報告を並べる。報告は長さを制限しないので、長い報告はカードの中でスクロールする。カードには投稿時刻と参照したrun、失敗中ならその理由を折りたたんで出す。常駐処理が動いている間だけ、ヘッダーに「scout 稼働中」と各カードの状態・次回予定を出す。
+実行状況の下に、`config/scout.json`（`.local/scout.json`があればそちら）の順でscoutごとの最新報告を並べる。報告は長さを制限しないので、長い報告はカードの中でスクロールする。カードには投稿時刻と参照したrun、失敗中ならその理由を折りたたんで出す。常駐処理が動いている間だけ、ヘッダーに「scout 稼働中」と各カードの状態・次回予定を出す。
 
-main worktreeの`.local/scouts/state.sqlite3`を読み取り専用で開き、常駐処理の稼働は`.local/scouts/daemon.lock`の共有lockを非ブロッキングで試して判定する（`scripts/board/scouts.py`）。ファイルの作成、lockの保持、scoutの開始・停止はしない。報告の内容は投稿時点のものなので、表示中のrunとは比べない。
+main worktreeの`.local/scout/state.sqlite3`を読み取り専用で開き、常駐処理の稼働は`.local/scout/daemon.lock`の共有lockを非ブロッキングで試して判定する（`scripts/board/scout.py`）。ファイルの作成、lockの保持、scoutの開始・停止はしない。報告の内容は投稿時点のものなので、表示中のrunとは比べない。
 
 ## 実行状況
 

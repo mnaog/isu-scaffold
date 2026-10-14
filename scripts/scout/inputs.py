@@ -98,7 +98,7 @@ def current(repo, cfg):
     completed = [r for r in listed_runs(listing)
                  if r.get('state') in ('complete', 'degraded', 'failed', 'aborted')]
     latest = completed[0] if completed else None
-    database = repo / '.local' / 'scouts' / 'state.sqlite3'
+    database = repo / '.local' / 'scout' / 'state.sqlite3'
     sources = []
     if database.exists():
         db = sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)

@@ -38,7 +38,7 @@ def activity(repo):
                         key=lambda p: p.stat().st_mtime, reverse=True)
         if states:
             path = states[0]
-            result['deploy'] = {'release': path.stem, 'step': read_text(path),
+            result['deploy'] = {'release': path.stem, 'stage': read_text(path),
                                 'recorded_at': path.stat().st_mtime,
                                 'commit': read_text(path.with_suffix('.commit')) or None}
     except OSError:

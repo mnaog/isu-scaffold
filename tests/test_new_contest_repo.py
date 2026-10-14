@@ -20,7 +20,7 @@ class NewContestRepoTests(unittest.TestCase):
         self.source = self.tmp / "scaffold"
         (self.source / "scripts").mkdir(parents=True)
         (self.source / "config/preparation").mkdir(parents=True)
-        for name in ("new-contest-repo.py", "check-preparation.py"):
+        for name in ("new-contest-repo.py", "preparation-check.py"):
             (self.source / "scripts" / name).write_bytes((ROOT / "scripts" / name).read_bytes())
             (self.source / "scripts" / name).chmod(0o755)
         (self.source / "config/new-repo.json").write_bytes((ROOT / "config/new-repo.json").read_bytes())

@@ -1,20 +1,39 @@
 #!/usr/bin/env python3
 """Scouts: Claude Code, Codex and Kimi run in fresh sessions and save a report.
 
-Each scout starts again interval_seconds after its last report was saved. The latest reports go to
-docs/scout-board.md, which the main session reads while a benchmark runs (scripts/tool-guard.py --post).
+Each scout starts again wait_after_report_seconds after its last report was saved. The latest
+reports go to .local/scout/reports.md, which the main session reads while a benchmark runs
+(scripts/bench-hook.py --post); make scout-stop leaves a snapshot in docs/scout-reports.md to commit.
 `make scout-start` / `scout-stop` / `scout-status` run it from the main worktree.
 """
 import argparse
 import json
+import os
 from pathlib import Path
 import shutil
 import sqlite3
 import sys
 import threading
 from inputs import current, generate
-from runner import active, attempt, daemon, export_board, initialize, start, stop_daemon
+from runner import active, attempt, daemon, export_reports, initialize, start, stop_daemon
 from store import config, connect, local, root, rows
+
+
+def current_sessions():
+    """The Codex or Claude Code session running this, from the environment isuscope also reads."""
+    sessions = []
+    codex = os.environ.get('CODEX_SESSION_ID', '').strip() or os.environ.get('CODEX_THREAD_ID', '').strip()
+    if codex:
+        sessions.append(('codex', codex))
+    claude = os.environ.get('CLAUDE_CODE_SESSION_ID', '').strip()
+    if claude:
+        sessions.append(('claude', claude))
+    return sessions
+
+
+def register(repo, agent, session):
+    with connect(repo) as db:
+        db.execute('INSERT INTO conversation_sources(agent,session_id) VALUES (?,?) ON CONFLICT(agent) DO UPDATE SET session_id=excluded.session_id,registered_at=strftime(\'%s\',\'now\')', (agent, session))
 
 
 def status(repo):
@@ -43,26 +62,33 @@ def main():
     if args.command == 'db-path':
         print(local(repo) / 'state.sqlite3')
     elif args.command == 'init':
-        export_board(repo)
+        export_reports(repo)
         print(local(repo) / 'state.sqlite3')
     elif args.command == 'conversation':
         if not args.session_id.strip():
             raise ValueError('実際のセッションIDが必要です')
-        with connect(repo) as db:
-            db.execute('INSERT INTO conversation_sources(agent,session_id) VALUES (?,?) ON CONFLICT(agent) DO UPDATE SET session_id=excluded.session_id,registered_at=strftime(\'%s\',\'now\')', (args.agent, args.session_id))
+        register(repo, args.agent, args.session_id)
     elif args.command == 'start':
         if Path.cwd().resolve() != repo:
             raise ValueError('scout開始はmain worktreeのrootで行ってください')
+        # The session that starts the scouts (make first-bench from the main session) is the one they read.
+        for agent, session in current_sessions():
+            register(repo, agent, session)
+            print(f'scout reads the {agent} session {session}')
         print(f'scout daemon PID {start(repo)}')
     elif args.command == 'stop':
         stop_daemon(repo)
         print('scout daemon stopped')
+        if any(scout['report'] for scout in status(repo)['scouts']):
+            snapshot = repo / 'docs' / 'scout-reports.md'
+            export_reports(repo, snapshot)
+            print(f'commit the latest reports in {snapshot.relative_to(repo)}')
     elif args.command == 'daemon':
         daemon(repo)
     elif args.command == 'status':
         print(json.dumps(status(repo), ensure_ascii=False, indent=2))
     elif args.command == 'export':
-        export_board(repo)
+        export_reports(repo)
     elif args.command == 'input':
         path = local(repo) / 'input-preview.json'
         path.write_text(json.dumps(generate(repo, cfg), ensure_ascii=False, indent=2))

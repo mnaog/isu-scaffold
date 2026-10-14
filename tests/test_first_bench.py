@@ -30,10 +30,10 @@ class FirstBenchTests(unittest.TestCase):
                 f'#!/bin/sh\necho "{step}${{REQUIRE_ACTIVE:+ REQUIRE_ACTIVE=$REQUIRE_ACTIVE}}${{PREPARE_CHECK_ONLY:+ check-only}}" >> "$EVENTS"\n'
                 f'[ "$FAIL" = {step} ] && exit 1\nexit 0\n')
         (self.repo / 'bin/isuscope').write_text(self.FAKE_LIST + 'echo "isuscope $*" >> "$EVENTS"\n')
-        (self.repo / 'scripts/scouts').mkdir()
-        (self.repo / 'scripts/scouts/main.py').write_text(
-            'import os, sys\nopen(os.environ["EVENTS"], "a").write("scouts " + " ".join(sys.argv[1:]) + "\\n")\n'
-            'sys.exit(1 if os.environ.get("FAIL") == "scouts" else 0)\n')
+        (self.repo / 'scripts/scout').mkdir()
+        (self.repo / 'scripts/scout/main.py').write_text(
+            'import os, sys\nopen(os.environ["EVENTS"], "a").write("scout " + " ".join(sys.argv[1:]) + "\\n")\n'
+            'sys.exit(1 if os.environ.get("FAIL") == "scout" else 0)\n')
         for path in [*(self.repo / 'scripts').glob('*.sh'), self.repo / 'bin/isuscope']:
             path.chmod(0o755)
         (self.repo / 'webapp/rust/main.rs').write_text('fn main() {}\n')
@@ -59,7 +59,7 @@ class FirstBenchTests(unittest.TestCase):
     def run_first_bench(self, **env):
         environment = {k: v for k, v in os.environ.items()
                        if k not in ('ISUCON_LANE', 'PROGRESS_LOG', 'FAIL', 'FIRST_BENCH_MODE', 'REQUIRE_ACTIVE',
-                                    'FIRST_BENCH_SCOUTS')}
+                                    'FIRST_BENCH_SCOUT')}
         environment.update(PATH=f'{self.repo / "bin"}{os.pathsep}{os.environ["PATH"]}', EVENTS=str(self.events), **env)
         return subprocess.run(['bash', 'scripts/first-bench.sh'], cwd=self.repo, env=environment,
                               capture_output=True, text=True)
@@ -79,9 +79,9 @@ class FirstBenchTests(unittest.TestCase):
         result = self.run_first_bench(HYPOTHESIS='初期状態を記録する')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.lines(), ['bench-check', 'benchmark-prepare REQUIRE_ACTIVE=1 check-only',
-                                        'isuscope survey-run --hypothesis 初期状態を記録する', 'scouts start', 'deploy'])
+                                        'isuscope survey-run --hypothesis 初期状態を記録する', 'scout start', 'deploy'])
         self.assertEqual((self.repo / '.local/current-import-commit').read_text().strip(), self.head())
-        self.assertEqual(self.states(), ['started', 'checked', 'distributed', 'baseline-ready', 'scouts-started',
+        self.assertEqual(self.states(), ['started', 'checked', 'distributed', 'baseline-ready', 'scout-started',
                                          'deployed', 'complete'])
 
     def fake_survey_run(self, state):
@@ -99,9 +99,9 @@ class FirstBenchTests(unittest.TestCase):
         self.fake_survey_run('pending')
         result = self.run_first_bench(HYPOTHESIS='初期状態を記録する')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.lines()[-3:], ['isuscope survey-run --hypothesis 初期状態を記録する', 'scouts start', 'deploy'])
+        self.assertEqual(self.lines()[-3:], ['isuscope survey-run --hypothesis 初期状態を記録する', 'scout start', 'deploy'])
         self.assertIn('scripts/benchmark-sample.py new-run', result.stdout)
-        self.assertEqual(self.states(), ['started', 'checked', 'distributed', 'baseline-ready', 'scouts-started',
+        self.assertEqual(self.states(), ['started', 'checked', 'distributed', 'baseline-ready', 'scout-started',
                                          'deployed', 'complete'])
 
     def test_a_failed_baseline_stops_before_deploy(self):
@@ -110,19 +110,19 @@ class FirstBenchTests(unittest.TestCase):
         result = self.run_first_bench()
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn('deploy', self.lines())
-        self.assertNotIn('scouts start', self.lines())
+        self.assertNotIn('scout start', self.lines())
 
-    def test_scouts_that_cannot_start_never_stop_the_baseline(self):
+    def test_scout_that_cannot_start_never_stop_the_baseline(self):
         self.record_import()
-        result = self.run_first_bench(FAIL='scouts')
+        result = self.run_first_bench(FAIL='scout')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.lines()[-2:], ['scouts start', 'deploy'])
-        self.assertIn('scouts-not-started', self.states())
+        self.assertEqual(self.lines()[-2:], ['scout start', 'deploy'])
+        self.assertIn('scout-not-started', self.states())
         self.events.unlink()
-        result = self.run_first_bench(FIRST_BENCH_SCOUTS='0')
+        result = self.run_first_bench(FIRST_BENCH_SCOUT='0')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn('scouts start', self.lines())
-        self.assertIn('scouts-skipped', self.states())
+        self.assertNotIn('scout start', self.lines())
+        self.assertIn('scout-skipped', self.states())
 
     def test_a_change_committed_during_the_baseline_is_not_deployed_unmeasured(self):
         self.record_import()
@@ -160,7 +160,7 @@ class FirstBenchTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 steps = [line for line in self.lines() if not line.startswith('benchmark-prepare')]
                 self.assertEqual(steps, ['bench-check', 'deploy', 'isuscope survey-run --hypothesis 初期状態の負荷構造とベンチシナリオを記録する',
-                                         'scouts start'])
+                                         'scout start'])
                 self.assertFalse((self.repo / '.local/current-import-commit').exists())
 
     def test_failed_check_never_deploys_or_benchmarks(self):

@@ -1,6 +1,6 @@
 {
-  "description": "Scouts (scripts/scouts): each starts again interval_seconds after its last report was saved. Copy the whole file to .local/scouts.json to override it on one machine.",
-  "interval_seconds": 480,
+  "description": "Scouts (scripts/scout): each starts again wait_after_report_seconds after its last report was saved. Copy the whole file to .local/scout.json to override it on one machine.",
+  "wait_after_report_seconds": 480,
   "timeout_seconds": 600,
   "retry_max_seconds": 3600,
   "scenario": "docs/benchmark-scenario.md",

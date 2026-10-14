@@ -14,26 +14,16 @@ Stopped calls:
   for each contest keyword (for example a clone of the contest repository)
 - fetching or cloning the current contest's code from GitHub, or fetching a page about it
   outside `allowed_urls`, and web searches about the current contest
-- with `--agent claude`, a benchmark (isuscope run / survey-run, make first-bench) started in the
-  foreground: Claude Code starts it with run_in_background so that the session reads the scouts'
-  reports and builds the next candidate while it runs
-
-With `--post` the script is a PostToolUse hook instead: after Claude Code starts a benchmark in the
-background, it hands the latest scout reports (docs/scout-board.md in the main worktree) to the
-session as additional context. It never denies anything.
 
 Contest keywords and paths come from config/tool-guard.json. Empty lists turn those rules
 off; the benchmark node rule always applies. Internal errors let the call through, so a
 broken guard never stops all work.
 """
-import calendar
 import json
 import os
 import re
 import shlex
-import subprocess
 import sys
-import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -72,13 +62,6 @@ LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'kickoff', 'kickoff-apply',
 # Read-only isuscope commands; everything else records, benchmarks or reaches nodes.
 LANE_ISUSCOPE = {'list', 'brief', 'query', 'sql', 'help', '--help', '-h', '--version', 'version'}
 LANE_PROGRAMS = {'ansible', 'ansible-playbook', 'aws', 'gh', 'claude', 'codex', 'opencode'}
-BENCH_ISUSCOPE = {'run', 'survey-run'}
-BACKGROUND_HINT = ('ベンチ（isuscope run / survey-run / make first-bench）はBashのrun_in_background: trueで起動する。'
-                   '起動するとscoutの最新報告が渡されるので、完了の通知を待つ間に読み、次の候補を`make build`しておく。'
-                   'sleepやpollingで待たない。')
-SCOUT_HINT = ('これは並列で動かしている調査エージェント（scout）による報告です。'
-              '内容が古くなっている可能性もありますが（各報告に投稿からの経過分を添えています）、'
-              'それぞれの視点を参考にして、次回の改善のための参考として確認してください。')
 LOCAL_URL = re.compile(r'^(?:https?://)?(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:/|$)')
 
 
@@ -169,9 +152,7 @@ class Guard:
         self.allowed_urls = [u for u in config.get('allowed_urls', []) if u]
         self.bench_ids = benchmark_ids(root)
         self.lane = os.environ.get('ISUCON_LANE')
-        # Benchmark commands seen in the call; the caller decides what they mean for the session.
-        self.benchmarks = []
-        self.drop_heredocs = False
+        self.drop_heredocs = False  # bench-hook.py reads only the command lines, not heredoc bodies
         patterns = [re.escape(p.rstrip('/')) + r'(?![\w.-])' for p in config.get('benchmarker_paths', []) if p]
         patterns += [r'(?<![\w.-])' + re.escape(k) + r'[\w.-]*/bench(?![\w.-])' for k in self.keywords]
         self.bench_paths = re.compile('|'.join(patterns), re.I) if patterns else None
@@ -284,8 +265,7 @@ class Guard:
             self.check_arguments(words)
         if self.lane:
             self.check_lane(program, args)
-        if is_benchmark(program, args):
-            self.benchmarks.append(shlex.join(words))
+        self.seen(program, args)
         if program == 'ssh-node.sh':
             if args:
                 self.check_bench_host(args[0])
@@ -338,31 +318,20 @@ class Guard:
                                                   and ('.' in a or ':' in a or '/' in a)):
             raise Denied(LANE_HINT)
 
+    def seen(self, program, args):
+        """Every simple command, after wrappers are removed. bench-hook.py watches for benchmarks here."""
+
     # --- tool calls --------------------------------------------------------------------
     def check(self, payload):
         tool = str(payload.get('tool_name') or '')
         tool_input = payload.get('tool_input')
         if not isinstance(tool_input, dict):
             tool_input = {'value': tool_input}
-        command = tool_input.get('command', tool_input.get('cmd'))
-        if isinstance(command, list):
-            words = [str(word) for word in command]
-            if len(words) > 2 and os.path.basename(words[0]) in SHELLS and re.match(r'^-[a-z]*c[a-z]*$', words[1]):
-                command = words[2]
-            else:
-                command = shlex.join(words)
+        command = command_of(tool_input)
         if isinstance(command, str):
             if self.lane and 'operation.lock' in command:
                 raise Denied(LANE_HINT)
             self.check_shell(command)
-            # A heredoc body is mostly a script or text being written (a test naming `isuscope run`);
-            # only the command lines count as starting a benchmark.
-            self.benchmarks = []
-            self.drop_heredocs = True
-            try:
-                self.check_shell(command)
-            finally:
-                self.drop_heredocs = False
         searching = 'search' in tool.lower()
         for key, value in tool_input.items():
             values = value if isinstance(value, list) else [value]
@@ -379,87 +348,22 @@ class Guard:
                         raise Denied(f'現在練習中の開催回の攻略法は検索しない（{item}）。')
 
 
-def is_benchmark(program, args):
-    """isuscope run / survey-run, make first-bench, or scripts/first-bench.sh, but not their help."""
-    options = [a for a in args if a.startswith('-')]
-    if '-h' in options or '--help' in options:
-        return False
-    if program == 'isuscope':
-        return bool(args) and args[0] in BENCH_ISUSCOPE
-    if program == 'make':
-        return 'first-bench' in [a for a in args if not a.startswith('-')]
-    if program in SHELLS:
-        if '-n' in options:
-            return False  # a syntax check reads the script without running it
-        program = os.path.basename(next((a for a in args if not a.startswith('-')), ''))
-    return program == 'first-bench.sh'
-
-
-def background_benchmark(guard, payload):
-    """True when Claude Code's Bash tool starts a benchmark with run_in_background."""
-    tool_input = payload.get('tool_input')
-    return (payload.get('tool_name') == 'Bash' and isinstance(tool_input, dict)
-            and tool_input.get('run_in_background') is True and bool(guard.benchmarks))
-
-
-def main_worktree(root):
-    try:
-        common = subprocess.check_output(['git', '-C', str(root), 'rev-parse', '--path-format=absolute',
-                                          '--git-common-dir'], text=True, stderr=subprocess.DEVNULL).strip()
-        return Path(common).parent
-    except (OSError, subprocess.CalledProcessError):
-        return root
-
-
-def scout_context(root, now=None):
-    """The latest scout reports with their age, or None while no scout has posted."""
-    try:
-        board = (main_worktree(root) / 'docs/scout-board.md').read_text()
-    except OSError:
-        return None
-    if '投稿: ' not in board:
-        return None
-    now = time.time() if now is None else now
-
-    def age(match):
-        try:
-            posted = calendar.timegm(time.strptime(match.group(1), '%Y-%m-%dT%H:%M:%SZ'))
-        except ValueError:
-            return match.group(0)
-        return f'{match.group(0)}（{max(0, int(now - posted) // 60)}分前）'
-    board = re.sub(r'投稿: (\S+Z)', age, board)
-    return SCOUT_HINT + '\n\n' + board.strip()
-
-
-def post(root, payload):
-    guard = Guard(root)
-    try:
-        guard.check(payload)
-    except Denied:
-        pass  # the call already ran; PreToolUse decided on it
-    if not background_benchmark(guard, payload):
-        return
-    context = scout_context(root)
-    if context:
-        print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUse', 'additionalContext': context}},
-                         ensure_ascii=False))
+def command_of(tool_input):
+    """The shell command of a Bash (Claude Code) or shell (Codex) call, as one string."""
+    command = tool_input.get('command', tool_input.get('cmd'))
+    if isinstance(command, list):
+        words = [str(word) for word in command]
+        if len(words) > 2 and os.path.basename(words[0]) in SHELLS and re.match(r'^-[a-z]*c[a-z]*$', words[1]):
+            return words[2]
+        return shlex.join(words)
+    return command
 
 
 def main():
-    agent = sys.argv[sys.argv.index('--agent') + 1] if '--agent' in sys.argv[:-1] else None
     try:
         payload = json.load(sys.stdin)
-        payload = payload if isinstance(payload, dict) else {}
         root = Path(os.environ.get('TOOL_GUARD_ROOT') or ROOT)
-        if '--post' in sys.argv:
-            post(root, payload)
-            return 0
-        guard = Guard(root)
-        guard.check(payload)
-        tool_input = payload.get('tool_input')
-        if (agent == 'claude' and guard.benchmarks and payload.get('tool_name') == 'Bash'
-                and not (isinstance(tool_input, dict) and tool_input.get('run_in_background') is True)):
-            raise Denied(BACKGROUND_HINT)
+        Guard(root).check(payload if isinstance(payload, dict) else {})
     except Denied as denied:
         print(json.dumps({'hookSpecificOutput': {
             'hookEventName': 'PreToolUse',

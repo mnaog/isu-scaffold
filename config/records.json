@@ -1,5 +1,5 @@
 {
-  "description": "必ず残す記録と、その置き場所。手順書（docs/preparation.md、docs/initial-work.md）はこの場所を指し、make boardの「記録」がこの順に一覧と中身を出す。場所を変えるときはこことその手順書を一緒に直す。",
+  "description": "必ず残す記録と、その置き場所。手順書（docs/guides/preparation.md、docs/guides/initial-work.md）はこの場所を指し、make boardの「記録」がこの順に一覧と中身を出す。場所を変えるときはこことその手順書を一緒に直す。",
   "records": [
     {
       "path": "docs/preparation/readiness.md",

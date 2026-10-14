@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 import shutil
 import signal
-import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -14,7 +13,7 @@ import unittest
 from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(SOURCE / 'scripts/scouts'))
+sys.path.insert(0, str(SOURCE / 'scripts/scout'))
 import inputs
 import runner
 import store
@@ -27,7 +26,7 @@ class ScoutTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.repo = Path(self.temp.name).resolve() / 'repo'
         self.repo.mkdir()
-        for directory in ('scripts/scouts', 'scripts/board', 'docs/roles'):
+        for directory in ('scripts/scout', 'scripts/board', 'docs/roles'):
             shutil.copytree(SOURCE / directory, self.repo / directory)
         (self.repo / 'config').mkdir()
         (self.repo / 'docs/agent-history').mkdir()
@@ -40,12 +39,12 @@ class ScoutTests(unittest.TestCase):
         self.git('commit', '-m', 'initial')
         self.cli = self.repo / 'fake.py'
         self.cli.write_text('import sys\nsys.stdin.read()\nprint("発見なし")\n')
-        self.cfg = json.loads((SOURCE / 'config/scouts.json').read_text())
+        self.cfg = json.loads((SOURCE / 'config/scout.json').read_text())
         for spec in self.cfg['scouts'].values():
             spec.update(model='fake', argv=[sys.executable, str(self.cli)], output='text')
             spec.pop('unavailable', None)
         self.cfg.update(timeout_seconds=3, isuscope=['missing-isuscope-for-test'])
-        (self.repo / 'config/scouts.json').write_text(json.dumps(self.cfg))
+        (self.repo / 'config/scout.json').write_text(json.dumps(self.cfg))
         runner.initialize(self.repo, self.cfg)
         self.bundle = {'metrics': {'current_commit': self.git('rev-parse', 'HEAD'), 'latest': {'id': 'run-12345678'}, 'base': {'id': 'base-87654321'}}}
 
@@ -70,9 +69,9 @@ class ScoutTests(unittest.TestCase):
         self.fail('condition timeout')
 
     def test_configured_scouts_wait_eight_minutes_after_their_report(self):
-        cfg = json.loads((SOURCE / 'config/scouts.json').read_text())
+        cfg = json.loads((SOURCE / 'config/scout.json').read_text())
         self.assertEqual(sorted(cfg['scouts']), ['claude', 'codex', 'kimi'])
-        self.assertEqual(cfg['interval_seconds'], 480)
+        self.assertEqual(cfg['wait_after_report_seconds'], 480)
 
     def test_worktrees_share_database(self):
         branch = self.repo.parent / 'parallel'
@@ -85,25 +84,45 @@ class ScoutTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             runner.save_report(self.repo, 'codex', ' \n', self.bundle, 'local-ref', 'session')
         self.assertEqual(self.query("SELECT report FROM scouts WHERE name='codex'")[0]['report'], 'あ'*2000)
-        self.assertIn('あ'*2000, (self.repo / 'docs/scout-board.md').read_text())
+        reports = self.repo / '.local/scout/reports.md'
+        self.assertIn('あ'*2000, reports.read_text())
         runner.save_report(self.repo, 'codex', '順調そう', self.bundle, 'local-ref', 'session', now=2)
-        text = (self.repo / 'docs/scout-board.md').read_text()
+        text = reports.read_text()
         self.assertIn('順調そう', text)
         self.assertNotIn('あ'*2000, text)
         self.assertEqual(text.count('## '), 3)
         self.assertNotIn('local-ref', text)
+        # The reports stay out of Git while the scouts run; only make scout-stop leaves a snapshot.
+        self.assertNotIn('docs/', self.git('status', '--porcelain', '--untracked-files=all'))
 
-    def test_database_with_the_old_300_character_limit_keeps_its_reports(self):
-        database = store.local(self.repo) / 'state.sqlite3'
-        database.unlink()
-        limited = (SOURCE / 'scripts/scouts/schema.sql').read_text().replace(
-            'length(trim(report)) > 0', '(length(trim(report)) BETWEEN 1 AND 300)')
-        db = sqlite3.connect(database)
-        db.executescript(limited + "INSERT INTO scouts(name, report) VALUES ('codex', '前の報告'), ('claude', NULL);")
-        db.close()
-        runner.save_report(self.repo, 'claude', 'あ'*1000, self.bundle, 'ref', 'session')
-        reports = {r['name']: r['report'] for r in self.query('SELECT name, report FROM scouts')}
-        self.assertEqual(reports, {'codex': '前の報告', 'claude': 'あ'*1000})
+    def test_stop_leaves_a_snapshot_of_the_reports_to_commit(self):
+        cli = [sys.executable, str(self.repo / 'scripts/scout/main.py'), 'stop']
+        subprocess.run(cli, cwd=self.repo, text=True, capture_output=True, check=True)
+        self.assertFalse((self.repo / 'docs/scout-reports.md').exists())  # nothing reported yet
+        runner.save_report(self.repo, 'codex', '最後の報告', self.bundle, 'ref', 'session')
+        result = subprocess.run(cli, cwd=self.repo, text=True, capture_output=True, check=True)
+        self.assertIn('docs/scout-reports.md', result.stdout)
+        self.assertIn('最後の報告', (self.repo / 'docs/scout-reports.md').read_text())
+
+    def test_start_registers_the_session_that_starts_the_scouts(self):
+        env = {**os.environ, 'CLAUDE_CODE_SESSION_ID': 'main-session'}
+        env.pop('CODEX_SESSION_ID', None)
+        env.pop('CODEX_THREAD_ID', None)
+        cli = [sys.executable, str(self.repo / 'scripts/scout/main.py'), 'start']
+        result = subprocess.run(cli, cwd=self.repo, env=env, text=True, capture_output=True, check=True)
+        self.assertIn('claude session main-session', result.stdout)
+        self.assertEqual(self.query('SELECT agent,session_id FROM conversation_sources'),
+                         [dict(agent='claude', session_id='main-session')])
+
+    def test_the_history_of_a_scout_session_is_dropped(self):
+        folder = self.repo / 'docs/agent-history'
+        # What the agent-history hook writes for a scout's CLI (role scout) and for the main session.
+        (folder / 'scout.events.jsonl').write_text(json.dumps({'session_id': 'x', 'role': 'scout'}) + '\n')
+        (folder / 'scout.md').write_text('- Agent: `claude`\n')
+        (folder / 'main.events.jsonl').write_text(json.dumps({'session_id': 'main', 'role': None}) + '\n')
+        (folder / 'main.md').write_text('- Agent: `claude`\n')
+        self.assertTrue(runner.attempt(self.repo, self.cfg, 'codex', bundle=self.bundle))
+        self.assertEqual(sorted(p.name for p in folder.iterdir()), ['main.events.jsonl', 'main.md'])
 
     def test_fake_cli_posts_then_waits_480_seconds_after_the_report(self):
         # The wait counts from the saved report, not from the start; no 8-minute wall wait.
@@ -143,7 +162,7 @@ class ScoutTests(unittest.TestCase):
             db.execute('CREATE TABLE operators(agent TEXT, session_id TEXT)')
             db.execute("INSERT INTO operators VALUES ('claude','old-session')")
         self.assertEqual(inputs.generate(self.repo, self.cfg)['conversations'], {})
-        cli = [sys.executable, str(self.repo/'scripts/scouts/main.py'), 'conversation', 'codex']
+        cli = [sys.executable, str(self.repo/'scripts/scout/main.py'), 'conversation', 'codex']
         for session in ('first-session', 'current-session'):
             subprocess.run(cli + [session], cwd=self.repo, check=True, capture_output=True)
         self.assertEqual(self.query('SELECT agent,session_id FROM conversation_sources'),
@@ -186,11 +205,11 @@ class ScoutTests(unittest.TestCase):
         self.assertEqual(before, self.query('SELECT * FROM scouts'))
 
     def test_current_cli_does_not_initialize_the_scout_database(self):
-        shutil.rmtree(self.repo/'.local/scouts')
-        result = subprocess.run([sys.executable, str(self.repo/'scripts/scouts/main.py'), 'current'],
+        shutil.rmtree(self.repo/'.local/scout')
+        result = subprocess.run([sys.executable, str(self.repo/'scripts/scout/main.py'), 'current'],
                                 cwd=self.repo, text=True, capture_output=True, check=True)
         self.assertIn('metrics_error', json.loads(result.stdout))
-        self.assertFalse((self.repo/'.local/scouts').exists())
+        self.assertFalse((self.repo/'.local/scout').exists())
 
     def test_scout_inputs_use_the_windows_the_brief_chose(self):
         calls = []
@@ -229,14 +248,14 @@ class ScoutTests(unittest.TestCase):
         self.assertIn('timeout',self.query("SELECT error FROM scouts WHERE name='codex'")[0]['error'])
 
     def test_daemon_repeats_with_short_interval_in_fresh_sessions(self):
-        self.cfg['interval_seconds'] = .3
-        (self.repo/'config/scouts.json').write_text(json.dumps(self.cfg))
+        self.cfg['wait_after_report_seconds'] = .3
+        (self.repo/'config/scout.json').write_text(json.dumps(self.cfg))
         runner.start(self.repo)
         def count():
-            return len(list((self.repo/'.local/scouts/runs/codex').glob('*/exit.json')))
+            return len(list((self.repo/'.local/scout/runs/codex').glob('*/exit.json')))
         self.wait_for(lambda: count() >= 2)
         runner.stop_daemon(self.repo)
-        records=list((self.repo/'.local/scouts/runs/codex').glob('*/process.json'))
+        records=list((self.repo/'.local/scout/runs/codex').glob('*/process.json'))
         ids=[json.loads(p.read_text())['invocation_id'] for p in records]
         self.assertEqual(len(ids),len(set(ids)))
         stopped=count()

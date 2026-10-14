@@ -23,13 +23,14 @@ def initialize(repo, cfg):
                 db.execute("UPDATE scouts SET error=? WHERE name=? AND state='stopped'", (spec['unavailable'], name))
 
 
-def export_board(repo):
+def export_reports(repo, target=None):
+    """The latest reports as Markdown: .local/scout/reports.md, or a snapshot to commit (make scout-stop)."""
     with lock(repo, 'export', blocking=True):
         names = config(repo)['scouts']
         with connect(repo) as db:
             # A scout removed from the configuration keeps its row but leaves the board.
             reports = [r for r in rows(db, 'SELECT * FROM scouts ORDER BY name') if r['name'] in names]
-        parts = ['# Scout board\n\n各scoutの最新報告。自動生成・通常のコミットに含める。ベンチの待ち時間にmainのセッションが読む。\n']
+        parts = ['# Scout reports\n\n各scoutの最新報告。自動生成。ベンチの待ち時間にmainのセッションが読む。\n']
         for r in reports:
             parts.append(f"\n## {r['name']}\n\n")
             if r['report'] is None:
@@ -39,7 +40,7 @@ def export_board(repo):
             parts.append(f"投稿: {stamp} / commit: `{r['code_commit']}` / run: `{r['run_id'] or 'なし'}` / base: `{r['base_run_id'] or 'なし'}`\n\n")
             # Quote model output as plain text, not executable HTML/Markdown.
             parts.extend('> ' + html.escape(line) + '\n' for line in r['report'].splitlines())
-        target = repo / 'docs' / 'scout-board.md'
+        target = target or local(repo) / 'reports.md'
         tmp = target.with_suffix('.md.tmp')
         tmp.write_text(''.join(parts))
         tmp.replace(target)
@@ -54,7 +55,7 @@ def save_report(repo, name, report, bundle, ref, session, now=None):
         db.execute('''UPDATE scouts SET report=?,posted_at=?,input_ref=?,code_commit=?,run_id=?,base_run_id=?,session_id=?,failures=0,error=NULL WHERE name=?''',
                    (report, time.time() if now is None else now, str(ref), m['current_commit'],
                     (m.get('latest') or {}).get('short_id'), (m.get('base') or {}).get('short_id'), session, name))
-    export_board(repo)
+    export_reports(repo)
 
 
 def terminate(p):
@@ -80,7 +81,7 @@ def invoke(repo, spec, text, directory, stop, timeout, session, lock_fd=None, ro
         raise FileNotFoundError(f'No such file: CLI {argv[0]}')
     env = os.environ.copy()
     # A fresh invocation must not inherit the calling session's identity or nesting guard.
-    for key in ('CODEX_THREAD_ID', 'CLAUDECODE', 'SCAFFOLD_SESSION_ID', 'SCAFFOLD_PARENT_SESSION_ID', 'SCAFFOLD_TASK_ID',
+    for key in ('CODEX_THREAD_ID', 'CODEX_SESSION_ID', 'CLAUDE_CODE_SESSION_ID', 'CLAUDECODE', 'SCAFFOLD_SESSION_ID', 'SCAFFOLD_PARENT_SESSION_ID', 'SCAFFOLD_TASK_ID',
                 'SCAFFOLD_RESEARCH_JOB_ID', 'SCAFFOLD_INVOCATION_ID'):
         env.pop(key, None)
     env['SCAFFOLD_ROLE'] = role
@@ -125,8 +126,29 @@ def invoke(repo, spec, text, directory, stop, timeout, session, lock_fd=None, ro
     return raw
 
 
+def forget_history(repo, sessions, since):
+    """Drop the conversation history the agent-history hook wrote for a scout's own CLI session.
+
+    Scouts run in the main worktree, so the hook records each of their sessions next to the
+    work sessions. They are marked role=scout (SCAFFOLD_ROLE) or carry the scout's session id.
+    """
+    for events in (repo / 'docs' / 'agent-history').glob('*.events.jsonl'):
+        try:
+            if events.stat().st_mtime < since:
+                continue
+            with events.open() as handle:
+                first = json.loads(handle.readline() or '{}')
+        except (OSError, ValueError):
+            continue
+        if first.get('role') == 'scout' or first.get('session_id') in sessions:
+            events.unlink(missing_ok=True)
+            events.with_name(events.name.removesuffix('.events.jsonl') + '.md').unlink(missing_ok=True)
+
+
 def attempt(repo, cfg, name, stop=None, bundle=None, clock=time.time):
     stop = stop or threading.Event()
+    began = time.time() - 1
+    sessions = set()
     with lock(repo, 'scout-' + name) as held:
         spec = cfg['scouts'][name]
         with connect(repo) as db:
@@ -135,6 +157,7 @@ def attempt(repo, cfg, name, stop=None, bundle=None, clock=time.time):
             if spec.get('unavailable') or not spec.get('model'):
                 raise ValueError(spec.get('unavailable') or '正確なモデルIDが未設定')
             session = str(uuid.uuid4())
+            sessions.add(session)
             directory = local(repo) / 'runs' / name / session
             directory.mkdir(parents=True)
             bundle = bundle if bundle is not None else generate(repo, cfg, stop)
@@ -147,18 +170,21 @@ def attempt(repo, cfg, name, stop=None, bundle=None, clock=time.time):
             metadata = directory / 'model.json'
             if metadata.exists():
                 session = json.loads(metadata.read_text()).get('session_id') or session
+                sessions.add(session)
             save_report(repo, name, report, bundle, directory.relative_to(repo), session, now=clock())
-            # Count interval_seconds from the saved report (including the Markdown export), not from the start.
+            # Count wait_after_report_seconds from the saved report (including the Markdown export), not from the start.
             with connect(repo) as db:
-                db.execute("UPDATE scouts SET state='waiting',next_at=? WHERE name=?", (clock() + cfg['interval_seconds'], name))
+                db.execute("UPDATE scouts SET state='waiting',next_at=? WHERE name=?", (clock() + cfg['wait_after_report_seconds'], name))
         except Exception as exc:
             with connect(repo) as db:
                 failures = db.execute('SELECT failures FROM scouts WHERE name=?', (name,)).fetchone()[0] + 1
-                delay = min(cfg['retry_max_seconds'], cfg['interval_seconds'] * 2 ** min(failures - 1, 10))
+                delay = min(cfg['retry_max_seconds'], cfg['wait_after_report_seconds'] * 2 ** min(failures - 1, 10))
                 db.execute('UPDATE scouts SET state=?,error=?,failures=?,next_at=? WHERE name=?',
                            ('stopped' if stop.is_set() else 'error', str(exc)[:1000], failures,
                             None if stop.is_set() else clock() + delay, name))
             return False
+        finally:
+            forget_history(repo, sessions, began)
         return True
 
 
@@ -172,7 +198,7 @@ def daemon(repo):
         stopfile = local(repo) / 'stop-request'
         with connect(repo) as db:
             # Preserve due times across restarts. Interrupted work gets a cooldown.
-            db.execute("UPDATE scouts SET state='error',error='前回の実行が中断されました',next_at=? WHERE state='running'", (time.time() + cfg['interval_seconds'],))
+            db.execute("UPDATE scouts SET state='error',error='前回の実行が中断されました',next_at=? WHERE state='running'", (time.time() + cfg['wait_after_report_seconds'],))
             db.execute("UPDATE scouts SET state='waiting' WHERE state='stopped' AND next_at IS NOT NULL")
         futures = {}
         deferred = {}
@@ -192,7 +218,7 @@ def daemon(repo):
                         try:
                             futures.pop(name).result()
                         except RuntimeError:
-                            deferred[name] = now + cfg['interval_seconds']
+                            deferred[name] = now + cfg['wait_after_report_seconds']
                     if deferred.get(name, 0) > now:
                         continue
                     if r['next_at'] is None or r['next_at'] <= now:
@@ -223,7 +249,7 @@ def start(repo):
             if active(repo):
                 return p.pid
             if p.poll() is not None:
-                raise RuntimeError('daemon起動失敗。 .local/scouts/daemon.log を確認してください')
+                raise RuntimeError('daemon起動失敗。 .local/scout/daemon.log を確認してください')
             time.sleep(0.1)
         raise RuntimeError('daemon起動確認がtimeoutしました')
 

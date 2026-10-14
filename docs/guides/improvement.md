@@ -98,7 +98,7 @@ isuscopeで現在の制約を確認する
 
 ## scout
 
-scoutは`make first-bench`が初回baselineの後に起動している（[scout手順](roles/scout.md)）。参照する会話を登録すると、次の探索からその会話も読む。止めていたら`make scout-start`で再開する。3体が独立して探索し、それぞれ報告を保存してから8分後に次回実行する。報告はベンチを`run_in_background`で起動したときにhookが会話へ渡すので、ベンチの待ち時間に読んで次の候補の材料にする。状態確認は`make scout-status`、停止は`make scout-stop`。
+scoutは`make first-bench`が初回baselineの後に起動している（[scout手順](../roles/scout.md)）。参照する会話を登録すると、次の探索からその会話も読む。止めていたら`make scout-start`で再開する。3体が独立して探索し、それぞれ報告を保存してから8分後に次回実行する。報告はベンチを`run_in_background`で起動したときにhookが会話へ渡すので、ベンチの待ち時間に読んで次の候補の材料にする。状態確認は`make scout-status`、停止は`make scout-stop`。
 
 ## 終了前の固定へ切り替える
 
