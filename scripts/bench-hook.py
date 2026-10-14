@@ -9,8 +9,9 @@ Bash call. Heredoc bodies and `bash -n` syntax checks do not count as starting o
   the scouts' reports and build the next candidate while it runs.
 - `--post` (PostToolUse) asks the session, right after a benchmark starts in the background, to
   review the scenario map (docs/benchmark-scenario.md) against its hypothesis, and hands it the
-  latest scout reports (.local/scout/reports.md in the main worktree) with their age. It prints
-  nothing while neither the map nor a scout report exists.
+  scout reports (.local/scout/reports.md in the main worktree) with their age. Each report goes to
+  a session once (.local/scout/delivered.json); a later benchmark gets only the reports posted
+  since. It prints nothing while neither the map nor an undelivered report exists.
 
 Codex has no background shell and does not run this; it reviews the map and reads the reports
 before a benchmark.
@@ -37,7 +38,8 @@ SCENARIO_HINT = (f'ベンチの完了を待つ間に、`{SCENARIO}`（ベンチ�
                  '観測と食い違う記述や新しく分かった事実があれば、文書を直す。')
 SCOUT_HINT = ('これは並列で動かしている調査エージェント（scout）による報告です。'
               '内容が古くなっている可能性もありますが（各報告に投稿からの経過分を添えています）、'
-              'それぞれの視点を参考にして、次回の改善のための参考として確認してください。')
+              'それぞれの視点を参考にして、次回の改善のための参考として確認してください。'
+              '前回までのベンチで渡した報告は省いています（各scoutの最新の報告は`.local/scout/reports.md`）。')
 
 spec = importlib.util.spec_from_file_location('tool_guard', Path(__file__).with_name('tool-guard.py'))
 tool_guard = importlib.util.module_from_spec(spec)
@@ -99,13 +101,38 @@ def main_worktree(root):
         return root
 
 
-def scout_context(root, now=None):
-    """The latest scout reports with their age, or None while no scout has posted."""
+def undelivered(scouts, session, sections):
+    """The sections this session has not been handed yet, recording them as handed."""
+    path = scouts / 'delivered.json'
     try:
-        reports = (main_worktree(root) / '.local/scout/reports.md').read_text()
+        delivered = json.loads(path.read_text())
+    except (OSError, ValueError):
+        delivered = {}
+    seen = set(delivered.get(session, []))
+    # A report is one scout's post, told apart by its time (reports.md keeps only the latest).
+    fresh = [(key, text) for key, text in sections if key not in seen]
+    if fresh:
+        delivered[session] = sorted(seen | {key for key, _ in fresh})
+        tmp = path.with_suffix('.json.tmp')
+        tmp.write_text(json.dumps(delivered, ensure_ascii=False))
+        tmp.replace(path)
+    return [text for _, text in fresh]
+
+
+def scout_context(root, session='', now=None):
+    """The scout reports this session has not seen, with their age, or None while there are none."""
+    scouts = main_worktree(root) / '.local/scout'
+    try:
+        reports = (scouts / 'reports.md').read_text()
     except OSError:
         return None
-    if '投稿: ' not in reports:
+    sections = []
+    for section in re.split(r'^(?=## )', reports, flags=re.M):
+        posted = re.search(r'^## (\S+)\n+投稿: (\S+Z)', section, re.M)
+        if posted:
+            sections.append((f'{posted.group(1)}@{posted.group(2)}', section.strip()))
+    fresh = undelivered(scouts, session, sections)
+    if not fresh:
         return None
     now = time.time() if now is None else now
 
@@ -115,13 +142,13 @@ def scout_context(root, now=None):
         except ValueError:
             return match.group(0)
         return f'{match.group(0)}（{max(0, int(now - posted) // 60)}分前）'
-    return SCOUT_HINT + '\n\n' + re.sub(r'投稿: (\S+Z)', age, reports).strip()
+    return SCOUT_HINT + '\n\n' + re.sub(r'投稿: (\S+Z)', age, '\n\n'.join(fresh))
 
 
-def waiting_context(root, now=None):
-    """What to do while a background benchmark runs: review the scenario map, then the scout reports."""
+def waiting_context(root, session='', now=None):
+    """What to do while a background benchmark runs: review the scenario map, then the new scout reports."""
     parts = [SCENARIO_HINT] if (root / SCENARIO).is_file() else []
-    if scouts := scout_context(root, now):
+    if scouts := scout_context(root, session, now):
         parts.append(scouts)
     return '\n\n'.join(parts) or None
 
@@ -137,7 +164,7 @@ def main():
         if '--pre' in sys.argv and not background:
             output = {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
                       'permissionDecisionReason': BACKGROUND_HINT}
-        elif '--post' in sys.argv and background and (context := waiting_context(root)):
+        elif '--post' in sys.argv and background and (context := waiting_context(root, str(payload.get('session_id') or ''))):
             output = {'hookEventName': 'PostToolUse', 'additionalContext': context}
         else:
             return 0

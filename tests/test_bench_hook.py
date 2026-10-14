@@ -25,8 +25,8 @@ class BenchHookTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def hook(self, tool_input, *args, tool='Bash'):
-        payload = {'tool_name': tool, 'tool_input': tool_input, 'cwd': str(self.root)}
+    def hook(self, tool_input, *args, tool='Bash', session='main'):
+        payload = {'tool_name': tool, 'tool_input': tool_input, 'cwd': str(self.root), 'session_id': session}
         env = {k: v for k, v in os.environ.items() if k != 'ISUCON_LANE'}
         env['TOOL_GUARD_ROOT'] = str(self.root)
         result = subprocess.run(['python3', str(HOOK), *args], input=json.dumps(payload), text=True,
@@ -79,6 +79,28 @@ class BenchHookTest(unittest.TestCase):
         self.assertIsNone(self.hook(started, '--post'))
         reports.unlink()
         self.assertIsNone(self.hook(started, '--post'))
+
+    def test_each_scout_report_is_handed_over_once(self):
+        reports = self.root / '.local/scout/reports.md'
+        post = '投稿: {} / commit: `abc` / run: `12345678` / base: `なし`\n\n> {}\n'
+        write(reports, '# Scout reports\n\n## claude\n\n' + post.format('2026-10-14T00:00:00Z', '一つ目') +
+              '\n## kimi\n\n' + post.format('2026-10-14T00:01:00Z', 'kimiの指摘'))
+        started = {'command': 'isuscope run --hypothesis x', 'run_in_background': True}
+        first = self.hook(started, '--post')['additionalContext']
+        self.assertIn('一つ目', first)
+        self.assertIn('kimiの指摘', first)
+        # Nothing new since the last benchmark: no scout content at all.
+        self.assertIsNone(self.hook(started, '--post'))
+        # claude posted again: only its new report, not kimi's old one.
+        write(reports, '# Scout reports\n\n## claude\n\n' + post.format('2026-10-14T00:10:00Z', '二つ目') +
+              '\n## kimi\n\n' + post.format('2026-10-14T00:01:00Z', 'kimiの指摘'))
+        second = self.hook(started, '--post')['additionalContext']
+        self.assertIn('二つ目', second)
+        self.assertNotIn('kimiの指摘', second)
+        # Another session has seen nothing yet.
+        other = self.hook(started, '--post', session='other')['additionalContext']
+        self.assertIn('二つ目', other)
+        self.assertIn('kimiの指摘', other)
 
     def test_a_background_benchmark_asks_to_review_the_scenario_map(self):
         started = {'command': 'isuscope run --hypothesis x', 'run_in_background': True}
