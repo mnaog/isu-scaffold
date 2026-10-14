@@ -214,13 +214,13 @@ expand_command_plan rollback_commands "${rollback_plan_file}"
 
 deploy_started_epoch=$(date +%s)
 active_pids=()
-mark_phase() {
-  local phase=$1 now elapsed
+mark_stage() {
+  local stage=$1 now elapsed
   now=$(date +%s)
   elapsed=$((now - deploy_started_epoch))
-  printf '%s\n' "${phase}" >"${state_file}"
-  printf '%s\t%s\t%s\n' "${phase}" "${now}" "${elapsed}" >>"${timing_file}"
-  printf '[deploy +%ss] %s\n' "${elapsed}" "${phase}"
+  printf '%s\n' "${stage}" >"${state_file}"
+  printf '%s\t%s\t%s\n' "${stage}" "${now}" "${elapsed}" >>"${timing_file}"
+  printf '[deploy +%ss] %s\n' "${elapsed}" "${stage}"
 }
 
 # 1 node 1 SSHにまとめる。1 itemの失敗で同じnodeの他itemを止めない。
@@ -239,11 +239,11 @@ pruning_node() {
     echo "warning: failed to prune old backups on ${target_node}:${failed_items:- (connection)}" >&2
 }
 
-run_node_phase() {
-  local phase=$1 node pid failed=0
+run_node_stage() {
+  local stage=$1 node pid failed=0
   active_pids=()
   while IFS= read -r node; do
-    (trap - EXIT INT TERM; "${phase}_node" "${node}") &
+    (trap - EXIT INT TERM; "${stage}_node" "${node}") &
     active_pids+=("$!")
     if [[ "${#active_pids[@]}" -ge "${max_parallel_nodes}" ]]; then
       for pid in "${active_pids[@]}"; do
@@ -372,7 +372,7 @@ cleanup_node() {
   "${script_dir}/ssh-node.sh" "${target_node}" "${command}" >/dev/null 2>&1 || true
 }
 
-cleanup_staging() { run_node_phase cleanup || true; }
+cleanup_staging() { run_node_stage cleanup || true; }
 
 restore_node() {
   local target_node=$1 name type node local_path remote_path owner owner_group size_kb staging backup command
@@ -411,10 +411,10 @@ rollback_transaction() {
     return 0
   fi
   echo "rolling back deploy transaction ${release}" >&2
-  run_node_phase restore || echo "one or more nodes failed to restore transaction ${release}" >&2
+  run_node_stage restore || echo "one or more nodes failed to restore transaction ${release}" >&2
   case "${failed_state}" in
     switching|validating)
-      run_node_phase rollback_commands || echo "one or more rollback commands failed for ${release}" >&2
+      run_node_stage rollback_commands || echo "one or more rollback commands failed for ${release}" >&2
       ;;
   esac
 }
@@ -432,20 +432,20 @@ trap 'abort_transaction $?' EXIT
 trap 'cancel_active_jobs; exit 130' INT
 trap 'cancel_active_jobs; exit 143' TERM
 
-mark_phase preflight
-run_node_phase preflight
-mark_phase staging
-run_node_phase staging
-mark_phase building
-run_node_phase building
-mark_phase switching
-run_node_phase switching
-mark_phase validating
-run_node_phase validating
+mark_stage preflight
+run_node_stage preflight
+mark_stage staging
+run_node_stage staging
+mark_stage building
+run_node_stage building
+mark_stage switching
+run_node_stage switching
+mark_stage validating
+run_node_stage validating
 
 trap - EXIT INT TERM
 cleanup_staging
-mark_phase complete
+mark_stage complete
 printf '%s\n' "${release}" >"${sync_repo_dir}/.local/current-release"
 printf '%s\n' "${head_commit}" >"${sync_repo_dir}/.local/current-commit"
 printf '%s\n' "${head_commit}" >"${sync_repo_dir}/.local/current-deploy-commit.tmp"
@@ -453,6 +453,6 @@ mv "${sync_repo_dir}/.local/current-deploy-commit.tmp" \
   "${sync_repo_dir}/.local/current-deploy-commit"
 
 # rollback用backupは新しいものだけを残す。prune失敗はdeploy成功を取り消さない。
-run_node_phase pruning || true
+run_node_stage pruning || true
 deploy_elapsed=$(($(date +%s) - deploy_started_epoch))
 echo "deploy complete: ${release} (${deploy_elapsed}s)"

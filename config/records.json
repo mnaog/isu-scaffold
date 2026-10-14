@@ -1,64 +1,64 @@
 {
-  "description": "必ず残す記録と、その置き場所。Phase文書はこの場所を指し、make boardの「記録」がこの順に一覧と中身を出す。場所を変えるときはこことPhase文書を一緒に直す。",
+  "description": "必ず残す記録と、その置き場所。手順書（docs/guides/preparation.md、docs/guides/initial-work.md）はこの場所を指し、make boardの「記録」がこの順に一覧と中身を出す。場所を変えるときはこことその手順書を一緒に直す。",
   "records": [
     {
-      "path": "docs/phase0/readiness.md",
+      "path": "docs/preparation/readiness.md",
       "title": "準備状況",
-      "phase": "Phase 0",
+      "timing": "準備",
       "contents": "全項目を確認済み・未完了・対象外・公開待ちに分け、確認日・使用版・根拠を付ける。"
     },
     {
       "path": "docs/official/",
       "title": "公式の一次情報",
-      "phase": "Phase 1",
+      "timing": "初動",
       "contents": "レギュレーション、マニュアル、API仕様などの原文。URLから取ったものは取得元と取得日時。"
     },
     {
       "path": "docs/environment.md",
       "title": "環境",
-      "phase": "Phase 1",
+      "timing": "初動",
       "contents": "台数とrole、CPU・メモリ、OS・kernel・nginx・MySQLの版、配布サーバーの言語の版、開始からの計時。"
     },
     {
       "path": "config/benchmark-contract.json",
       "title": "ベンチの競技条件",
-      "phase": "Phase 1",
+      "timing": "初動",
       "contents": "mode、通常と初期化のtimeout、負荷時間、接続先と、照合した公式資料のhash。"
     },
     {
       "path": "docs/benchmark-scenario.md",
       "title": "ベンチの見取り図",
-      "phase": "Phase 1",
+      "timing": "初動",
       "contents": "シナリオ、APIの順番、得点、FAIL条件、並列数と繰り返し、initialize後の状態、整合性チェック。事実・推測・不明を分ける。"
     },
     {
       "path": "docs/code-map.md",
       "title": "コードの地図",
-      "phase": "Phase 1",
+      "timing": "初動",
       "contents": "主要な処理ごとに、シナリオ → API → handler → SQL・外部処理 → サーバー → 得点・失敗のつながり。"
     },
     {
       "path": "docs/local-verification.md",
       "title": "ローカル検証の範囲",
-      "phase": "Phase 1",
+      "timing": "初動",
       "contents": "データの範囲（schemaだけ・縮小・全量）、欠けているservice、確かめたことと確かめていないこと。"
     },
     {
       "path": "docs/baseline.md",
       "title": "初回baselineの制約",
-      "phase": "Phase 1",
+      "timing": "初動",
       "contents": "初回baselineで観測された最大の制約と、その根拠（run ID、node別の観測値）。"
     },
     {
       "path": "docs/indexes.md",
       "title": "インデックスの根拠",
-      "phase": "Phase 1",
+      "timing": "初動",
       "contents": "足した索引ごとに、対象のSQL、初期化後の行数、効果を確かめたrun ID。"
     },
     {
       "path": "docs/cache-design.md",
       "title": "メモリ化の設計",
-      "phase": "Phase 1〜2",
+      "timing": "初動〜改善",
       "contents": "メモリへ移した読み取り経路ごとに、データの正本、更新の反映、無効化、initialize後と再起動後の再構築。"
     }
   ]

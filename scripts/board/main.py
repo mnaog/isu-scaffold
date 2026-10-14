@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The human board: runs, comparisons and load from isuscope, and the required records.
+"""The human board: runs, comparisons and load from isuscope, the scouts' reports and the required records.
 
 Read-only and served on loopback. `make board` starts it from the main worktree.
 """
@@ -16,6 +16,7 @@ from activity import activity
 from board_data import DetailCache, selection
 from reads import ISUSCOPE, metrics, root
 import records
+from scout import scouts
 
 CONFIG = {'isuscope': ISUSCOPE}
 
@@ -82,6 +83,7 @@ def serve(repo, port):
             elif self.path == '/api/board':
                 result = {'metrics': cached['value']}
                 result['activity'] = activity(repo)
+                result['scouts'] = scouts(repo)
                 body = json.dumps(result, ensure_ascii=False).encode()
                 content_type = 'application/json; charset=utf-8'
             else:

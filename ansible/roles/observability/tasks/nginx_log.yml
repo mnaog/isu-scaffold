@@ -66,7 +66,7 @@
       ansible.builtin.fail:
         msg: "the isuscope LTSV log failed nginx -t on {{ inventory_hostname }}; the drop-in was removed"
 
-# Phase 3 switches measurement off by setting observability_nginx_ltsv=false and rerunning bootstrap.
+# Before the end (docs/guides/finish.md), switch measurement off by setting observability_nginx_ltsv=false and rerunning bootstrap.
 - name: Remove the isuscope LTSV log when measurement is switched off
   ansible.builtin.file:
     path: /etc/nginx/conf.d/00-isuscope-log.conf

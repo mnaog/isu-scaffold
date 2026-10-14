@@ -54,7 +54,7 @@ def main():
     project = project_name(REPO)
     compose_file = REPO / "config/local/compose.yaml"
     if not compose_file.exists():
-        raise ValueError("Phase 1: copy config/local/compose.example.yaml to compose.yaml and adapt it to the imported app")
+        raise ValueError("After the start: copy config/local/compose.example.yaml to compose.yaml and adapt it to the imported app")
     env = dict(os.environ)
     for key, directory in (("LOCAL_INIT_DIR", "init"), ("LOCAL_VENDOR_DIR", "empty-vendor")):
         path = Path(env.get(key, str(state / directory))).resolve()

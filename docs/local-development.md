@@ -1,11 +1,11 @@
-# Phase 1のローカル実行環境
+# ローカル実行環境
 
-コード回収後、配布サーバーの準備と並行して、回収したアプリをDockerで起動する。構成と検証範囲の記録は、`make kickoff`が起動するlane `local-env`（`config/lanes/local-env.md`）が作り、mainのセッションは`git merge lane/local-env`で取り込む。初回baselineはローカル環境の完成を待たない。各worktreeで構成を用意し、検証する。Phase 0で準備するのはDocker Composeと汎用コマンドだけで、問題のコードやデータを先読みしない。
+コード回収後、配布サーバーの準備と並行して、回収したアプリをDockerで起動する。構成と検証範囲の記録は、`make kickoff`が起動するlane `local-env`（`config/lanes/local-env.md`）が作り、mainのセッションは`git merge lane/local-env`で取り込む。初回baselineはローカル環境の完成を待たない。各worktreeで構成を用意し、検証する。準備で用意するのはDocker Composeと汎用コマンドだけで、問題のコードやデータを先読みしない。
 
 ## 構成する
 
 1. `config/local/compose.example.yaml`を`config/local/compose.yaml`へコピーする。
-2. 標準Rust版は1.99.0に固定する。OS/glibc、DB版、追加service、アプリの環境変数、SQL投入元を実アプリに合わせる。`LOCAL_DB_IMAGE`と`LOCAL_RUST_IMAGE`は未設定なら起動を拒否する。Phase 1で当日の環境を確認して設定する。`LOCAL_RUST_IMAGE`は互換OSの選択であり、Dockerfileが公式rustupからRust 1.99.0を導入する。
+2. 標準Rust版は1.99.0に固定する。OS/glibc、DB版、追加service、アプリの環境変数、SQL投入元を実アプリに合わせる。`LOCAL_DB_IMAGE`と`LOCAL_RUST_IMAGE`は未設定なら起動を拒否する。開始後に当日の環境を確認して設定する。`LOCAL_RUST_IMAGE`は互換OSの選択であり、Dockerfileが公式rustupからRust 1.99.0を導入する。
 3. 許可されたschema・初期データを設定する。例では`.local/local-runtime/init/`のSQLをMySQLの初回起動時に投入する。`LOCAL_INIT_DIR`で別ディレクトリも指定できる。DB volumeが既存なら自動で再投入しない。
 4. 必要なOS依存はDockerfileへ宣言する。`EXTRA_PACKAGES` build argも使える。初期化scriptが必要とするDB client・ファイル配置・権限も確認する。
 5. 構成をcommitする。秘密情報はtrackedなComposeへ書かず、ローカル専用の値か`.local/`からの注入を使う。
@@ -15,7 +15,7 @@
 ## 実行する
 
 ```bash
-# Phase 1でLOCAL_DB_IMAGEとLOCAL_RUST_IMAGEをexportした後に実行
+# 開始後にLOCAL_DB_IMAGEとLOCAL_RUST_IMAGEをexportしてから実行
 LOCAL_DATA_LEVEL=schema make local-up
 make local-check
 make local-logs

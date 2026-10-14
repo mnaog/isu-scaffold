@@ -27,7 +27,7 @@ bootstrap_env=()
 cd "${repo_dir}"
 progress started "make kickoff"
 # Benchmarks are linked to the conversation in this repo's docs/agent-history; a session started
-# elsewhere would only be refused at phase1-check, minutes later.
+# elsewhere would only be refused at bench-check, minutes later.
 stage agent-session python3 "${script_dir}/check-agent-session.py"
 if git ls-files --error-unmatch -- "${application_path}" >/dev/null 2>&1 &&
   [[ -z "$(git status --porcelain --untracked-files=all -- "${code_paths[@]}")" ]]; then
@@ -69,11 +69,11 @@ progress code-ready "${application_path} and ${schema_path} at $(git rev-parse -
 
 source_node=${CODE_SOURCE_NODE:-$(jq -r '.all.children.application.hosts | keys[0] // empty' "${inventory}")}
 echo "== parallel build lane: inspect source node and start with reviewed or proposed settings"
-stage build-dispatch python3 "${script_dir}/phase1-build.py" start --node "${source_node}" --application "${application_path}"
+stage build-dispatch python3 "${script_dir}/initial-build.py" start --node "${source_node}" --application "${application_path}"
 echo "== AI lanes: claude -p in their own worktrees (config/lanes.json; KICKOFF_LANES= disables)"
 # A lane that fails to start never stops the setup; progress.log and lane.py status show it.
 stage lanes python3 "${script_dir}/lane.py" kickoff || echo "some AI lanes did not start: python3 scripts/lane.py status" >&2
-echo ">> Phase 1 local environment: adapt config/local/compose.example.yaml; run make local-up in parallel (docs/local-development.md). Baseline does not wait for it."
+echo ">> Local environment: adapt config/local/compose.example.yaml; run make local-up in parallel (docs/local-development.md). Baseline does not wait for it."
 
 echo "== setup: bootstrap, inspection and configuration draft"
 ANSIBLE_FACT_CACHE_DIR=$(mktemp -d "${repo_dir}/.local/ansible-facts.XXXXXX")
@@ -96,7 +96,7 @@ fi
 
 echo
 echo "kickoff stopped before applying the draft"
-python3 "${script_dir}/phase1-build.py" status || review_status=1
+python3 "${script_dir}/initial-build.py" status || review_status=1
 if [[ "${review_status}" -ne 0 ]]; then
   echo "kickoff needs attention: check build status, and .local/draft/review.md"
   exit "${review_status}"

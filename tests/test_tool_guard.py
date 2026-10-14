@@ -110,7 +110,7 @@ class ToolGuardTest(unittest.TestCase):
 
     def test_text_that_only_mentions_the_benchmark_is_allowed(self):
         for command in [
-            "mkdir -p docs/phase1 && cat > docs/phase1/environment.md <<'EOF'\nprobe: test -x /home/isucon/bench\nsource: https://github.com/isucon/isucon14\nEOF",
+            "mkdir -p docs/notes && cat > docs/notes/environment.md <<'EOF'\nprobe: test -x /home/isucon/bench\nsource: https://github.com/isucon/isucon14\nEOF",
             "git commit -q -F - <<'EOF'\nStop sampling with ssh-node.sh isucon14-bench\nEOF",
             'git commit -m "Remove the /home/isucon/bench copy"',
             'echo "do not read isucon14/bench" >> notes.md',

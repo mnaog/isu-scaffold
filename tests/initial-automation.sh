@@ -598,16 +598,16 @@ grep -q 'fixture-runtime-rollback' "${fixture_repo}/.local/transaction-failure-c
 # 目的はbranchに記録され、他のlaneは毎回gitから計算して引き継ぎ文へ書きます。
 (cd "${fixture_repo}" && WORKTREE_PATH="${fixture_root}/other-lane" \
   ./scripts/worktree.sh optimize/other-lane "受取履歴を分離する" HEAD >/dev/null)
-lane_output=$(cd "${fixture_repo}" && WORKTREE_PATH="${fixture_root}/phase1-obvious" \
+lane_output=$(cd "${fixture_repo}" && WORKTREE_PATH="${fixture_root}/initial-obvious" \
   ./scripts/worktree.sh optimize/fixture-obvious "自明な改善を入れる" HEAD)
 grep -q "^目的:     自明な改善を入れる$" <<<"${lane_output}"
 grep -q "optimize/other-lane" <<<"${lane_output}"
-(cd "${fixture_repo}" && WORKTREE_PATH="${fixture_root}/phase1-obvious" \
+(cd "${fixture_repo}" && WORKTREE_PATH="${fixture_root}/initial-obvious" \
   ./scripts/worktree.sh optimize/fixture-obvious "自明な改善を入れる" HEAD >/dev/null)
-test -f "${fixture_root}/phase1-obvious/webapp/rust/main.rs"
+test -f "${fixture_root}/initial-obvious/webapp/rust/main.rs"
 test "$(git -C "${fixture_repo}" config branch.optimize/fixture-obvious.description)" = "自明な改善を入れる"
-grep -q "^- 目的: 自明な改善を入れる$" "${fixture_root}/phase1-obvious/.local/lane.md"
-grep -q "optimize/other-lane" "${fixture_root}/phase1-obvious/.local/lane.md"
+grep -q "^- 目的: 自明な改善を入れる$" "${fixture_root}/initial-obvious/.local/lane.md"
+grep -q "optimize/other-lane" "${fixture_root}/initial-obvious/.local/lane.md"
 
 mkdir -p "${fixture_repo}/.local/inspection"
 cat >"${fixture_repo}/.local/inspection/app1.json" <<'EOF'
@@ -648,7 +648,7 @@ if (cd "${fixture_repo}" && ./scripts/configure-draft.sh >.local/missing-rust.lo
 fi
 grep -q 'complete early import' "${fixture_repo}/.local/missing-rust.log"
 mv "${fixture_repo}/.local/Cargo.toml.saved" "${fixture_repo}/webapp/rust/Cargo.toml"
-cat >"${fixture_repo}/config/phase1-build.json" <<'JSON'
+cat >"${fixture_repo}/config/initial-build.json" <<'JSON'
 {"base_image":"rust:1.80-bullseye","target":"x86_64-unknown-linux-gnu","binary":"isu-app","dockerfile":"config/rust-builder/Dockerfile"}
 JSON
 (cd "${fixture_repo}" && ./scripts/configure-draft.sh)

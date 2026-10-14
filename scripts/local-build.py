@@ -118,7 +118,7 @@ def builder_image(build):
 
 
 def prepare_images(bases_path, dockerfile):
-    """Phase 0: build every candidate builder image before any application code exists."""
+    """Preparation: build every candidate builder image before any application code exists."""
     config = json.loads(Path(bases_path).read_text())
     failed = []
     for base in config["bases"]:
@@ -138,7 +138,7 @@ def prepare_images(bases_path, dockerfile):
 
 def build_one(build, item, cache, strict):
     if "replace-with" in build["base_image"] or "replace-with" in build["binary"]:
-        raise ValueError("Phase 1: configure the Rust image and binary from the imported app before building")
+        raise ValueError("After the start: configure the Rust image and binary from the imported app before building")
     source = item["local"]
     source_root = build.get("source_root", source)
     clean(source_root)

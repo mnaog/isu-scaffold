@@ -51,13 +51,13 @@ LANE_HINT = 'laneはremote node・deploy・ベンチ・操作lockに触れない
 # Scripts and make targets that reach remote nodes, the benchmark or the operation lock.
 LANE_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-apply.sh', 'bootstrap.sh',
                 'bootstrap-ssh.sh', 'discover.sh', 'configure-draft.sh', 'configure-apply.sh',
-                'inspect-environment.sh', 'phase1-check.sh', 'quick-import-code.sh', 'run-ansible-playbook.sh',
+                'inspect-environment.sh', 'bench-check.sh', 'quick-import-code.sh', 'run-ansible-playbook.sh',
                 'status.sh', 'switch-language-service.sh', 'sync-check.sh', 'benchmark.sh',
-                'benchmark-prepare.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'phase1-build.py',
+                'benchmark-prepare.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'initial-build.py',
                 'lane.py', 'review-draft.py', 'check-deployed-commit.sh', 'first-bench.sh',
                 'benchmark-markers.py', 'deploy-plan.py'}
 LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap',
-                     'phase1-check', 'first-bench', 'tare', 'practice-check', 'practice-create', 'practice-status',
+                     'bench-check', 'first-bench', 'tare', 'practice-check', 'practice-create', 'practice-status',
                      'practice-delete'}
 # Read-only isuscope commands; everything else records, benchmarks or reaches nodes.
 LANE_ISUSCOPE = {'list', 'brief', 'query', 'sql', 'help', '--help', '-h', '--version', 'version'}
@@ -116,8 +116,8 @@ def benchmark_ids(root):
     return {value for value in ids if value}
 
 
-def strip_data_heredocs(text):
-    """Drops heredoc bodies fed to cat, tee or git (documents, commit messages)."""
+def strip_data_heredocs(text, everything=False):
+    """Drops heredoc bodies fed to cat, tee or git (documents, commit messages), or every body."""
     lines = text.split('\n')
     kept = []
     index = 0
@@ -131,7 +131,7 @@ def strip_data_heredocs(text):
             end = index + 1
             while end < len(lines) and lines[end].strip() != match.group(2):
                 end += 1
-            if consumer not in DATA_WRITERS | {'git'}:
+            if not everything and consumer not in DATA_WRITERS | {'git'}:
                 kept.extend(lines[index + 1:end])
             if end < len(lines):
                 kept.append(lines[end])
@@ -152,6 +152,7 @@ class Guard:
         self.allowed_urls = [u for u in config.get('allowed_urls', []) if u]
         self.bench_ids = benchmark_ids(root)
         self.lane = os.environ.get('ISUCON_LANE')
+        self.drop_heredocs = False  # bench-hook.py reads only the command lines, not heredoc bodies
         patterns = [re.escape(p.rstrip('/')) + r'(?![\w.-])' for p in config.get('benchmarker_paths', []) if p]
         patterns += [r'(?<![\w.-])' + re.escape(k) + r'[\w.-]*/bench(?![\w.-])' for k in self.keywords]
         self.bench_paths = re.compile('|'.join(patterns), re.I) if patterns else None
@@ -181,7 +182,7 @@ class Guard:
     def check_shell(self, text, depth=0):
         if depth > 4 or not text:
             return
-        text = strip_data_heredocs(text)
+        text = strip_data_heredocs(text, self.drop_heredocs)
         if re.search(r'(?<![\w])' + ALLOW_VARIABLE + r'\s*=', text):
             raise Denied(f'{ALLOW_VARIABLE} はベンチadapterと初動の検査だけが設定する。')
         try:
@@ -264,6 +265,7 @@ class Guard:
             self.check_arguments(words)
         if self.lane:
             self.check_lane(program, args)
+        self.seen(program, args)
         if program == 'ssh-node.sh':
             if args:
                 self.check_bench_host(args[0])
@@ -316,19 +318,16 @@ class Guard:
                                                   and ('.' in a or ':' in a or '/' in a)):
             raise Denied(LANE_HINT)
 
+    def seen(self, program, args):
+        """Every simple command, after wrappers are removed. bench-hook.py watches for benchmarks here."""
+
     # --- tool calls --------------------------------------------------------------------
     def check(self, payload):
         tool = str(payload.get('tool_name') or '')
         tool_input = payload.get('tool_input')
         if not isinstance(tool_input, dict):
             tool_input = {'value': tool_input}
-        command = tool_input.get('command', tool_input.get('cmd'))
-        if isinstance(command, list):
-            words = [str(word) for word in command]
-            if len(words) > 2 and os.path.basename(words[0]) in SHELLS and re.match(r'^-[a-z]*c[a-z]*$', words[1]):
-                command = words[2]
-            else:
-                command = shlex.join(words)
+        command = command_of(tool_input)
         if isinstance(command, str):
             if self.lane and 'operation.lock' in command:
                 raise Denied(LANE_HINT)
@@ -347,6 +346,17 @@ class Guard:
                     lowered = item.lower()
                     if any(k in lowered for k in self.keywords):
                         raise Denied(f'現在練習中の開催回の攻略法は検索しない（{item}）。')
+
+
+def command_of(tool_input):
+    """The shell command of a Bash (Claude Code) or shell (Codex) call, as one string."""
+    command = tool_input.get('command', tool_input.get('cmd'))
+    if isinstance(command, list):
+        words = [str(word) for word in command]
+        if len(words) > 2 and os.path.basename(words[0]) in SHELLS and re.match(r'^-[a-z]*c[a-z]*$', words[1]):
+            return words[2]
+        return shlex.join(words)
+    return command
 
 
 def main():

@@ -23,4 +23,4 @@ stage bootstrap/ansible-runtime python3 "${script_dir}/ansible-runtime.py"
 stage bootstrap/ansible-install "${script_dir}/ansible-install.sh"
 stage bootstrap/playbook "${script_dir}/run-ansible-playbook.sh" bootstrap.yml
 
-echo "bootstrap complete; adapt the application import/deploy adapters, then run make phase1-check"
+echo "bootstrap complete; adapt the application import/deploy adapters, then run make bench-check"

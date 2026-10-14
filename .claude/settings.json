@@ -7,6 +7,23 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/tool-guard.py\"",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/bench-hook.py\" --pre",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/bench-hook.py\" --post",
+            "timeout": 10
           }
         ]
       }

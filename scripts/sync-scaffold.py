@@ -35,14 +35,18 @@ def main():
                 p.error('path listed for both export and removal: ' + name)
             continue
         files[name] = git(source, 'show', commit + ':' + name)
-    spec = importlib.util.spec_from_file_location('phase0', source / 'scripts/check-phase0.py')
-    phase0 = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(phase0)
-    errors = phase0.problems(files.items())
+    spec = importlib.util.spec_from_file_location('preparation', source / 'scripts/preparation-check.py')
+    preparation = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(preparation)
+    errors = preparation.problems(files.items())
     if errors:
         sys.exit('non-generic export rejected:\n' + '\n'.join(errors))
     changes = [name for name, data in files.items() if not (target / name).is_file() or (target / name).read_bytes() != data]
-    deletions = [name for name in removals if (target / name).exists() or (target / name).is_symlink()]
+    # A removed file may come back as a directory (scripts/scout, the old wrapper, is now the scout
+    # package); only a file or link at that path is left over.
+    def leftover(name):
+        return (target / name).is_file() or (target / name).is_symlink()
+    deletions = [name for name in removals if leftover(name)]
     if a.apply and (changes or deletions):
         # Never overwrite another task's edits, including an untracked target file.
         dirty = git(target, 'status', '--porcelain', '--untracked-files=all', '--', *changes, *deletions).decode().strip()
@@ -58,11 +62,11 @@ def main():
             path.chmod(0o755 if mode == '100755' else 0o644)
         receipt = {'repository': git(source, 'config', '--get', 'remote.origin.url').decode().strip(),
                    'commit': commit, 'sha256': {n: hashlib.sha256(d).hexdigest() for n, d in files.items()}}
-        path = target / 'docs/phase0/scaffold-source.json'
+        path = target / 'docs/preparation/scaffold-source.json'
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + '\n')
     remaining = [n for n, d in files.items() if not (target / n).is_file() or (target / n).read_bytes() != d]
-    remaining += [n for n in removals if (target / n).exists() or (target / n).is_symlink()]
+    remaining += [n for n in removals if leftover(n)]
     if remaining:
         print('scaffold drift:\n' + '\n'.join(remaining))
         return 1

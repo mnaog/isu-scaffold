@@ -39,7 +39,7 @@ function operationLines(d){
  if(a.deploy){
   const labels={preflight:'事前検査',staging:'配布',building:'build',switching:'切替',validating:'検査',complete:'完了',failed:'失敗'};
   const deploy=a.deploy;
-  lines.push(`deploy最終記録: ${labels[deploy.phase]||'状態不明'} · ${time(deploy.recorded_at)}${deploy.commit?' · '+deploy.commit.slice(0,8):''}`);
+  lines.push(`deploy最終記録: ${labels[deploy.stage]||'状態不明'} · ${time(deploy.recorded_at)}${deploy.commit?' · '+deploy.commit.slice(0,8):''}`);
  }
  if(a.last_deploy_commit)lines.push('最後に成功したdeploy: '+a.last_deploy_commit.slice(0,8));
  if(!op&&!run&&!a.deploy&&!q.running?.length)lines.push('実行・計測の記録はまだありません');
