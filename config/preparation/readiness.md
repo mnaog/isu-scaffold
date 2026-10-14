@@ -1,8 +1,8 @@
-# Phase 0 準備状況
+# 準備状況
 
 判定: **未完了**
 
-`scripts/new-contest-repo.py`が作った時点のひな形です。項目は[Phase 0](../phases/Phase0.md)に対応します。状態は「確認済み」「未完了」「対象外」「公開待ち」のどれかにし、確認日・使用版・根拠を書きます。「公開待ち」は本番でも開始前に取得できない情報に限ります。長い検証記録は`docs/phase0/`の別fileに置き、ここから参照します。秘密情報と生の認証出力は`.local/`へ置きます。
+`scripts/new-contest-repo.py`が作った時点のひな形です。項目は[準備](../preparation.md)に対応します。状態は「確認済み」「未完了」「対象外」「公開待ち」のどれかにし、確認日・使用版・根拠を書きます。「公開待ち」は本番でも開始前に取得できない情報に限ります。長い検証記録は`docs/preparation/`の別fileに置き、ここから参照します。秘密情報と生の認証出力は`.local/`へ置きます。
 
 - 作成元: {{SOURCE}}
 - 作成日時: {{CREATED_AT}}
@@ -13,7 +13,7 @@
 | 項目 | 状態 | 確認日 | 使用版・根拠 |
 | --- | --- | --- | --- |
 | private GitHub repoへのpushとprivateであることの確認 | 未完了 | | |
-| scaffold・isuscope・agent-history・各AI CLIの使用版 | 未完了 | | scaffoldは`docs/phase0/scaffold-source.json` |
+| scaffold・isuscope・agent-history・各AI CLIの使用版 | 未完了 | | scaffoldは`docs/preparation/scaffold-source.json` |
 | AIの初期入力・起動プロンプト・モデル・推論設定・ハーネス設定 | 未完了 | | |
 | commit・push、SSH鍵、`.local/`の除外、`.claude/rules/agents.md`のsymlink | 未完了 | | |
 

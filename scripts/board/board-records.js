@@ -18,7 +18,7 @@ function renderRecords(data){
  for(const record of records){
   const card=el('button',null,'record-card'+(record.exists?'':' missing'));card.type='button';
   const head=el('div',null,'record-head');
-  head.append(el('span',record.title,'record-title'),el('span',record.phase,'record-phase'));
+  head.append(el('span',record.title,'record-title'),el('span',record.timing,'record-timing'));
   card.append(head,el('p',record.path,'record-path'),el('p',record.contents,'record-contents'));
   const foot=el('p',null,'record-state');
   foot.append(el('span',recordWhen(record)));

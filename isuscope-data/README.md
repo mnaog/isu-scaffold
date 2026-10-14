@@ -1,6 +1,6 @@
 # isuscope data
 
-`isuscope run`と、Phase 1で一度だけ使う`isuscope survey-run`の結果を保存するディレクトリです。
+`isuscope run`と、開始後に一度だけ使う`isuscope survey-run`の結果を保存するディレクトリです。
 
 ## Git管理
 

@@ -32,7 +32,7 @@ make scout-stop
 
 argvはshell文字列でなく配列。`{model}`、`{session}`（各回のUUID）、`{output}`（最終回答ファイル）を置換し、共通プロンプトはstdinに渡す。resume/continue指定は使わない。adapterは`file`、`claude-json`、`codex-json`、`text`を持つ。別CLIがstdin非対応なら、stdinを読み取ってそのCLIへ渡す小さなadapterを設定する。
 
-未導入CLI・認証不足・model ID未確認は利用不可として表示し、代替モデルへ切り替えない。Kimi Code/Kimi K3は実機確認後に`unavailable`を除き、正確なargv/modelを設定する。Kimiが利用不可のままでも他の2体は動く。採用・除外の判断待ちやPhase 0の完了待ちは設けない。
+未導入CLI・認証不足・model ID未確認は利用不可として表示し、代替モデルへ切り替えない。Kimi Code/Kimi K3は実機確認後に`unavailable`を除き、正確なargv/modelを設定する。Kimiが利用不可のままでも他の2体は動く。採用・除外の判断待ちや準備の完了待ちは設けない。
 
 ```bash
 python3 scripts/scouts/main.py once claude --smoke
@@ -44,7 +44,7 @@ smokeは共通指示に接続確認指示を加えて各CLIを新規起動する
 
 ## 入力と保存先
 
-- シナリオ: Phase 1の`docs/benchmark-scenario.md`。公式ルールとAGENTS.mdの指示に従う資料だけで整理する。
+- シナリオ: 初動で書く`docs/benchmark-scenario.md`。公式ルールとAGENTS.mdの指示に従う資料だけで整理する。
 - 計測: `isuscope list`の最新の終了run（失敗・中断も明示）、`brief --limit 5`、HTTP・SQL load・ホストload・benchmarkの`query --limit 8`。比較元は設定の`base_run`を明示使用し、未指定なら比較なし。採用runを推測しない。
 - 会話: 明示指定した会話セッションだけ（利用するagent分のみ指定）。各直近6000文字、元ファイルとIDを添える。
 - 根拠: run ID、比較元ID、runのcommit/dirty、現在のcommit/dirty、取得時刻、実行した取得コマンド、資料のパス。

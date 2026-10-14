@@ -37,8 +37,8 @@ python3 "${script_dir}/benchmark-markers.py" check ||
   echo "WARN: set the initialize route (python3 scripts/benchmark-markers.py suggest-route, then set-route)" >&2
 
 isuscope list --limit 1 >/dev/null
-if [[ "${PHASE1_SKIP_ISUSCOPE_DOCTOR:-false}" != true ]]; then
+if [[ "${BENCH_CHECK_SKIP_ISUSCOPE_DOCTOR:-false}" != true ]]; then
   isuscope doctor
 fi
 
-echo "phase1 pre-benchmark checks passed"
+echo "pre-benchmark checks passed"

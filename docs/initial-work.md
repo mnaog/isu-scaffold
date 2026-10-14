@@ -1,4 +1,4 @@
-# Phase 1: 初動・自明な改善・初回ベンチ分析
+# 初動: 自明な改善と初回ベンチ分析
 
 ## 目的
 
@@ -13,9 +13,9 @@ SSH確立直後に採用言語のコードとDB schemaを先行importし、初�
 ## 初動と改善の流れ
 
 1. `make kickoff`をバックグラウンドで始め、`.local/progress.log`を追う。コードとschemaの先行回収・commitの後、build laneとAI laneが並行で始まる。
-2. kickoffと並行して、公式資料を保存・commitしてlane `scenario`を起動し、`config/benchmark.env`・`benchmark-contract`の用意、`--check`・`--probe`を済ませる。build設定が自動生成されたら確認してcommitし、設定待ちなら`config/phase1-build.json`を作る。
+2. kickoffと並行して、公式資料を保存・commitしてlane `scenario`を起動し、`config/benchmark.env`・`benchmark-contract`の用意、`--check`・`--probe`を済ませる。build設定が自動生成されたら確認してcommitし、設定待ちなら`config/initial-build.json`を作る。
 3. draftを判断して`kickoff-apply`し、完全importをcommitする。
-4. 人間の確認を待たずに`make first-bench`を実行する。`phase1-check`の後、配布状態のままの初期状態で`survey-run`を取り、その後に同じcommitをdeployする（配布状態で測れない場合はdeployを先にする）。`baseline-ready`が出たらスコア・エラー・HTTP・SQL・ホスト負荷を分析し、lane `code-map`の地図を照合に使う。
+4. 人間の確認を待たずに`make first-bench`を実行する。`bench-check`の後、配布状態のままの初期状態で`survey-run`を取り、その後に同じcommitをdeployする（配布状態で測れない場合はdeployを先にする）。`baseline-ready`が出たらスコア・エラー・HTTP・SQL・ホスト負荷を分析し、lane `code-map`の地図を照合に使う。
 5. 観測とコードから改善を選ぶ。lane `indexes`・`obvious-fixes`のcommitは観測と照合して効くものから`git cherry-pick`し（laneの完了を待たない）、残りは実装・ローカル検証・commit・deployを進める。
 6. 通常の`isuscope run`で比較し、仮説の判定と変更の採否を記録する。障害があれば原因調査から修正・再評価まで続ける。
 
@@ -23,7 +23,7 @@ SSH確立直後に採用言語のコードとDB schemaを先行importし、初�
 
 ## ローカル実行環境を構築する
 
-Phase 0ではDockerと汎用の起動・検証コマンドだけを準備する。Phase 1のコード先行回収後、lane `local-env`（`config/lanes/local-env.md`）が`config/local/compose.example.yaml`から`config/local/compose.yaml`を作り、採用Rust版・DB・追加service・schema・初期化・health endpointを実アプリに合わせる。手順は[ローカル実行環境](../local-development.md)を参照する。
+準備ではDockerと汎用の起動・検証コマンドだけを用意する。開始後のコード先行回収の後、lane `local-env`（`config/lanes/local-env.md`）が`config/local/compose.example.yaml`から`config/local/compose.yaml`を作り、採用Rust版・DB・追加service・schema・初期化・health endpointを実アプリに合わせる。手順は[ローカル実行環境](local-development.md)を参照する。
 
 構成をcommitしたら、各worktreeで`make local-up`、`make local-check`、`make local-down`を実行してよい。DB・network・portはworktree単位で分離し、remote変更用lockを取らない。構築は初動と並行し、完成を初回baselineのgateにはしない。
 
@@ -53,7 +53,7 @@ Phase 0ではDockerと汎用の起動・検証コマンドだけを準備する�
 
 ## 環境を立ち上げて初期状態を保存する
 
-コマンドと各段階の詳細は[初動自動化](../initial-automation.md)を正とする。ここでは判断基準だけを定める。
+コマンドと各段階の詳細は[初動自動化](initial-automation.md)を正とする。ここでは判断基準だけを定める。
 
 - 練習でAWS環境を自分で作る場合は、構成定義を`infra/`へ保存し、停止・再開・削除をコマンドで行えるようにする。認証情報はGitへ保存しない
 - `make kickoff`が出す`.local/draft/review.md`のFAILはすべて直し、WARNは内容を読んで判断してから`make kickoff-apply`へ進む。draftのremote path、owner、service、roleは推測にすぎない
@@ -63,7 +63,7 @@ Phase 0ではDockerと汎用の起動・検証コマンドだけを準備する�
 - 初期状態をcommitし、`make deploy`、`make status`、明示的な`make rollback`で稼働プロセスまで旧構成へ戻ることを確認する
 - 計測と運用の土台は初動のAnsibleで固定化される。レギュレーションで禁止された項目だけ変数で外し、性能を変える設定は初回baselineの後に入れる
 - ベンチ接続はisuscopeの`command` modeを標準とし、手動入力の`external` modeを通常運用にしない
-- `make phase1-check`はベンチを起動しない。初回ベンチは独立した明示操作にする
+- `make bench-check`はベンチを起動しない。初回ベンチは独立した明示操作にする
 
 ## ローカルを正とする
 
@@ -94,7 +94,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。initializeと負荷走行の境界は、初回runより前に`.isuscope/routes.toml`の`[initialize]`で決めておく（`scripts/benchmark-markers.py suggest-route`→`set-route`）。完全importのcommit後に`make first-bench`で、人間の確認を待たずに実行する。
 
-最初のdeployの前は、サーバーが完全importと同じ内容（配布状態）で動いている。`make first-bench`は、HEADがimportしたdigestのままで（`scripts/imported-state.py`）、アプリのunitが全nodeで動いてlistenしていれば、そのcommitを稼働中として記録し（`.local/current-import-commit`）、ローカルbuildとdeployを待たずにbaselineを取る。その後に同じcommitをdeployし、deploy経路を最初の改善より前に確かめる。baselineの実行ファイルは配布されたbuild、2本目以降は自前のbuild（Rust 1.99.0）になるので、最初の改善runの比較にはその差が混ざり得る。配布サーバーのRust版（`.local/phase1-build/environment.txt`）が大きく違う場合は`docs/baseline.md`に書き、小さな差の判定に注意する。配布状態で測れないとき（記録がない、importの後に配る対象を変えた、unitが動いていない、既にdeployした）は、deployしてから測る。`FIRST_BENCH_MODE=deploy`なら常にdeployが先になる。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[初動自動化](../initial-automation.md)の「ベンチ前gateと初回run」を参照する。
+最初のdeployの前は、サーバーが完全importと同じ内容（配布状態）で動いている。`make first-bench`は、HEADがimportしたdigestのままで（`scripts/imported-state.py`）、アプリのunitが全nodeで動いてlistenしていれば、そのcommitを稼働中として記録し（`.local/current-import-commit`）、ローカルbuildとdeployを待たずにbaselineを取る。その後に同じcommitをdeployし、deploy経路を最初の改善より前に確かめる。baselineの実行ファイルは配布されたbuild、2本目以降は自前のbuild（Rust 1.99.0）になるので、最初の改善runの比較にはその差が混ざり得る。配布サーバーのRust版（`.local/initial-build/environment.txt`）が大きく違う場合は`docs/baseline.md`に書き、小さな差の判定に注意する。配布状態で測れないとき（記録がない、importの後に配る対象を変えた、unitが動いていない、既にdeployした）は、deployしてから測る。`FIRST_BENCH_MODE=deploy`なら常にdeployが先になる。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[初動自動化](initial-automation.md)の「ベンチ前gateと初回run」を参照する。
 
 確認するもの：
 
@@ -143,7 +143,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - transaction内の不要な処理とDB往復
 - 明らかに不要なカラム、全件走査、外部呼び出し
 
-インデックスは、対象のSQL、初期化後の行数、効果を確かめたrun IDを`docs/indexes.md`へ残す。読み取りのキャッシュ・メモリ化と、DB・アプリ・nginxを別のnodeへ分ける配置変更は、次節の条件でPhase 1でも入れてよい。整合性条件を変えるもの、非同期化、write-behindなど永続化の時機を変えるものはPhase 1では実装しない。
+インデックスは、対象のSQL、初期化後の行数、効果を確かめたrun IDを`docs/indexes.md`へ残す。読み取りのキャッシュ・メモリ化と、DB・アプリ・nginxを別のnodeへ分ける配置変更は、次節の条件で初動のうちに入れてよい。整合性条件を変えるもの、非同期化、write-behindなど永続化の時機を変えるものは、次節で最大の制約がそこにあると示せるまで実装しない。
 
 この一掃は初動の待ち時間と並行して進める作業であり、次の判断を止めるgateではない。先行回収の直後からlane `indexes`が`lane/indexes`へ索引を、lane `obvious-fixes`が`lane/obvious-fixes`へ索引以外の修正を、1件1commitで実装する（deployはしない）。commitのたびに`.local/progress.log`へ`lane:<名前> commit`が出るので、初回runから得た上位SQL・HTTP・エラーと照合し、効くcommitからlaneの完了を待たずに`git cherry-pick`する。根拠が弱い変更は保留する。変更を反映した最初の`isuscope run`で大きく改善することを確認し、その後はボトルネックごとの短いサイクルに切り替える。
 
@@ -157,12 +157,12 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 接続・fdの上限は問題に依存しない既定値なので、baselineの後に早めに`make tare`で1つの変更として入れて測る。practice-14ではこの既定値（keepalive_requests 1000、アプリのfd 1024、listen backlog 511、worker_connections 4096）で、後からFAILが4回出た。
 
-最大の制約がSQL・index・N+1なら、それを次の変更にする。最大の制約が1台への集中や繰り返しの読み取りなら、残りのSQL候補を一掃するまで待たず、次のどちらかをPhase 1のまま入れてよい。
+最大の制約がSQL・index・N+1なら、それを次の変更にする。最大の制約が1台への集中や繰り返しの読み取りなら、残りのSQL候補を一掃するまで待たず、次のどちらかを入れてよい。
 
 - DB・アプリ・nginxを別のnodeへ分ける配置変更
 - 読み取りのキャッシュ・メモリ化
 
-どちらも根拠（run ID、node別の観測値、期待する効果）を残し、1つずつ入れて通常の`isuscope run`で測る。メモリ化は1つの読み取り経路ずつ進め、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築方法を`docs/cache-design.md`へ書いてから入れる。非同期化やwrite-behindなど、整合性条件や永続化の時機を変える変更が必要なら、根拠を添えて人間へPhase 2への移行を提案する。提案と移行の判断を待つ間も、Phase 1の範囲の修正は続けてよい。
+どちらも根拠（run ID、node別の観測値、期待する効果）を残し、1つずつ入れて通常の`isuscope run`で測る。メモリ化は1つの読み取り経路ずつ進め、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築方法を`docs/cache-design.md`へ書いてから入れる。非同期化やwrite-behindなど、整合性条件や永続化の時機を変える変更が必要なら、根拠を`docs/baseline.md`か分析に残し、[改善](improvement.md)の方針で入れる。
 
 ## 残すもの
 
@@ -182,7 +182,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - ローカルから実行できるデプロイコマンド
 - 初期状態へ戻せるGitコミット
 
-## 完了条件
+## 初動で揃えるもの
 
 - 公式から提供された一次情報が`docs/official/`に揃っている
 - コードと設定ファイルがローカルリポジトリで管理されている
@@ -198,18 +198,18 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - 高頻度経路の主要なN+1、重複処理、逐次writeが解消されている
 - 自明な修正を統合したrunをbaselineと比較し、採否を記録している
 
-条件を満たしたら作業中のagent（CodexまたはClaude Code）はPhase 2への移行を提案し、人間が移行を決定する。最大の制約がPhase 1の範囲外にある場合は、SQLの項目が残っていてもその時点で移行を提案する（「baselineの後に次の変更を選ぶ」）。旧Phase 2の自明な改善はこのPhaseへ統合済みで、読み取りのメモリ化と台の分離もこのPhaseで始めてよい。現在のPhase 2は、非同期化など整合性や永続化の時機を変える変更を含むアーキテクチャ改善を扱う。
+これは区切りや移行の条件ではない。揃えるのを待たずに、観測された最大の制約から順に[改善](improvement.md)へ進む（「baselineの後に次の変更を選ぶ」）。
 
 ## 非同期buildの開始と確認
 
 `make kickoff`は先行回収・commit後、独立した初期build処理を開始して全台bootstrapを進める。
 
-build処理はremoteのCPU・glibc・OpenSSLと回収したCargo.toml・Cargo.lockから設定を提案し、`.local/phase1-build/proposal.json`へ残す。判断できる場合は`config/phase1-build.json`を書いてすぐbuildを始める（`configured`）。判断できる場合とは、単一binaryのpackageで、systemライブラリに依存する-sys crateがなく、`config/rust-builder/bases.json`にnodeのglibc以下（OpenSSLを使うならlibsslのmajorも一致）のbaseがあることを指す。自動生成された設定も内容を確認してcommitする。workspace、複数binary、`mysqlclient-sys`などのsystemライブラリ、合うbaseがない場合は理由を残して設定を待つ。`PHASE1_BUILD_AUTO_CONFIG=0`なら常に待つ。
+build処理はremoteのCPU・glibc・OpenSSLと回収したCargo.toml・Cargo.lockから設定を提案し、`.local/initial-build/proposal.json`へ残す。判断できる場合は`config/initial-build.json`を書いてすぐbuildを始める（`configured`）。判断できる場合とは、単一binaryのpackageで、systemライブラリに依存する-sys crateがなく、`config/rust-builder/bases.json`にnodeのglibc以下（OpenSSLを使うならlibsslのmajorも一致）のbaseがあることを指す。自動生成された設定も内容を確認してcommitする。workspace、複数binary、`mysqlclient-sys`などのsystemライブラリ、合うbaseがない場合は理由を残して設定を待つ。`INITIAL_BUILD_AUTO_CONFIG=0`なら常に待つ。
 
-全台準備を待たず、`.local/progress.log`の`phase1-build`の行か`.local/phase1-build/status.json`と`environment.txt`を確認する。`needs_configuration`なら`config/phase1-build.example.json`を参考に、回収したCargo.toml・Cargo.lock・toolchain指定、remoteのCPU・OS・glibc・Rust版、追加Cライブラリを照合して`config/phase1-build.json`を作る。対象は`base_image`・`target`・`binary`・`dockerfile`。未記入のexampleを実設定へコピーしたままにしない。完成内容を一時ファイルに書き、renameで一括配置する。操作者自身の判断でよく、人間への追加承認は不要。
+全台準備を待たず、`.local/progress.log`の`initial-build`の行か`.local/initial-build/status.json`と`environment.txt`を確認する。`needs_configuration`なら`config/initial-build.example.json`を参考に、回収したCargo.toml・Cargo.lock・toolchain指定、remoteのCPU・OS・glibc・Rust版、追加Cライブラリを照合して`config/initial-build.json`を作る。対象は`base_image`・`target`・`binary`・`dockerfile`。未記入のexampleを実設定へコピーしたままにしない。完成内容を一時ファイルに書き、renameで一括配置する。操作者自身の判断でよく、人間への追加承認は不要。
 
 初期build処理は設定を最大30分待ち、設定完了後は既存の`local-build.py`を使って共有キャッシュへbuildする。設定が既にあれば調査・CPU照合後すぐbuildする。全台準備とbaselineはbuild処理の完了待ちを入れない。deployに必要なbuild完了は従来どおりdeployが保証する。
 
 `configure-draft`はこの初期build設定をそのまま`local_builds`へ取り込む。draft生成より後に設定した場合は、設定済みとなった後にdraftを再生成するか、同じ設定をdraftへ反映してからreviewする。異なるimage・Dockerfile・targetに変える場合はキャッシュが別になることを認識する。設定とDockerfileは通常のcommitへ含める。
 
-進行確認は`python3 scripts/phase1-build.py status`、失敗後の再開は`python3 scripts/phase1-build.py start`。ログは`.local/phase1-build/build.log`。同時起動は専用lockで防ぐ。練習停止時は`python3 scripts/phase1-build.py stop`で初期build処理も止める。停止してもソース・成果物・キャッシュは残す。ローカル検証用Composeはこのデプロイ用buildと別キャッシュであり、同時コンパイルによる端末の資源競合を避ける。
+進行確認は`python3 scripts/initial-build.py status`、失敗後の再開は`python3 scripts/initial-build.py start`。ログは`.local/initial-build/build.log`。同時起動は専用lockで防ぐ。練習停止時は`python3 scripts/initial-build.py stop`で初期build処理も止める。停止してもソース・成果物・キャッシュは残す。ローカル検証用Composeはこのデプロイ用buildと別キャッシュであり、同時コンパイルによる端末の資源競合を避ける。

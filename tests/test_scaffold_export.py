@@ -20,9 +20,9 @@ class ExportTest(unittest.TestCase):
                     subprocess.run(['git','-C',str(p),'config',k,v],check=True)
             subprocess.run(['git','-C',str(source),'remote','add','origin','https://example.invalid/scaffold'],check=True)
             (source/'scripts').mkdir();(source/'config').mkdir()
-            for name in ['sync-scaffold.py','check-phase0.py']:
+            for name in ['sync-scaffold.py','check-preparation.py']:
                 shutil.copyfile(ROOT/'scripts'/name,source/'scripts'/name)
-            (source/'config/scaffold-export.json').write_text(json.dumps({'files':['scripts/check-phase0.py'], 'remove_files':['scripts/obsolete.py']}))
+            (source/'config/scaffold-export.json').write_text(json.dumps({'files':['scripts/check-preparation.py'], 'remove_files':['scripts/obsolete.py']}))
             subprocess.run(['git','-C',str(source),'add','.'],check=True)
             subprocess.run(['git','-C',str(source),'commit','-qm','fixture'],check=True)
             (target/'scripts').mkdir()
@@ -42,8 +42,8 @@ class ExportTest(unittest.TestCase):
             self.assertEqual(subprocess.run(command,capture_output=True).returncode,0)
             subprocess.run(['git','-C',str(target),'add','.'],check=True)
             subprocess.run(['git','-C',str(target),'commit','-qm','export'],check=True)
-            (target/'scripts/check-phase0.py').write_text('local edits')
+            (target/'scripts/check-preparation.py').write_text('local edits')
             result=subprocess.run(command+['--apply'],capture_output=True,text=True)
             self.assertNotEqual(result.returncode,0)
             self.assertIn('local changes',result.stderr)
-            self.assertEqual((target/'scripts/check-phase0.py').read_text(),'local edits')
+            self.assertEqual((target/'scripts/check-preparation.py').read_text(),'local edits')

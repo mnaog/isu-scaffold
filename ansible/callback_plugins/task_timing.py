@@ -1,4 +1,4 @@
-# Per-task wall time for initial-phase tuning, without the ansible.posix collection.
+# Per-task wall time for tuning the initial work, without the ansible.posix collection.
 # Each row is started_at, playbook, play, task, seconds; the seconds cover every host
 # because a linear play waits for all of them before the next task.
 from __future__ import annotations

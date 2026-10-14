@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Independent Phase 1 build lane: inspect one node, then build with reviewed settings.
+"""Independent initial build lane: inspect one node, then build with reviewed settings.
 
-When config/phase1-build.json is missing, the lane proposes settings from the probe and the
+When config/initial-build.json is missing, the lane proposes settings from the probe and the
 imported Cargo files. A proposal it can justify (a known builder base whose glibc, and libssl
 when the app links OpenSSL, fit the node) is written as the settings and the build starts at
 once; the operator reviews and commits that file like a hand-written one. Anything it cannot
 decide (a workspace, system libraries, no fitting base) waits for the operator as before.
-PHASE1_BUILD_AUTO_CONFIG=0 always waits.
+INITIAL_BUILD_AUTO_CONFIG=0 always waits.
 """
 import argparse
 import fcntl
@@ -22,8 +22,8 @@ import time
 import tomllib
 
 ROOT = Path(__file__).resolve().parent.parent
-STATE = ROOT / '.local/phase1-build'
-CONFIG = ROOT / 'config/phase1-build.json'
+STATE = ROOT / '.local/initial-build'
+CONFIG = ROOT / 'config/initial-build.json'
 BASES = ROOT / 'config/rust-builder/bases.json'
 TARGETS = {'x86_64': 'x86_64-unknown-linux-gnu', 'aarch64': 'aarch64-unknown-linux-gnu'}
 # -sys crates whose system library and apt package depend on the app; the operator decides.
@@ -32,8 +32,8 @@ SYSTEM_LIBRARY_CRATES = {'mysqlclient-sys', 'pq-sys', 'libsqlite3-sys', 'curl-sy
 _progress_spec = importlib.util.spec_from_file_location('progress', Path(__file__).resolve().parent / 'progress.py')
 progress = importlib.util.module_from_spec(_progress_spec)
 _progress_spec.loader.exec_module(progress)
-NOTIFY = {'needs_configuration': 'config/phase1-build.json を作ると初期buildが始まる（.local/phase1-build/proposal.json）',
-          'configured': '設定を自動生成した。config/phase1-build.json を確認してcommitする',
+NOTIFY = {'needs_configuration': 'config/initial-build.json を作ると初期buildが始まる（.local/initial-build/proposal.json）',
+          'configured': '設定を自動生成した。config/initial-build.json を確認してcommitする',
           'building': '', 'complete': 'deployできる成果物がある', 'failed': '', 'stopped': ''}
 
 
@@ -56,7 +56,7 @@ def record_transition(state, now):
             with timing.open('a') as out:
                 for name, at, seconds, status in rows:
                     stamp = time.strftime('%Y-%m-%dT%H:%M:%S%z', time.localtime(at))
-                    out.write(f'{stamp}\tphase1-build\t{name}\t{seconds:.1f}\t{status}\n')
+                    out.write(f'{stamp}\tinitial-build\t{name}\t{seconds:.1f}\t{status}\n')
         except OSError:
             pass
     _entered = (state, now)
@@ -70,7 +70,7 @@ def save(state, **fields):
     temp.write_text(json.dumps(dict(state=state, updated_at=time.time(), **fields), indent=2) + '\n')
     temp.replace(p)
     if state in NOTIFY:
-        progress.emit('phase1-build', state, fields.get('error') or NOTIFY[state], path=ROOT / '.local/progress.log')
+        progress.emit('initial-build', state, fields.get('error') or NOTIFY[state], path=ROOT / '.local/progress.log')
 
 
 def version(text):
@@ -78,7 +78,7 @@ def version(text):
 
 
 def propose(environment, application):
-    """Settings for config/phase1-build.json, or None with the reasons the operator must decide."""
+    """Settings for config/initial-build.json, or None with the reasons the operator must decide."""
     lines = environment.splitlines()
     reasons = []
     target = TARGETS.get(lines[0].strip() if lines else '')
@@ -144,7 +144,7 @@ def start(node, application):
                                   '--application', application], cwd=ROOT,
                                  stdin=subprocess.DEVNULL, stdout=log, stderr=log,
                                  start_new_session=True, env=env)
-    print(f'Phase 1 build lane dispatched (pid {child.pid}); status: {STATE / "status.json"}', flush=True)
+    print(f'initial build lane dispatched (pid {child.pid}); status: {STATE / "status.json"}', flush=True)
 
 
 def run(node, application):
@@ -169,15 +169,15 @@ def run(node, application):
             if not CONFIG.exists():
                 settings, reasons = propose(result.stdout, application)
                 (STATE / 'proposal.json').write_text(json.dumps({'settings': settings, 'reasons': reasons}, indent=2) + '\n')
-                if settings and os.environ.get('PHASE1_BUILD_AUTO_CONFIG', '1') != '0':
+                if settings and os.environ.get('INITIAL_BUILD_AUTO_CONFIG', '1') != '0':
                     temp = CONFIG.with_name(CONFIG.name + '.tmp')
                     temp.write_text(json.dumps(settings, indent=2) + '\n')
                     temp.replace(CONFIG)
                     save('configured', pid=os.getpid(), node=node, config=settings, reasons=reasons)
             if not CONFIG.exists():
                 save('needs_configuration', pid=os.getpid(), evidence=str(STATE / 'environment.txt'),
-                     next='Review evidence and Cargo manifests, create config/phase1-build.json, the waiting build lane starts automatically')
-                print('BUILD NEEDS CONFIGURATION: config/phase1-build.json; see .local/phase1-build/environment.txt', flush=True)
+                     next='Review evidence and Cargo manifests, create config/initial-build.json, the waiting build lane starts automatically')
+                print('BUILD NEEDS CONFIGURATION: config/initial-build.json; see .local/initial-build/environment.txt', flush=True)
                 deadline = time.monotonic() + 1800
                 while not CONFIG.exists():
                     if time.monotonic() >= deadline:
@@ -185,7 +185,7 @@ def run(node, application):
                     time.sleep(1)
             config = json.loads(CONFIG.read_text())
             if not {'base_image', 'target', 'binary', 'dockerfile'} <= set(config) or set(config) - {'base_image', 'target', 'binary', 'dockerfile', 'source_root', 'manifest_dir', 'toolchain', 'packages'}:
-                raise ValueError('phase1-build.json needs base_image, target, binary, dockerfile')
+                raise ValueError('initial-build.json needs base_image, target, binary, dockerfile')
             expected = TARGETS.get(result.stdout.splitlines()[0])
             if config['target'] != expected:
                 raise ValueError('configured target does not match the source node architecture')

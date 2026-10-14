@@ -31,7 +31,7 @@ test('analysis completion is independent of adoption and absent state is not pen
  assert.match(ctx.analysisLabel({passed:false}),/分析不要/);
 });
 test('stale run and deploy records never claim liveness; actual operation is separate',()=>{
- const d={activity:{deploy:{phase:'switching',recorded_at:1},last_deploy_commit:'abcdef012345'},metrics:{running:[{id:'old-run',started_at:'2026-10-06T10:00:00Z'}]}};
+ const d={activity:{deploy:{step:'switching',recorded_at:1},last_deploy_commit:'abcdef012345'},metrics:{running:[{id:'old-run',started_at:'2026-10-06T10:00:00Z'}]}};
  const old=ctx.operationLines(d).join('\n');
  assert.match(old,/実行継続は未確認/);assert.doesNotMatch(old,/実行中/);assert.match(old,/最後に成功したdeploy: abcdef01/);
  d.activity.operation={operation:'isuscope run',started_at:'2026-10-06T10:00:00Z'};

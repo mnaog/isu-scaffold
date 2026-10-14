@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phase 0で計測tool（alp・slpのrelease、FlameGraphのscript）をrepoへ取り込み、当日nodeが
+# 準備で計測tool（alp・slpのrelease、FlameGraphのscript）をrepoへ取り込み、当日nodeが
 # GitHubへ取りに行かずにAnsibleからcopyで入れられるようにする。版はAnsibleのdefaultsが正。
 #   ./scripts/fetch-observability-tools.sh           # 取り込み済みの内容をSHA256SUMSで検査する
 #   ./scripts/fetch-observability-tools.sh --update  # defaultsの版を取得し直し、SHA256SUMSを書き直す
@@ -64,7 +64,7 @@ if [[ "${1:-}" == --update ]]; then
 fi
 
 if [[ ! -f "${vendor}/SHA256SUMS" ]]; then
-  echo "no bundled tools; run $0 --update in Phase 0" >&2
+  echo "no bundled tools; run $0 --update while preparing" >&2
   exit 1
 fi
 missing=0

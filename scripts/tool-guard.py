@@ -61,13 +61,13 @@ LANE_HINT = 'laneはremote node・deploy・ベンチ・操作lockに触れない
 # Scripts and make targets that reach remote nodes, the benchmark or the operation lock.
 LANE_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-apply.sh', 'bootstrap.sh',
                 'bootstrap-ssh.sh', 'discover.sh', 'configure-draft.sh', 'configure-apply.sh',
-                'inspect-environment.sh', 'phase1-check.sh', 'quick-import-code.sh', 'run-ansible-playbook.sh',
+                'inspect-environment.sh', 'bench-check.sh', 'quick-import-code.sh', 'run-ansible-playbook.sh',
                 'status.sh', 'switch-language-service.sh', 'sync-check.sh', 'benchmark.sh',
-                'benchmark-prepare.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'phase1-build.py',
+                'benchmark-prepare.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'initial-build.py',
                 'lane.py', 'review-draft.py', 'check-deployed-commit.sh', 'first-bench.sh',
                 'benchmark-markers.py', 'deploy-plan.py'}
 LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap',
-                     'phase1-check', 'first-bench', 'tare', 'practice-check', 'practice-create', 'practice-status',
+                     'bench-check', 'first-bench', 'tare', 'practice-check', 'practice-create', 'practice-status',
                      'practice-delete'}
 # Read-only isuscope commands; everything else records, benchmarks or reaches nodes.
 LANE_ISUSCOPE = {'list', 'brief', 'query', 'sql', 'help', '--help', '-h', '--version', 'version'}

@@ -24,7 +24,7 @@ class FirstBenchTests(unittest.TestCase):
         for name in ('first-bench.sh', 'stage-lib.sh', 'progress.py', 'imported-state.py', 'tree-digest.py',
                      'check-deployed-commit.sh'):
             shutil.copy(ROOT / 'scripts' / name, self.repo / 'scripts' / name)
-        for name in ('phase1-check.sh', 'deploy.sh', 'benchmark-prepare.sh'):
+        for name in ('bench-check.sh', 'deploy.sh', 'benchmark-prepare.sh'):
             step = name.removesuffix('.sh')
             (self.repo / 'scripts' / name).write_text(
                 f'#!/bin/sh\necho "{step}${{REQUIRE_ACTIVE:+ REQUIRE_ACTIVE=$REQUIRE_ACTIVE}}${{PREPARE_CHECK_ONLY:+ check-only}}" >> "$EVENTS"\n'
@@ -78,7 +78,7 @@ class FirstBenchTests(unittest.TestCase):
         self.record_import()
         result = self.run_first_bench(HYPOTHESIS='初期状態を記録する')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.lines(), ['phase1-check', 'benchmark-prepare REQUIRE_ACTIVE=1 check-only',
+        self.assertEqual(self.lines(), ['bench-check', 'benchmark-prepare REQUIRE_ACTIVE=1 check-only',
                                         'isuscope survey-run --hypothesis 初期状態を記録する', 'scouts start', 'deploy'])
         self.assertEqual((self.repo / '.local/current-import-commit').read_text().strip(), self.head())
         self.assertEqual(self.states(), ['started', 'checked', 'distributed', 'baseline-ready', 'scouts-started',
@@ -159,18 +159,18 @@ class FirstBenchTests(unittest.TestCase):
                 result = self.run_first_bench(**case.get('env', {}))
                 self.assertEqual(result.returncode, 0, result.stderr)
                 steps = [line for line in self.lines() if not line.startswith('benchmark-prepare')]
-                self.assertEqual(steps, ['phase1-check', 'deploy', 'isuscope survey-run --hypothesis 初期状態の負荷構造とベンチシナリオを記録する',
+                self.assertEqual(steps, ['bench-check', 'deploy', 'isuscope survey-run --hypothesis 初期状態の負荷構造とベンチシナリオを記録する',
                                          'scouts start'])
                 self.assertFalse((self.repo / '.local/current-import-commit').exists())
 
     def test_failed_check_never_deploys_or_benchmarks(self):
-        result = self.run_first_bench(FAIL='phase1-check')
+        result = self.run_first_bench(FAIL='bench-check')
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(self.lines(), ['phase1-check'])
-        self.assertIn('first-bench.sh\tfailed\tphase1-check', (self.repo / '.local/progress.log').read_text())
+        self.assertEqual(self.lines(), ['bench-check'])
+        self.assertIn('first-bench.sh\tfailed\tbench-check', (self.repo / '.local/progress.log').read_text())
         self.events.unlink()
         self.assertNotEqual(self.run_first_bench(FAIL='deploy').returncode, 0)
-        self.assertEqual(self.lines(), ['phase1-check', 'deploy'])
+        self.assertEqual(self.lines(), ['bench-check', 'deploy'])
 
     def test_uncommitted_import_or_a_lane_stops_before_anything(self):
         (self.repo / 'webapp/rust/main.rs').write_text('fn main() { changed() }\n')

@@ -11,15 +11,19 @@
     "docs/roles/*",
     "docs/official/lithosai-*",
     "config/new-repo.json",
-    "config/phase0/*",
+    "config/preparation/*",
     "scripts/new-contest-repo.py",
     "tests/test_new_contest_repo.py"
   ],
   "keep": [
     "docs/agent-history/.gitkeep",
     "docs/agent-history/Readme.md",
-    "isuscope-data/README.md"
+    "isuscope-data/README.md",
+    "docs/roles/scout.md",
+    "docs/roles/scout-prompt.txt"
   ],
-  "practice_only": ["practice.md"],
-  "readiness_template": "config/phase0/readiness.md"
+  "practice_only": [
+    "practice.md"
+  ],
+  "readiness_template": "config/preparation/readiness.md"
 }

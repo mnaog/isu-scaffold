@@ -105,7 +105,7 @@ class BoardTests(unittest.TestCase):
         (transactions/'release.commit').write_text('new-commit')
         (local/'current-deploy-commit').write_text('previous-success')
         result = activity.activity(self.repo)
-        self.assertEqual(result['deploy']['phase'], 'switching')
+        self.assertEqual(result['deploy']['step'], 'switching')
         self.assertIsNone(result['operation'])
         self.assertEqual(result['last_deploy_commit'], 'previous-success')
 

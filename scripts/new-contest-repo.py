@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Create a contest repo from a committed scaffold revision (Phase 0).
+"""Create a contest repo from a committed scaffold revision (preparation).
 
 The new repo gets every committed file except what config/new-repo.json excludes: the
 scaffold's own conversation history, experiments and unrelated material. It starts a fresh
-Git history, records the source commit in docs/phase0/scaffold-source.json, writes
-docs/phase0/readiness.md from the template and runs scripts/check-phase0.py on the result.
+Git history, records the source commit in docs/preparation/scaffold-source.json, writes
+docs/preparation/readiness.md from the template and runs scripts/check-preparation.py on the result.
 Without --practice it also removes practice.md and the practice-only lines of AGENTS.md.
 With --github OWNER/NAME it creates that private GitHub repo and pushes to it.
 """
@@ -86,9 +86,9 @@ def main():
         repository = git(SOURCE, 'config', '--get', 'remote.origin.url').strip()
     except subprocess.CalledProcessError:
         repository = str(SOURCE)
-    phase0 = target / 'docs/phase0'
-    phase0.mkdir(parents=True, exist_ok=True)
-    (phase0 / 'scaffold-source.json').write_text(json.dumps({
+    preparation = target / 'docs/preparation'
+    preparation.mkdir(parents=True, exist_ok=True)
+    (preparation / 'scaffold-source.json').write_text(json.dumps({
         'repository': repository,
         'commit': commit,
         'created_at': created_at,
@@ -100,14 +100,14 @@ def main():
     readiness = (readiness.replace('{{SOURCE}}', f'{repository} {commit[:12]}')
                  .replace('{{CREATED_AT}}', created_at)
                  .replace('{{MODE}}', '練習' if args.practice else '本番'))
-    (phase0 / 'readiness.md').write_text(readiness)
+    (preparation / 'readiness.md').write_text(readiness)
 
     subprocess.run(['git', 'init', '-q', '-b', 'main', str(target)], check=True)
     subprocess.run(['git', '-C', str(target), 'add', '-A'], check=True)
-    subprocess.run([sys.executable, str(target / 'scripts/check-phase0.py')], check=True)
+    subprocess.run([sys.executable, str(target / 'scripts/check-preparation.py')], check=True)
     subprocess.run(['git', '-C', str(target), 'commit', '-q', '-m',
                     f'Start from isu-scaffold {commit[:12]}\n\nCreated by scripts/new-contest-repo.py; '
-                    'see docs/phase0/scaffold-source.json.'], check=True)
+                    'see docs/preparation/scaffold-source.json.'], check=True)
     print(f'created {target} from {commit[:12]} ({len(files)} files)')
 
     if args.github:
@@ -123,7 +123,7 @@ def main():
             sys.exit(f'{args.github} is {visibility}, not PRIVATE; fix it before adding anything')
         print(f'pushed to {args.github} (private)')
     print('next: start a new Codex or Claude Code session inside ' + str(target) + ' (benchmarks are linked to '
-          'the conversation recorded there), then fill docs/phase0/readiness.md along docs/phases/Phase0.md')
+          'the conversation recorded there), then fill docs/preparation/readiness.md along docs/preparation.md')
     return 0
 
 

@@ -74,9 +74,9 @@ if [[ -n "$(git status --porcelain --untracked-files=all -- webapp config)" ]]; 
   exit 1
 fi
 
-progress started "phase1-check, then the baseline"
-stage phase1-check "${script_dir}/phase1-check.sh"
-progress checked "phase1-check passed"
+progress started "bench-check, then the baseline"
+stage bench-check "${script_dir}/bench-check.sh"
+progress checked "bench-check passed"
 
 distributed=false
 marker=.local/current-import-commit

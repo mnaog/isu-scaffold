@@ -19,12 +19,12 @@ class NewContestRepoTests(unittest.TestCase):
         # A small committed scaffold: the script copies the tree of a commit, never the work tree.
         self.source = self.tmp / "scaffold"
         (self.source / "scripts").mkdir(parents=True)
-        (self.source / "config/phase0").mkdir(parents=True)
-        for name in ("new-contest-repo.py", "check-phase0.py"):
+        (self.source / "config/preparation").mkdir(parents=True)
+        for name in ("new-contest-repo.py", "check-preparation.py"):
             (self.source / "scripts" / name).write_bytes((ROOT / "scripts" / name).read_bytes())
             (self.source / "scripts" / name).chmod(0o755)
         (self.source / "config/new-repo.json").write_bytes((ROOT / "config/new-repo.json").read_bytes())
-        (self.source / "config/phase0/readiness.md").write_text("from {{SOURCE}} at {{CREATED_AT}} as {{MODE}}\n")
+        (self.source / "config/preparation/readiness.md").write_text("from {{SOURCE}} at {{CREATED_AT}} as {{MODE}}\n")
         (self.source / "AGENTS.md").write_text(
             "# Repository instructions\n\n## 練習時のみ\n練習中は[practice.md](practice.md)を読む。\n\n## ディレクトリ\n")
         (self.source / "practice.md").write_text("practice\n")
@@ -56,13 +56,13 @@ class NewContestRepoTests(unittest.TestCase):
         self.assertIn("isuscope-data/README.md", files)
         for name in ("docs/agent-history/20261013-123404.md", "docs/official/lithosai-20261001/opencode.md",
                      "docs/ai-compare/Readme.md", "isuscope-data/runs/x.json", "practice.md",
-                     "config/new-repo.json", "config/phase0/readiness.md", "scripts/new-contest-repo.py"):
+                     "config/new-repo.json", "config/preparation/readiness.md", "scripts/new-contest-repo.py"):
             self.assertNotIn(name, files)
         self.assertEqual((target / "AGENTS.md").read_text(), "# Repository instructions\n\n## ディレクトリ\n")
         self.assertTrue((target / ".claude/rules/agents.md").is_symlink())
-        self.assertEqual(json.loads((target / "docs/phase0/scaffold-source.json").read_text())["commit"],
+        self.assertEqual(json.loads((target / "docs/preparation/scaffold-source.json").read_text())["commit"],
                          git(self.source, "rev-parse", "HEAD").strip())
-        self.assertIn("as 本番", (target / "docs/phase0/readiness.md").read_text())
+        self.assertIn("as 本番", (target / "docs/preparation/readiness.md").read_text())
         self.assertEqual(git(target, "status", "--porcelain"), "")
         self.assertEqual(len(git(target, "log", "--oneline").splitlines()), 1)
 
@@ -70,7 +70,7 @@ class NewContestRepoTests(unittest.TestCase):
         target = self.create("--practice")
         self.assertTrue((target / "practice.md").exists())
         self.assertIn("## 練習時のみ", (target / "AGENTS.md").read_text())
-        self.assertIn("as 練習", (target / "docs/phase0/readiness.md").read_text())
+        self.assertIn("as 練習", (target / "docs/preparation/readiness.md").read_text())
 
     def test_refuses_a_non_empty_target(self):
         (self.tmp / "contest").mkdir()

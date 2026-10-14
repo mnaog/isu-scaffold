@@ -82,7 +82,7 @@ def generate(repo, cfg, stop=None):
         content = scenario.read_text()
         scenario_data = {'source': cfg['scenario'], 'content': content[:12000], 'truncated': len(content) > 12000}
     else:
-        scenario_data = {'source': cfg['scenario'], 'error': 'Phase 1のシナリオ整理が未作成です。推測で補わないでください'}
+        scenario_data = {'source': cfg['scenario'], 'error': 'シナリオ整理（docs/benchmark-scenario.md）が未作成です。推測で補わないでください'}
     with connect(repo) as db:
         sources = rows(db, 'SELECT agent,session_id FROM conversation_sources ORDER BY agent')
     conversations = {r['agent']: history(repo, r['agent'], r['session_id']) for r in sources}

@@ -35,10 +35,10 @@ def main():
                 p.error('path listed for both export and removal: ' + name)
             continue
         files[name] = git(source, 'show', commit + ':' + name)
-    spec = importlib.util.spec_from_file_location('phase0', source / 'scripts/check-phase0.py')
-    phase0 = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(phase0)
-    errors = phase0.problems(files.items())
+    spec = importlib.util.spec_from_file_location('preparation', source / 'scripts/check-preparation.py')
+    preparation = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(preparation)
+    errors = preparation.problems(files.items())
     if errors:
         sys.exit('non-generic export rejected:\n' + '\n'.join(errors))
     changes = [name for name, data in files.items() if not (target / name).is_file() or (target / name).read_bytes() != data]
@@ -58,7 +58,7 @@ def main():
             path.chmod(0o755 if mode == '100755' else 0o644)
         receipt = {'repository': git(source, 'config', '--get', 'remote.origin.url').decode().strip(),
                    'commit': commit, 'sha256': {n: hashlib.sha256(d).hexdigest() for n, d in files.items()}}
-        path = target / 'docs/phase0/scaffold-source.json'
+        path = target / 'docs/preparation/scaffold-source.json'
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + '\n')
     remaining = [n for n, d in files.items() if not (target / n).is_file() or (target / n).read_bytes() != d]

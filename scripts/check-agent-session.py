@@ -4,7 +4,7 @@
 isuscope links every benchmark run to the conversation that started it, from
 docs/agent-history/ of this repo (`[context.agent]`). A session started in another directory
 (practice-12-sixth: the scaffold) writes its history there, and `isuscope doctor` then fails
-in phase1-check, minutes into Phase 1. kickoff runs this first so that shows at once.
+in bench-check, minutes after the start. kickoff runs this first so that shows at once.
 
 Outside Codex and Claude Code (a plain terminal) there is no session to check; the benchmark
 must still be run later from a session started in this repo. AGENT_SESSION_CHECK=0 skips it.
@@ -74,7 +74,7 @@ def main():
     print(f'the {agent} session {session} does not record its history in {history}'
           + (f' (it was started in {where})' if where else '') + '.\n'
           f'Start a new Codex or Claude Code session inside {ROOT} and run make kickoff from it: '
-          'isuscope links each benchmark to that conversation, and `isuscope doctor` in phase1-check '
+          'isuscope links each benchmark to that conversation, and `isuscope doctor` in bench-check '
           'refuses a session whose history is elsewhere. AGENT_SESSION_CHECK=0 skips this check.',
           file=sys.stderr)
     return 1

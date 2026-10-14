@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Measure the initial phase of a practice from what is already recorded.
+"""Measure the initial work of a practice from what is already recorded.
 
-The four numbers that show whether the initial-phase changes worked:
+The four numbers that show whether the changes to the initial work worked:
 - minutes from the start to the baseline (the first passing survey-run)
 - runs in the window that failed on a connection or file limit (brief's `limits`)
 - seconds isuscope spent after each benchmark (collection and parsing)
@@ -10,7 +10,7 @@ The four numbers that show whether the initial-phase changes worked:
 Sources: isuscope (`isuscope sql`, `isuscope brief`, isuscope-data/runs/*/run.json) and the
 conversation events in docs/agent-history. Nothing is changed. Run it from the practice repository:
 
-    python3 scripts/initial-phase-report.py --start 2026-10-10T15:01:05+09:00
+    python3 scripts/initial-report.py --start 2026-10-10T15:01:05+09:00
 """
 import argparse
 import glob
@@ -97,7 +97,7 @@ def questions(root, start, end):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--start', required=True, help='Phase 1 start, ISO 8601 with offset')
+    parser.add_argument('--start', required=True, help='start of the practice or contest, ISO 8601 with offset')
     parser.add_argument('--hours', type=float, default=2.0, help='length of the window after the start')
     parser.add_argument('--root', type=Path, default=Path.cwd())
     parser.add_argument('--json', action='store_true')
