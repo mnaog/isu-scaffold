@@ -3,7 +3,7 @@
 役割はscout。現状を把握して自由に探索し、見落とし・疑問・仮説を最大300文字で報告する。3体（Claude Code、Codex、Kimi Code）の指示と入力形式は同じで、探索角度や専門分野は割り当てない。「発見なし」「順調そう」も最新報告として保存する。
 共通指示は[scout-prompt.txt](scout-prompt.txt)。読み取り専用はプロンプトで指示する。CLI権限制御は必須条件ではなく、OSレベルで保証するものではない。
 
-報告の読み手はmainのセッションで、人間の中継を待たない。Claude Codeのmainがベンチ（`isuscope run`・`survey-run`・`make first-bench`）を`run_in_background`で起動すると、PostToolUseのhook（`scripts/tool-guard.py --post`）が最新報告を投稿からの経過分つきで会話へ渡す。mainはベンチの完了を待つ間にそれを読み、観測と照合して、採るものは次の仮説候補に、採らないものは理由をそのrunの`isuscope analyze`に一言残す。foregroundのベンチはPreToolUseのhookが止める。Codexにはbackgroundで起動する手段がないので、ベンチを起動する直前に`docs/scout-board.md`を読む。
+報告の読み手はmainのセッションで、人間の中継を待たない。Claude Codeのmainがベンチ（`isuscope run`・`survey-run`・`make first-bench`）を`run_in_background`で起動すると、PostToolUseのhook（`scripts/tool-guard.py --post`）が最新報告を投稿からの経過分つきで会話へ渡す。報告は「並列で動かしている調査エージェントによる報告。内容が古くなっている可能性もあるが、それぞれの視点を参考にして、次回の改善のための参考として確認する」という位置づけで渡し、mainはベンチの完了を待つ間に確認する。foregroundのベンチはPreToolUseのhookが止める。Codexにはbackgroundで起動する手段がないので、ベンチを起動する直前に`docs/scout-board.md`を読む。
 
 ## 起動と停止
 

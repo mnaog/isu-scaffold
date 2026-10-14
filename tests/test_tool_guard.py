@@ -257,7 +257,7 @@ class ToolGuardTest(unittest.TestCase):
         started = {'command': 'isuscope run --hypothesis x', 'run_in_background': True}
         output = self.hook(started, '--agent', 'claude', '--post')
         self.assertEqual(output['hookEventName'], 'PostToolUse')
-        self.assertIn('scout', output['additionalContext'])
+        self.assertIn('並列で動かしている調査エージェント', output['additionalContext'])
         self.assertIn('indexが効いていない', output['additionalContext'])
         self.assertRegex(output['additionalContext'], r'投稿: 2026-10-14T00:00:00Z（\d+分前）')
         for tool_input in [{'command': 'isuscope run --hypothesis x'}, {'command': 'make build', 'run_in_background': True}]:
