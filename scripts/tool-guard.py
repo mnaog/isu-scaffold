@@ -389,6 +389,8 @@ def is_benchmark(program, args):
     if program == 'make':
         return 'first-bench' in [a for a in args if not a.startswith('-')]
     if program in SHELLS:
+        if '-n' in options:
+            return False  # a syntax check reads the script without running it
         program = os.path.basename(next((a for a in args if not a.startswith('-')), ''))
     return program == 'first-bench.sh'
 

@@ -17,7 +17,7 @@ help:
 		'make first-bench                      import commit後にphase1-check・初回survey-run・deployを続けて行う' \
 		'make tare                             baseline後に接続・fdの上限を上げる1 commitを作る' \
 		'make board                            人間向けボードを開く (127.0.0.1:8765)' \
-		'make scout-start / scout-stop         Phase 2開始後に人間がscoutの定期実行を開始・停止する' \
+		'make scout-start / scout-stop         scoutの定期実行を開始・停止する（first-benchが初回baseline後に開始する）' \
 		'make scout-status                     scoutの状態を表示する' \
 		'make test                             問題と実サーバーを使わないテストを実行する'
 

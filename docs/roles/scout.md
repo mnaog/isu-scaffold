@@ -15,13 +15,13 @@ python3 scripts/scouts/main.py conversation claude '<参照する実セッショ
 python3 scripts/scouts/main.py conversation codex '<参照する実セッションID>'
 python3 scripts/scouts/main.py check
 python3 scripts/scouts/main.py input   # LLMを呼ばず入力プレビューを生成
-# 人間がPhase 2への移行を決めた後
-make scout-start
+make first-bench    # 初回baselineの後にscoutも起動する（FIRST_BENCH_SCOUTS=0なら起動しない）
+make scout-start    # 手で起動・再開する
 make scout-status
 make scout-stop
 ```
 
-開始は明示コマンドだけ。Phaseを推測して自動起動しない。常駐処理は作業セッションの終了から独立して動く。各scoutは新しいCLIセッションで入力生成→探索→最新状況の再確認→報告保存を行い、報告を保存し`docs/scout-board.md`へ書き出した時刻から480秒（8分）後に次回実行する。開始時刻からの固定間隔ではないので、探索に時間がかかった回はその分だけ次回も後ろへずれる。3体の時刻は独立している。
+`make first-bench`は、初回baseline（survey-run）がPASSまたはPENDINGで残った直後に`make scout-start`と同じ処理でscoutを起動し、続けてdeployする。scoutの1回目の探索はbaselineを読む。起動できなかった場合（実行中、設定不備など）は`.local/progress.log`へ`scouts-not-started`を出し、ベンチとdeployは止めない。それ以外の自動起動はしない。常駐処理は作業セッションの終了から独立して動く。各scoutは新しいCLIセッションで入力生成→探索→最新状況の再確認→報告保存を行い、報告を保存し`docs/scout-board.md`へ書き出した時刻から480秒（8分）後に次回実行する。開始時刻からの固定間隔ではないので、探索に時間がかかった回はその分だけ次回も後ろへずれる。3体の時刻は独立している。
 停止時は待機と実行中CLIを終了する。再開時は保存済みの次回予定を尊重する。失敗時は480秒から倍に延ばし（960、1920秒）、最大3600秒とする。空回答も失敗とし、最後の成功報告は残す。
 
 同じscoutの手動実行と常駐実行にも共通のOSファイルlockを使う。これはローカル実行の多重起動防止のみであり、作業担当の調整や実験leaseではない。lockファイルは削除しない。

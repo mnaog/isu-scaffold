@@ -42,6 +42,7 @@ make first-bench   # phase1-check → 配布状態のままsurvey-run → deploy
 | `lane:<名前>` | `commit` | そのcommitを観測と照合し、効くなら`git cherry-pick`（laneの完了を待たない） |
 | `lane:<名前>` | `complete`／`failed`／`timeout` | 結果を読んでmergeを判断／`lane.py status <名前>`で原因を見る |
 | `first-bench` | `baseline-ready` | `isuscope brief latest`で分析を始める（deployは続いている） |
+| `first-bench` | `scouts-started` / `scouts-not-started` | scoutがbaselineを読み始めた／起動できなかった（`make scout-status`）。ベンチとdeployは続く |
 | `kickoff` | `draft-ready`／`draft-failed` | `review.md`を判断して`kickoff-apply`／FAILを直す |
 | `kickoff.sh`など | `failed` | その段階のlogを読んで直す |
 
@@ -287,6 +288,7 @@ isuscope routes suggest <run-id> --output .local/route-suggestions.toml
 make first-bench   # 次を続けて実行する（配布状態で測れないときはdeployが先）
 # make phase1-check
 # isuscope survey-run --hypothesis "初期状態の負荷構造とベンチシナリオを記録する"
+# make scout-start（baselineの後。FIRST_BENCH_SCOUTS=0なら起動しない）
 # make deploy
 ```
 

@@ -55,7 +55,7 @@
 並行させるAIは、すべてClaude Codeのheadless実行（`claude -p`）のlaneにする。laneは`scripts/lane.py`が自分のworktreeとbranch（`lane/<名前>`）で1回だけ動かし、そのbranchへcommitして終わる。mainのセッションは結果（`python3 scripts/lane.py status <名前>`）を読み、根拠を照合してから`git merge`で取り込む。laneは出力が決まった有限のタスクだけに使い、常駐させない。モデル・effort・使えるtool・時間上限・promptは`config/lanes.json`と`config/lanes/`が正で、laneは許可したtool以外を確認なしで拒否される。laneのremote node・deploy・ベンチ・isuscopeの記録・`.local/operation.lock`・push・laneの起動は`scripts/tool-guard.py`が止める。
 remote変更・deploy・共有ベンチはmain側で既存の共通lockを使い、実行中の操作と競合させない。作業中の他worktreeを変更・削除しない。
 人間は`make board`で開く読み取り専用の画面（ボード）で、スコアの推移、runの比較と負荷、必ず残す記録を見る。詳細は`docs/board.md`。
-scout（Claude Code・Codex・Kimi Code）は人間がPhase 2開始を決めてから`make scout-start`で起動し、`make scout-stop`で止める。各scoutは前回の報告を保存してから8分後に新しいセッションで探索し、報告を`docs/scout-board.md`へ書く（通常のコミットに含める）。参照する会話は`python3 scripts/scouts/main.py conversation <agent> <実セッションID>`で明示し、更新時刻から推測しない。報告はmainのセッションがベンチの待ち時間に読む。詳細は`docs/roles/scout.md`。
+scout（Claude Code・Codex・Kimi Code）は`make first-bench`が初回baselineの後に起動し（`FIRST_BENCH_SCOUTS=0`なら起動しない。手では`make scout-start`）、`make scout-stop`で止める。各scoutは前回の報告を保存してから8分後に新しいセッションで探索し、報告を`docs/scout-board.md`へ書く（通常のコミットに含める）。参照する会話は`python3 scripts/scouts/main.py conversation <agent> <実セッションID>`で明示し、更新時刻から推測しない。報告はmainのセッションがベンチの待ち時間に読む。詳細は`docs/roles/scout.md`。
 
 ## sfs
 
@@ -93,8 +93,8 @@ review.mdのFAILを直し、WARNをすべて判断してからCONFIRM_DRAFT=true
 make first-bench（人間の確認を待たずにすぐ実行する。失敗した段階で止まる）
   → make phase1-check: 全node、同期、ベンチadapterと接続先、isuscope doctorをベンチなしで検査
   → HEADが完全importの内容のままで、アプリのunitが全nodeで動いていれば、配布されたbuildのままsurvey-runで初回ベンチ
-    （ローカルbuildとdeployを待たない。baseline-readyで分析を始める）。その後に同じcommitをmake deploy
-  → そうでなければ、make deploy（初期buildの完了を待つ）の後にsurvey-run
+    （ローカルbuildとdeployを待たない。baseline-readyで分析を始める）。scoutを起動し、その後に同じcommitをmake deploy
+  → そうでなければ、make deploy（初期buildの完了を待つ）の後にsurvey-run、続けてscoutを起動
   → 出力の形を確かめる前ならresultはPENDING。python3 scripts/benchmark-sample.py <run>で読み取りを確かめ、
     --apply --score N --pass true|false（自分で読んだ値）でsample・contract・--check・rescoreまで済ませる
 初回runの分析後に観測に基づいて改善を実装・検証

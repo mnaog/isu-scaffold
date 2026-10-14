@@ -244,6 +244,7 @@ class ToolGuardTest(unittest.TestCase):
                 # Codex has no background Bash; its hook is not given --agent claude.
                 self.assertIsNone(self.hook({'command': command}))
         for command in ['isuscope run --help', 'isuscope brief latest', 'make build', 'echo "isuscope run"',
+                        'bash -n scripts/first-bench.sh',
                         'git commit -m "isuscope run の結果"',
                         "python3 - <<'EOF'\nnotes = 1\nisuscope run --hypothesis x\nEOF"]:
             with self.subTest(command=command):
