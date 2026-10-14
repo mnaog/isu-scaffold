@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -79,17 +80,30 @@ class ScoutTests(unittest.TestCase):
         self.assertEqual(store.root(branch), self.repo)
         self.assertFalse((branch / '.local').exists())
 
-    def test_latest_report_export_and_length(self):
-        runner.save_report(self.repo, 'codex', 'あ'*300, self.bundle, 'local-ref', 'session', now=1)
+    def test_latest_report_export_without_a_length_limit(self):
+        runner.save_report(self.repo, 'codex', 'あ'*2000, self.bundle, 'local-ref', 'session', now=1)
         with self.assertRaises(ValueError):
-            runner.save_report(self.repo, 'codex', 'あ'*301, self.bundle, 'local-ref', 'session')
-        self.assertEqual(self.query("SELECT report FROM scouts WHERE name='codex'")[0]['report'], 'あ'*300)
+            runner.save_report(self.repo, 'codex', ' \n', self.bundle, 'local-ref', 'session')
+        self.assertEqual(self.query("SELECT report FROM scouts WHERE name='codex'")[0]['report'], 'あ'*2000)
+        self.assertIn('あ'*2000, (self.repo / 'docs/scout-board.md').read_text())
         runner.save_report(self.repo, 'codex', '順調そう', self.bundle, 'local-ref', 'session', now=2)
         text = (self.repo / 'docs/scout-board.md').read_text()
         self.assertIn('順調そう', text)
-        self.assertNotIn('あ'*300, text)
+        self.assertNotIn('あ'*2000, text)
         self.assertEqual(text.count('## '), 3)
         self.assertNotIn('local-ref', text)
+
+    def test_database_with_the_old_300_character_limit_keeps_its_reports(self):
+        database = store.local(self.repo) / 'state.sqlite3'
+        database.unlink()
+        limited = (SOURCE / 'scripts/scouts/schema.sql').read_text().replace(
+            'length(trim(report)) > 0', '(length(trim(report)) BETWEEN 1 AND 300)')
+        db = sqlite3.connect(database)
+        db.executescript(limited + "INSERT INTO scouts(name, report) VALUES ('codex', '前の報告'), ('claude', NULL);")
+        db.close()
+        runner.save_report(self.repo, 'claude', 'あ'*1000, self.bundle, 'ref', 'session')
+        reports = {r['name']: r['report'] for r in self.query('SELECT name, report FROM scouts')}
+        self.assertEqual(reports, {'codex': '前の報告', 'claude': 'あ'*1000})
 
     def test_fake_cli_posts_then_waits_480_seconds_after_the_report(self):
         # The wait counts from the saved report, not from the start; no 8-minute wall wait.
@@ -103,14 +117,14 @@ class ScoutTests(unittest.TestCase):
 
     def test_failure_backoff_keeps_previous_report(self):
         runner.save_report(self.repo, 'codex', '順調そう', self.bundle, 'ref', 'session')
-        self.cli.write_text('import sys\nsys.stdin.read()\nprint("あ"*301)\n')
+        self.cli.write_text('import sys\nsys.stdin.read()\nprint("  ")\n')
         for attempt, delay in enumerate([480, 960, 1920, 3600], 1):
             self.assertFalse(runner.attempt(self.repo, self.cfg, 'codex', bundle=self.bundle, clock=lambda: 100))
             row = self.query("SELECT * FROM scouts WHERE name='codex'")[0]
             self.assertEqual(row['next_at'], 100+delay)
             self.assertEqual(row['failures'], attempt)
             self.assertEqual(row['report'], '順調そう')
-            self.assertIn('301', row['error'])
+            self.assertIn('空', row['error'])
 
     def test_same_scout_lock_and_cancel_running_cli(self):
         self.cli.write_text('import time\ntime.sleep(60)\n')

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scouts: Claude Code, Codex and Kimi run in fresh sessions and save a report of up to 300 characters.
+"""Scouts: Claude Code, Codex and Kimi run in fresh sessions and save a report.
 
 Each scout starts again interval_seconds after its last report was saved. The latest reports go to
 docs/scout-board.md, which the main session reads while a benchmark runs (scripts/tool-guard.py --post).
@@ -86,8 +86,8 @@ def main():
                 path.mkdir(parents=True)
                 text = (repo / 'docs/roles/scout-prompt.txt').read_text() + '\n今回は接続確認です。探索・ツール操作は不要です。「接続確認済み」とだけ回答してください。'
                 report = invoke(repo, spec, text, path, threading.Event(), cfg['timeout_seconds'], session, lock_fd=held.fileno())
-                if not 1 <= len(report.strip()) <= 300:
-                    raise ValueError('接続応答の文字数違反')
+                if not report.strip():
+                    raise ValueError('接続応答が空です')
                 print(json.dumps({'scout': args.name, 'report': report.strip(), 'log': str(path)}, ensure_ascii=False))
         elif not attempt(repo, cfg, args.name):
             print(json.dumps(status(repo)['scouts'], ensure_ascii=False), file=sys.stderr)

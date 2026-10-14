@@ -25,16 +25,18 @@
 .experiment-summary{padding:16px 20px;display:flex;align-items:baseline;gap:14px}.experiment-hypothesis{font-size:13px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere}.history-hypothesis{white-space:normal;min-width:200px;max-width:440px;line-height:1.7}.operation-status{display:flex;flex-wrap:wrap;gap:8px 24px;margin:-16px 0 28px;font-size:11px;line-height:1.8;color:var(--muted)}.operation-status strong{color:var(--ink);font-weight:500}.operation-status p{overflow-wrap:anywhere}
 .score-pass{color:var(--green)}.score-fail{color:var(--red)}.score-unknown{color:var(--muted)}.result-pass{background:#33493d;color:var(--green)}.result-fail{background:#503e3e;color:var(--red)}.stat-sub{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.history-table th,.history-table td{text-align:left;vertical-align:top}.history-table th:nth-child(5),.history-table td:nth-child(5){text-align:right}.history-table .history-hypothesis{max-width:480px;line-height:1.8}.score-point .score-selection{stroke:var(--ink);stroke-width:1.5}
 .overview-hypothesis{display:grid;gap:6px;margin-top:16px;font-size:12px;line-height:1.8}.overview-detail-label{font-size:11px;color:var(--muted)}.overview-hypothesis p{white-space:pre-wrap;overflow-wrap:anywhere}.overview-source{margin-top:12px;font-size:10px}.overview-source dl{margin-top:10px;grid-template-columns:55px minmax(0,1fr)}
+.scouts-section{margin-bottom:28px}.scouts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.scout{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:17px;min-width:0;display:flex;flex-direction:column}.scout-head{display:flex;align-items:center;gap:9px;margin-bottom:15px}.avatar{flex:none;width:28px;height:28px;border:1px solid var(--line);border-radius:7px;display:grid;place-items:center;font:12px var(--mono);font-weight:600;background:#303337}.scout-name{font-size:11px;font-weight:600}.scout-model{font-size:9px;color:var(--muted);margin-top:3px}.scout-body{font-size:12px;line-height:1.9;white-space:pre-wrap;overflow-wrap:anywhere;flex:1;min-height:67px;max-height:24em;overflow:auto}.scout-body.empty-text{color:#9ba2ab}.scout-foot{border-top:1px solid var(--line);padding-top:11px;margin-top:16px;display:flex;justify-content:space-between;align-items:center;gap:8px;font:9px var(--mono);color:var(--muted)}.scout-next{font-size:9px;color:var(--muted);margin-top:8px}.scout details{margin-top:9px;color:var(--red);font-size:10px}@media(max-width:760px){.scouts{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<header><div class="brand"><div class="mark">i.</div>ISU SCAFFOLD <span>/ Board</span></div><div class="top-status"><span id="updated">接続中</span></div></header>
+<header><div class="brand"><div class="mark">i.</div>ISU SCAFFOLD <span>/ Board</span></div><div class="top-status"><span id="daemon" hidden></span><span id="updated">接続中</span></div></header>
 <main>
 
 <div id="connection-error" role="status"></div>
 <div class="overview" id="overview"></div>
 <section class="score-section"><div class="panel score-panel" id="score-history"></div></section>
 <div id="operation-status" class="operation-status" aria-live="polite"></div>
+<section class="scouts-section"><div class="section-title"><div><h2>Scout</h2><span class="count" id="scout-count">—</span></div><span class="section-note">並列で動かしている調査エージェントの最新報告。内容は投稿時点のもの</span></div><div id="scouts" class="scouts"></div></section>
 <section class="records-section"><div class="section-title"><div><h2>記録</h2><span class="count" id="records-count">—</span></div><span class="section-note">必ず残す記録（config/records.json）。開くと本文を表示します</span></div><div id="records" class="records"></div></section>
 <section class="metrics-section"><div class="section-title"><div><h2>計測結果</h2><span class="count">ISUSCOPE</span></div><span class="section-note" id="metric-time">計測結果を待っています</span></div>
 <div class="measurement-browser">
@@ -119,7 +121,25 @@ function renderScoreHistory(q){
 }
 function table(parent,heads,rows){const scroll=el('div',null,'table-scroll'),t=el('table'),thead=el('thead'),tr=el('tr');heads.forEach(h=>tr.append(el('th',h)));thead.append(tr);t.append(thead);const body=el('tbody');rows.forEach(row=>{const tr=el('tr');row.forEach(value=>{const td=el('td');value instanceof Node?td.append(value):td.textContent=value??'—';tr.append(td)});body.append(tr)});t.append(body);scroll.append(t);parent.append(scroll)}
 function metricPanel(title,context){const panel=el('div',null,'panel'),head=el('div',null,'metric-heading');head.append(el('h3',title),el('span',context,'mono'));panel.append(head);return panel}
-function render(d){const opened=new Set([...document.querySelectorAll('details[open][data-key]')].map(x=>x.dataset.key));renderOverview({...d,metrics:overviewSelection(d)});renderScoreHistory(d.metrics||{});renderOperationStatus(d);updateRunChoices(d);for(const detail of document.querySelectorAll('details[data-key]'))detail.open=opened.has(detail.dataset.key);document.querySelector('#updated').textContent='更新 '+time(Date.now()/1000);}
+const scoutLabels={running:'探索中',waiting:'待機',stopped:'停止',error:'エラー'};
+const scoutNames={claude:['Claude Code','Anthropic','C'],codex:['Codex','OpenAI','O'],kimi:['Kimi Code','Kimi K3','K']};
+function renderScouts(s){
+ const root=document.querySelector('#scouts'),reports=s.reports||[];root.replaceChildren();
+ document.querySelector('#scout-count').textContent=String(reports.length).padStart(2,'0');
+ if(s.error){const p=el('p','scoutの状態を読めません。 '+s.error,'metrics-error');root.append(p);}
+ for(const r of reports){
+  const n=scoutNames[r.name]||[r.name,'',r.name.slice(0,1).toUpperCase()],card=el('article',null,'scout'),head=el('div',null,'scout-head'),identity=el('div');
+  identity.append(el('p',n[0],'scout-name'),el('p',n[1],'scout-model'));head.append(el('div',n[2],'avatar'),identity);
+  card.append(head,el('p',r.report??'まだ報告はありません。','scout-body'+(r.report==null?' empty-text':'')));
+  const foot=el('div',null,'scout-foot'),posted=el('time',r.posted_at?`${time(r.posted_at)} 投稿${r.run_id?' · run '+r.run_id:''}`:'未投稿');posted.title=date(r.posted_at);
+  foot.append(posted);if(s.running&&r.state!=='stopped')foot.append(el('span',scoutLabels[r.state]||r.state,'badge '+r.state));card.append(foot);
+  if(s.running&&r.next_at&&r.state==='waiting')card.append(el('p',`次回 ${date(r.next_at)}`,'scout-next'));
+  if(r.error){const detail=disclosure(card,'接続・実行の確認が必要','scout-'+r.name);detail.append(el('p',r.error,'error-text'));}
+  root.append(card);
+ }
+ const daemon=document.querySelector('#daemon');daemon.hidden=!s.running;daemon.replaceChildren(el('span','','dot'),document.createTextNode('scout 稼働中'));daemon.style.color='var(--green)';
+}
+function render(d){const opened=new Set([...document.querySelectorAll('details[open][data-key]')].map(x=>x.dataset.key));renderOverview({...d,metrics:overviewSelection(d)});renderScoreHistory(d.metrics||{});renderOperationStatus(d);renderScouts(d.scouts||{});updateRunChoices(d);for(const detail of document.querySelectorAll('details[data-key]'))detail.open=opened.has(detail.dataset.key);document.querySelector('#updated').textContent='更新 '+time(Date.now()/1000);}
 let refreshing=false;
 async function refresh(){if(refreshing)return;refreshing=true;try{const response=await fetch('/api/board');if(!response.ok)throw Error(response.status);render(await response.json());document.querySelector('#connection-error').textContent='';}catch(e){document.querySelector('#connection-error').textContent='更新できません。表示中の情報は前回取得時点のものです。 '+e.message;}finally{refreshing=false}}
 

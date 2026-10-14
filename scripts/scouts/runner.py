@@ -47,8 +47,8 @@ def export_board(repo):
 
 def save_report(repo, name, report, bundle, ref, session, now=None):
     report = report.strip()
-    if not 1 <= len(report) <= 300:
-        raise ValueError(f'報告は1〜300字が必要です（{len(report)}字）。切り捨てず失敗として扱います')
+    if not report:
+        raise ValueError('報告が空です')
     m = bundle['metrics']
     with connect(repo) as db:
         db.execute('''UPDATE scouts SET report=?,posted_at=?,input_ref=?,code_commit=?,run_id=?,base_run_id=?,session_id=?,failures=0,error=NULL WHERE name=?''',

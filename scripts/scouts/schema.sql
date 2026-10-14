@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS scouts (
  next_at REAL,
  started_at REAL,
  posted_at REAL,
- report TEXT CHECK(report IS NULL OR (length(trim(report)) BETWEEN 1 AND 300)),
+ report TEXT CHECK(report IS NULL OR length(trim(report)) > 0),
  input_ref TEXT,
  code_commit TEXT,
  run_id TEXT,

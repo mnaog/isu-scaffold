@@ -149,7 +149,8 @@
     "tests/test_scouts.py",
     "docs/roles/scout.md",
     "docs/roles/scout-prompt.txt",
-    "docs/scout-board.md"
+    "docs/scout-board.md",
+    "scripts/board/scouts.py"
   ],
   "remove_files": [
     "docs/roles/operator.md",

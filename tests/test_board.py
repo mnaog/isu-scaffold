@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,7 @@ import reads
 import board_data
 import activity
 import records
+import scouts
 
 
 class BoardTests(unittest.TestCase):
@@ -412,13 +414,40 @@ class BoardTests(unittest.TestCase):
         (self.repo / 'docs/official/image.png').write_bytes(b'\x89PNG\0\0')
         self.assertIn('error', records.content(self.repo, 'docs/official/image.png'))
 
+    def test_scout_reports_are_read_without_creating_state(self):
+        write = lambda path, text: (path.parent.mkdir(parents=True, exist_ok=True), path.write_text(text))
+        write(self.repo / 'config/scouts.json', json.dumps({'scouts': {'claude': {}, 'codex': {}, 'kimi': {}}}))
+        result = scouts.scouts(self.repo)
+        self.assertEqual(result['reports'], [{'name': n, 'state': 'stopped'} for n in ('claude', 'codex', 'kimi')])
+        self.assertFalse(result['running'])
+        self.assertFalse((self.repo / '.local/scouts').exists())
+        database = self.repo / '.local/scouts/state.sqlite3'
+        database.parent.mkdir(parents=True)
+        db = sqlite3.connect(database)
+        db.executescript((SOURCE / 'scripts/scouts/schema.sql').read_text())
+        db.execute("INSERT INTO scouts(name,state,report,posted_at,run_id) VALUES ('codex','waiting',?,10,'12345678')", ('長い報告'*500,))
+        db.execute("INSERT INTO scouts(name,state,report) VALUES ('opencode','waiting','外した報告')")
+        db.commit()
+        db.close()
+        reports = {r['name']: r for r in scouts.scouts(self.repo)['reports']}
+        self.assertEqual(list(reports), ['claude', 'codex', 'kimi'])
+        self.assertEqual(reports['codex']['report'], '長い報告'*500)
+        self.assertEqual(reports['codex']['run_id'], '12345678')
+        # The daemon holds daemon.lock exclusively while it runs.
+        with (database.parent / 'daemon.lock').open('a+') as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            self.assertTrue(scouts.scouts(self.repo)['running'])
+        self.assertFalse(scouts.scouts(self.repo)['running'])
+        write(self.repo / '.local/scouts.json', json.dumps({'scouts': {'codex': {}}}))
+        self.assertEqual([r['name'] for r in scouts.scouts(self.repo)['reports']], ['codex'])
+
     def test_http_board_read_only(self):
         p=subprocess.Popen([sys.executable,str(self.repo/'scripts/board/main.py'),'--port','0'],cwd=self.repo,stdout=subprocess.PIPE,text=True)
         try:
             url=p.stdout.readline().strip()
             with urllib.request.urlopen(url+'/api/board') as r:
                 data=json.load(r)
-                self.assertEqual(set(data),{'metrics','activity'})
+                self.assertEqual(set(data),{'metrics','activity','scouts'})
             with urllib.request.urlopen(url+'/api/records') as r:
                 self.assertEqual(len(json.load(r)['records']), len(records.declared(SOURCE)))
             with urllib.request.urlopen(url+'/board-records.js') as r:

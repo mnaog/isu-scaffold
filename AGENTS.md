@@ -55,7 +55,7 @@
 並行させるAIは、すべてClaude Codeのheadless実行（`claude -p`）のlaneにする。laneは`scripts/lane.py`が自分のworktreeとbranch（`lane/<名前>`）で1回だけ動かし、そのbranchへcommitして終わる。mainのセッションは結果（`python3 scripts/lane.py status <名前>`）を読み、根拠を照合してから`git merge`で取り込む。laneは出力が決まった有限のタスクだけに使い、常駐させない。モデル・effort・使えるtool・時間上限・promptは`config/lanes.json`と`config/lanes/`が正で、laneは許可したtool以外を確認なしで拒否される。laneのremote node・deploy・ベンチ・isuscopeの記録・`.local/operation.lock`・push・laneの起動は`scripts/tool-guard.py`が止める。
 remote変更・deploy・共有ベンチはmain側で既存の共通lockを使い、実行中の操作と競合させない。作業中の他worktreeを変更・削除しない。
 人間は`make board`で開く読み取り専用の画面（ボード）で、スコアの推移、runの比較と負荷、必ず残す記録を見る。詳細は`docs/board.md`。
-scout（Claude Code・Codex・Kimi Code）は人間がPhase 2開始を決めてから`make scout-start`で起動し、`make scout-stop`で止める。各scoutは前回の報告を保存してから8分後に新しいセッションで探索し、最大300文字の報告を`docs/scout-board.md`へ書く（通常のコミットに含める）。参照する会話は`python3 scripts/scouts/main.py conversation <agent> <実セッションID>`で明示し、更新時刻から推測しない。報告はmainのセッションがベンチの待ち時間に読む。詳細は`docs/roles/scout.md`。
+scout（Claude Code・Codex・Kimi Code）は人間がPhase 2開始を決めてから`make scout-start`で起動し、`make scout-stop`で止める。各scoutは前回の報告を保存してから8分後に新しいセッションで探索し、報告を`docs/scout-board.md`へ書く（通常のコミットに含める）。参照する会話は`python3 scripts/scouts/main.py conversation <agent> <実セッションID>`で明示し、更新時刻から推測しない。報告はmainのセッションがベンチの待ち時間に読む。詳細は`docs/roles/scout.md`。
 
 ## sfs
 

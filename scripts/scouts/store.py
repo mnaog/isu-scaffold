@@ -28,7 +28,13 @@ def local(repo):
 def connect(repo):
     db = sqlite3.connect(local(repo) / 'state.sqlite3', timeout=15)
     db.row_factory = sqlite3.Row
-    db.executescript((HERE / 'schema.sql').read_text())
+    schema = (HERE / 'schema.sql').read_text()
+    db.executescript(schema)
+    # Reports were limited to 300 characters before; rebuild that table without the limit.
+    old = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='scouts'").fetchone()
+    if old and 'BETWEEN 1 AND 300' in old[0]:
+        db.executescript('ALTER TABLE scouts RENAME TO scouts_limited;' + schema +
+                         'INSERT INTO scouts SELECT * FROM scouts_limited; DROP TABLE scouts_limited;')
     try:
         with db:
             yield db
