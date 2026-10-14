@@ -43,7 +43,8 @@
     "code-map",
     "indexes",
     "obvious-fixes",
-    "local-env"
+    "local-env",
+    "state-log"
   ],
   "lanes": {
     "code-map": {
@@ -64,6 +65,11 @@
     "local-env": {
       "purpose": "ローカル実行環境を構成してmake local-checkを通し、docs/local-verification.mdを書く",
       "prompt": "config/lanes/local-env.md",
+      "timeout_minutes": 45
+    },
+    "state-log": {
+      "purpose": "状態を持つ対象の状態の変化をisuscopeの状態ログへ書く呼び出しを入れる（baselineまでdeployしない）",
+      "prompt": "config/lanes/state-log.md",
       "timeout_minutes": 45
     },
     "scenario": {

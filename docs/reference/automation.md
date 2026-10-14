@@ -15,7 +15,7 @@ cp config/environment.example.env .local/environment.env
 
 ```bash
 make kickoff   # バックグラウンドで実行し、tail -n +1 -f .local/progress.log を追う
-# 先行回収・commit後に、初期buildの調査とAI lane（code-map、indexes、obvious-fixes、local-env）が並行で始まる
+# 先行回収・commit後に、初期buildの調査とAI lane（code-map、indexes、obvious-fixes、local-env、state-log）が並行で始まる
 # 実行中に: 公式資料を保存・commitして python3 scripts/lane.py start scenario
 # 実行中に: config/benchmark.env・benchmark-contract、benchmark.sh --check/--probe
 # 実行中に: 自動生成されたbuild設定を確認してcommit（設定待ちなら作る）
@@ -60,7 +60,7 @@ git merge lane/code-map                      # 取り込みはmainのセッシ�
 
 - **設定**: `config/lanes.json`の`claude`にcommand、model（既定`claude-opus-5-5`）、effort（既定`high`）、permission mode、`allowed_tools`、時間上限を置きます。permission modeは`dontAsk`で、`allowed_tools`にないtool（Web、remote command、任意のshell）は確認なしで拒否されます。人間が途中で承認しないので、laneが自分の権限を広げられないようにするためです。
 - **remote操作の禁止**: laneは環境変数`ISUCON_LANE`付きで動きます。`scripts/tool-guard.py`はこれを見て、SSH・コピー、Ansible、deploy・import・kickoffなどremoteへ触れるscriptとmake target、ベンチ、isuscopeの記録系command、`.local/operation.lock`、`git push`、laneやAI CLIの起動を拒否します。
-- **起動**: `make kickoff`は先行回収のcommit直後に`kickoff`のlane（既定は`code-map`、`indexes`、`obvious-fixes`、`local-env`）を起動します。`code-map`は`docs/code-map.md`、`indexes`はschema（根拠はcommit messageに書き、`docs/indexes.md`へは効果を測ったmainが写す）、`obvious-fixes`はアプリのコード、`local-env`は`config/local/`と`docs/local-verification.md`だけを変えるので、互いにmergeで衝突しません。`scenario`（`docs/benchmark-scenario.md`）は公式資料が要るので、mainが`docs/official/`をcommitした直後に`python3 scripts/lane.py start scenario`で起動します。laneは起動時のbranchから分かれるので、commitの前に起動すると公式資料が見えません。実行中は15秒ごと（`LANE_POLL_SECONDS`）にbranchを見て、新しいcommitを`lane:<名前> commit`として知らせます。完了・実行中のlaneは再実行しません。`KICKOFF_LANES=`で止め、`KICKOFF_LANES=code-map`で選べます。laneの起動に失敗してもkickoffは続きます。
+- **起動**: `make kickoff`は先行回収のcommit直後に`kickoff`のlane（既定は`code-map`、`indexes`、`obvious-fixes`、`local-env`、`state-log`）を起動します。`code-map`は`docs/code-map.md`、`indexes`はschema（根拠はcommit messageに書き、`docs/indexes.md`へは効果を測ったmainが写す）、`obvious-fixes`はアプリのコード、`local-env`は`config/local/`と`docs/local-verification.md`、`state-log`は書き手のmodule（`config/state-log/state_log.rs`の写し）と呼び出しの追加、`docs/state-log.md`だけを変えます。`obvious-fixes`と`state-log`は同じ関数に行を足すことがあるので、`state-log`を先に取り込み、衝突したら両方の行を残します。`scenario`（`docs/benchmark-scenario.md`）は公式資料が要るので、mainが`docs/official/`をcommitした直後に`python3 scripts/lane.py start scenario`で起動します。laneは起動時のbranchから分かれるので、commitの前に起動すると公式資料が見えません。実行中は15秒ごと（`LANE_POLL_SECONDS`）にbranchを見て、新しいcommitを`lane:<名前> commit`として知らせます。完了・実行中のlaneは再実行しません。`KICKOFF_LANES=`で止め、`KICKOFF_LANES=code-map`で選べます。laneの起動に失敗してもkickoffは続きます。
 - **記録**: `.local/lanes/<名前>/`に`status.json`（状態、branch、worktree、commit一覧、秒数、費用）、`stream.jsonl`（stream-json出力）、`result.md`（最後の回答）が残ります。Claudeが最後のcommitの後に書いた会話履歴（`docs/agent-history/`）は、lane.pyがbranchへcommitします。所要時間は`.local/stage-timing.tsv`へ`lane`として入ります。
 - **時間上限**: laneごとの`timeout_minutes`を過ぎるとprocess groupを止めて`timeout`にします。それまでのcommitはbranchに残ります。
 - **後始末**: mergeが済んだlaneは、worktreeで`make local-down`してから`git worktree remove`します。

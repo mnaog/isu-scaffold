@@ -12,7 +12,7 @@ make kickoff                           # コード先行回収・初期build・A
                                        # 実行中は.local/progress.logを追い、ベンチ接続を並行して準備する
 CONFIRM_DRAFT=true make kickoff-apply  # .local/draft/review.mdを判断してから反映・完全import
 make first-bench                       # importをcommitしたら: bench-check → 配布状態のままsurvey-run → deploy
-make lanes                             # AI lane（code-map、indexes、obvious-fixes、local-env、scenario）の結果を読んで取り込む
+make lanes                             # AI lane（code-map、indexes、obvious-fixes、local-env、state-log、scenario）の結果を読んで取り込む
 ```
 
 | 資料 | 内容 |

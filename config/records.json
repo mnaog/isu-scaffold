@@ -56,6 +56,12 @@
       "contents": "足した索引ごとに、対象のSQL、初期化後の行数、効果を確かめたrun ID。"
     },
     {
+      "path": "docs/state-log.md",
+      "title": "状態ログの対象",
+      "timing": "初動〜改善",
+      "contents": "状態を持つ対象の種類ごとに、状態と遷移、書いている箇所（file:line）、attrsのkey、書かなかった変化と理由。状態を変える処理を書き換えたら直す。"
+    },
+    {
       "path": "docs/cache-design.md",
       "title": "メモリ化の設計",
       "timing": "初動〜改善",
