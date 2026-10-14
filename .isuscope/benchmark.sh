@@ -324,9 +324,64 @@ if ! mkdir "${lock_dir}" 2>/dev/null; then
   exit 1
 fi
 printf '%s\n' "$$" >"${lock_dir}/pid"
+baseline_file=${project_root}/.local/benchmark-baseline-seconds
+run_pid_file=${project_root}/.local/benchmark-run.pid
+slow_watch_pid=
 cleanup() {
-  rm -f -- "${raw_output}"
+  stop_slow_watch
+  rm -f -- "${raw_output}" "${run_pid_file}"
   rm -rf -- "${lock_dir}" 2>/dev/null || true
+}
+
+# The isuscope process that started this adapter. scripts/benchmark-stop.sh sends it SIGTERM, so
+# isuscope records the run as interrupted and runs cleanup_command, as for its own deadline.
+record_run_pid() {
+  local pid=$PPID args
+  while [[ "${pid}" -gt 1 ]]; do
+    args=$(ps -o args= -p "${pid}" 2>/dev/null) || return 0
+    if [[ "${args}" =~ isuscope[[:space:]]+(run|survey-run)([[:space:]]|$) ]]; then
+      printf '%s\n' "${pid}" >"${run_pid_file}"
+      return 0
+    fi
+    pid=$(ps -o ppid= -p "${pid}" 2>/dev/null | tr -d ' ') || return 0
+    [[ -n "${pid}" ]] || return 0
+  done
+}
+
+# A benchmark that runs past BENCHMARK_SLOW_FACTOR (default 2) times the baseline gets one line in
+# .local/progress.log, and the agent decides whether to stop it. practice-14-second waited out four
+# hung runs of 15.5 minutes each at the hard deadline (BENCHMARK_TIMEOUT_SECONDS), which stays as
+# the last resort. The watcher holds none of the adapter's pipes, so isuscope never waits on it.
+start_slow_watch() {
+  local baseline factor=${BENCHMARK_SLOW_FACTOR:-2} limit
+  [[ -f "${baseline_file}" ]] || return 0
+  baseline=$(tr -d '[:space:]' <"${baseline_file}")
+  [[ "${baseline}" =~ ^[0-9]+$ && "${baseline}" -gt 0 && "${factor}" =~ ^[0-9]+$ && "${factor}" -gt 0 ]] || return 0
+  limit=$((baseline * factor))
+  (
+    exec </dev/null >/dev/null 2>&1
+    sleep "${limit}"
+    python3 "${project_root}/scripts/progress.py" emit benchmark slow \
+      "running for ${limit}s, ${factor}x the ${baseline}s baseline. Check the app and nginx error logs" \
+      "and node load; stop it with scripts/benchmark-stop.sh, or let it run" \
+      "(isuscope stops it at BENCHMARK_TIMEOUT_SECONDS=${BENCHMARK_TIMEOUT_SECONDS})" || true
+  ) &
+  slow_watch_pid=$!
+}
+
+stop_slow_watch() {
+  [[ -n "${slow_watch_pid}" ]] || return 0
+  pkill -P "${slow_watch_pid}" 2>/dev/null || true
+  kill "${slow_watch_pid}" 2>/dev/null || true
+  slow_watch_pid=
+}
+
+# The first benchmark that ends on its own with output is the baseline the later runs compare with.
+record_baseline() {
+  local status=$1 seconds=$2
+  [[ -f "${baseline_file}" || "${status}" -ne 0 || "${seconds}" -le 0 ]] && return 0
+  grep -q '[^[:space:]]' "${raw_output}" || return 0
+  printf '%s\n' "${seconds}" >"${baseline_file}"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -346,6 +401,9 @@ if [[ "${BENCHMARK_TIMEOUT_SECONDS}" -gt 0 ]]; then
   fi
 fi
 
+record_run_pid
+start_slow_watch
+benchmark_started=$(date +%s)
 set +e
 if [[ "${BENCHMARK_TRANSPORT}" == local ]]; then
   if [[ "${BENCHMARK_TIMEOUT_SECONDS}" -gt 0 ]]; then
@@ -379,6 +437,8 @@ else
 fi
 benchmark_exit=${PIPESTATUS[0]}
 set -e
+stop_slow_watch
+record_baseline "${benchmark_exit}" $(($(date +%s) - benchmark_started))
 if [[ "${benchmark_exit}" -eq 124 ]]; then
   echo "benchmark adapter timed out" >&2
   exit 124

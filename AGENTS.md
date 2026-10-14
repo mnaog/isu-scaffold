@@ -117,6 +117,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 - ローカル実行環境は各worktreeで`make local-up / local-check / local-down`で操作してよい。worktree専用のDB・network・port・lockを使う。初回baselineの開始はローカル環境の完成を待たない。詳細は`docs/local-development.md`を参照する。
 - 自明な修正は初回baselineを取るまでremoteへ反映しない。baselineの分析後にmainの最新設定を取り込み、変更根拠を照合してから統合する。
 - `config/sync.json`のitemとcommandには対象node groupを明示し、役割を持たないnodeへ設定や再起動を配らない。再起動・reloadのcommandには`"when"`で対象のitem名（pattern）を書き、そのitemが変わったdeployでだけ実行させる。deployは前回のdeployから変わったitemだけを送る（全部送るなら`DEPLOY_ALL=1`）。
+- `isuscope run`はClaude Codeなら`run_in_background`で起動し、Monitorで`.local/progress.log`を追う（Codexは別のshellで動かし、作業の区切りごとに読む）。adapterは最初に自然に終わったベンチの所要時間をbaselineとして`.local/benchmark-baseline-seconds`へ残し、以後のベンチがその`BENCHMARK_SLOW_FACTOR`倍（既定2倍）を超えると`benchmark slow`の行を1行書く。止めはしないので、その行を見たらアプリ・nginxのerror logとnodeの負荷を確かめ、止まっているなら`scripts/benchmark-stop.sh`で止める（isuscopeが中断として記録し、ベンチnodeの後始末もする）。動いているなら待つ。`BENCHMARK_TIMEOUT_SECONDS`の期限は最後の安全網として残る（practice-14-secondは15.5分かかって失敗したrunを4回待ち、約1時間を失った）。
 - ベンチの間（`isuscope run`が操作lockを持つ間）に、次の候補のcommitを`make build`でbuildしておく。`make build`は操作lockを取らないので、ベンチ後の`make deploy`はbuild済みの成果物を使い、lockの中は配布・切替・検証だけになる。
 - `.local/`の接続情報や生成物をGitへ追加しない。固定化すべき構成だけを`ansible/`、`config/`、`scripts/`へ残す。
 - deploy、rollback、import、ベンチ接続、isuscope設定の詳しい契約は`docs/reference/automation.md`を正とする。

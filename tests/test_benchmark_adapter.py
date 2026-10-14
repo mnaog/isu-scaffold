@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -263,6 +264,93 @@ class AdapterTest(unittest.TestCase):
         result = json.loads(self.adapter('--extract', saved).stdout.strip())
         self.assertFalse(result['pass'])
         self.assertIn('benchmark exit status 1', result['messages'])
+
+    # practice-14-second waited out four hung runs of 15.5 minutes at the hard deadline. A run past twice
+    # the baseline is reported to the agent in progress.log; the agent decides whether to stop it.
+    def slow_setup(self, command, baseline=None):
+        shutil.copyfile(ROOT / 'scripts/progress.py', self.root / 'scripts/progress.py')
+        self.configure(FINAL_OUTPUT, BENCHMARK_COMMAND=command)
+        if baseline is not None:
+            (self.root / '.local').mkdir(exist_ok=True)
+            (self.root / '.local/benchmark-baseline-seconds').write_text(f'{baseline}\n')
+        self.progress = self.root / 'progress.log'
+
+    def run_adapter(self, *command):
+        run_dir = self.root / 'run'
+        run_dir.mkdir(exist_ok=True)
+        return subprocess.run(list(command or ['bash', str(ROOT / '.isuscope/benchmark.sh')]), capture_output=True,
+                              text=True, timeout=60,
+                              env=dict(os.environ, ISUSCOPE_PROJECT_ROOT=str(self.root), ISUSCOPE_RUN_DIR=str(run_dir),
+                                       ISUSCOPE_LOCK_HELD='1', PROGRESS_LOG=str(self.progress)))
+
+    def test_the_first_finished_benchmark_becomes_the_baseline(self):
+        self.slow_setup(f'sleep 1; printf "%s\\n" "$(cat {self.output})"')
+        completed = self.run_adapter()
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        baseline = self.root / '.local/benchmark-baseline-seconds'
+        self.assertGreaterEqual(int(baseline.read_text()), 1)
+        baseline.write_text('7\n')
+        self.assertEqual(self.run_adapter().returncode, 0)
+        self.assertEqual(baseline.read_text(), '7\n')
+
+    def test_a_failed_benchmark_is_not_the_baseline(self):
+        self.slow_setup(f'sleep 1; printf "%s\\n" "$(cat {self.output})"; exit 1')
+        self.run_adapter()
+        self.assertFalse((self.root / '.local/benchmark-baseline-seconds').exists())
+
+    def test_a_benchmark_past_twice_the_baseline_is_reported_and_left_running(self):
+        self.slow_setup(f'sleep 3; printf "%s\\n" "$(cat {self.output})"', baseline=1)
+        completed = self.run_adapter()
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertTrue(json.loads(completed.stdout.strip().splitlines()[-1])['pass'])
+        fields = self.progress.read_text().splitlines()[-1].split('\t')
+        self.assertEqual(fields[1:3], ['benchmark', 'slow'])
+        self.assertIn('2x the 1s baseline', fields[3])
+        self.assertIn('scripts/benchmark-stop.sh', fields[3])
+
+    def test_a_quick_benchmark_leaves_no_watcher_behind(self):
+        self.slow_setup(f'printf "%s\\n" "$(cat {self.output})"', baseline=1)
+        self.assertEqual(self.run_adapter().returncode, 0)
+        time.sleep(3)
+        self.assertFalse(self.progress.exists())
+
+    def test_stop_sends_sigterm_to_the_isuscope_run_that_started_the_adapter(self):
+        # A stand-in for `isuscope run`: it starts the adapter as its child, as isuscope does, and
+        # records its own pid; the benchmark copies the pid the adapter recorded and then hangs.
+        shutil.copyfile(ROOT / 'scripts/benchmark-stop.sh', self.root / 'scripts/benchmark-stop.sh')
+        (self.root / 'scripts/benchmark-stop.sh').chmod(0o755)
+        fake = self.root / 'bin/isuscope'
+        fake.parent.mkdir()
+        fake.write_text(f'#!/bin/bash\necho $$ > {self.root}/isuscope-pid\n'
+                        f'trap "echo stopped > {self.root}/stopped; kill 0" TERM\n'
+                        f'bash {ROOT}/.isuscope/benchmark.sh &\nwait\n')
+        fake.chmod(0o755)
+        seen = self.root / 'seen-pid'
+        self.slow_setup(f'cp {self.root}/.local/benchmark-run.pid {seen}; printf started; sleep 30')
+        process = subprocess.Popen([str(fake), 'run'], env=dict(
+            os.environ, ISUSCOPE_PROJECT_ROOT=str(self.root), ISUSCOPE_RUN_DIR=str(self.root / 'run'),
+            ISUSCOPE_LOCK_HELD='1', PROGRESS_LOG=str(self.progress)), start_new_session=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(lambda: process.poll() is None and os.killpg(process.pid, 9))
+        (self.root / 'run').mkdir(exist_ok=True)
+        for _ in range(100):
+            if seen.exists() and seen.read_text().strip():
+                break
+            time.sleep(0.1)
+        self.assertEqual(seen.read_text().strip(), (self.root / 'isuscope-pid').read_text().strip())
+        stopped = self.run_adapter(str(self.root / 'scripts/benchmark-stop.sh'))
+        self.assertEqual(stopped.returncode, 0, stopped.stderr)
+        process.wait(timeout=10)
+        self.assertEqual((self.root / 'stopped').read_text().strip(), 'stopped')
+
+    def test_stop_refuses_a_pid_that_is_not_an_isuscope_run(self):
+        shutil.copyfile(ROOT / 'scripts/benchmark-stop.sh', self.root / 'scripts/benchmark-stop.sh')
+        (self.root / '.local').mkdir(exist_ok=True)
+        (self.root / '.local/benchmark-run.pid').write_text(f'{os.getpid()}\n')
+        completed = subprocess.run(['bash', str(self.root / 'scripts/benchmark-stop.sh')], capture_output=True,
+                                   text=True)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn('not a running isuscope run', completed.stderr)
 
 
 if __name__ == '__main__':
