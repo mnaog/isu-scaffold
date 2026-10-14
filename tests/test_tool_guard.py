@@ -215,12 +215,71 @@ class ToolGuardTest(unittest.TestCase):
         # Outside a lane the same main-session work is allowed.
         self.assert_allowed('Bash', {'command': 'make deploy'})
 
+    def hook(self, tool_input, *args, tool='Bash', lane=None):
+        payload = {'tool_name': tool, 'tool_input': tool_input, 'cwd': str(self.root)}
+        env = {k: v for k, v in os.environ.items() if k != 'ISUCON_LANE'}
+        env['TOOL_GUARD_ROOT'] = str(self.root)
+        if lane:
+            env['ISUCON_LANE'] = lane
+        result = subprocess.run(['python3', str(GUARD), *args], input=json.dumps(payload), text=True,
+                                capture_output=True, env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)['hookSpecificOutput'] if result.stdout.strip() else None
+
+    def test_claude_starts_benchmarks_only_in_the_background(self):
+        for command in [
+            'isuscope run --hypothesis "indexを足す"',
+            'isuscope survey-run --hypothesis "初期状態"',
+            'make first-bench',
+            'cd /repo && isuscope run --repeat "再測定" --hypothesis x',
+            'bash scripts/first-bench.sh',
+            'isuscope lock -- isuscope run --hypothesis x',
+            'bash -c "isuscope run --hypothesis x"',
+        ]:
+            with self.subTest(command=command):
+                denied = self.hook({'command': command}, '--agent', 'claude')
+                self.assertEqual(denied['permissionDecision'], 'deny')
+                self.assertIn('run_in_background', denied['permissionDecisionReason'])
+                self.assertIsNone(self.hook({'command': command, 'run_in_background': True}, '--agent', 'claude'))
+                # Codex has no background Bash; its hook is not given --agent claude.
+                self.assertIsNone(self.hook({'command': command}))
+        for command in ['isuscope run --help', 'isuscope brief latest', 'make build', 'echo "isuscope run"',
+                        'git commit -m "isuscope run の結果"',
+                        "python3 - <<'EOF'\nnotes = 1\nisuscope run --hypothesis x\nEOF"]:
+            with self.subTest(command=command):
+                self.assertIsNone(self.hook({'command': command}, '--agent', 'claude'))
+
+    def test_background_benchmark_hands_over_the_scout_reports(self):
+        write(self.root / 'docs/scout-board.md', '# Scout board\n\n## claude\n\n'
+              '投稿: 2026-10-14T00:00:00Z / commit: `abc` / run: `12345678` / base: `なし`\n\n> indexが効いていない\n'
+              '\n## kimi\n\n未投稿\n')
+        subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
+        started = {'command': 'isuscope run --hypothesis x', 'run_in_background': True}
+        output = self.hook(started, '--agent', 'claude', '--post')
+        self.assertEqual(output['hookEventName'], 'PostToolUse')
+        self.assertIn('scout', output['additionalContext'])
+        self.assertIn('indexが効いていない', output['additionalContext'])
+        self.assertRegex(output['additionalContext'], r'投稿: 2026-10-14T00:00:00Z（\d+分前）')
+        for tool_input in [{'command': 'isuscope run --hypothesis x'}, {'command': 'make build', 'run_in_background': True}]:
+            with self.subTest(tool_input=tool_input):
+                self.assertIsNone(self.hook(tool_input, '--agent', 'claude', '--post'))
+        # A post hook never denies, even for a call PreToolUse would have stopped.
+        self.assertIsNone(self.hook({'command': 'ssh isucon14-bench', 'run_in_background': True},
+                                    '--agent', 'claude', '--post'))
+        # No report yet (scouts not started): nothing to add.
+        write(self.root / 'docs/scout-board.md', '# Scout board\n\n## claude\n\n未投稿\n')
+        self.assertIsNone(self.hook(started, '--agent', 'claude', '--post'))
+
     def test_hook_settings_call_the_guard(self):
         claude = json.loads((ROOT / '.claude/settings.json').read_text())
         codex = json.loads((ROOT / '.codex/hooks.json').read_text())
         for settings in (claude, codex):
             commands = [hook['command'] for group in settings['hooks']['PreToolUse'] for hook in group['hooks']]
             self.assertTrue(any('scripts/tool-guard.py' in command for command in commands))
+        pre = [hook['command'] for group in claude['hooks']['PreToolUse'] for hook in group['hooks']]
+        post = [hook['command'] for group in claude['hooks']['PostToolUse'] for hook in group['hooks']]
+        self.assertTrue(any('--agent claude' in command for command in pre))
+        self.assertTrue(any('--agent claude' in command and '--post' in command for command in post))
 
 
 if __name__ == '__main__':

@@ -138,7 +138,18 @@
     "scripts/rollback.sh",
     "tests/test_benchmark_markers.py",
     "scripts/deploy.sh",
-    "tests/test_benchmark_sample.py"
+    "tests/test_benchmark_sample.py",
+    "scripts/scouts/main.py",
+    "scripts/scouts/runner.py",
+    "scripts/scouts/inputs.py",
+    "scripts/scouts/store.py",
+    "scripts/scouts/process_guard.py",
+    "scripts/scouts/schema.sql",
+    "config/scouts.json",
+    "tests/test_scouts.py",
+    "docs/roles/scout.md",
+    "docs/roles/scout-prompt.txt",
+    "docs/scout-board.md"
   ],
   "remove_files": [
     "docs/roles/operator.md",
@@ -162,14 +173,11 @@
     "tests/test_operations.py",
     "scripts/operations/inputs.py",
     "scripts/operations/runner.py",
-    "docs/roles/scout.md",
     "docs/roles/connection-check.md",
     "scripts/operations/board-workspace.js",
     "scripts/operations/activity.py",
-    "docs/roles/scout-prompt.txt",
     "scripts/scout",
     "config/operations.json",
-    "docs/scout-board.md",
     "docs/roles/opencode-zen.md",
     "scripts/operations/process_guard.py"
   ]
