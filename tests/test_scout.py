@@ -134,6 +134,28 @@ class ScoutTests(unittest.TestCase):
         self.assertEqual(row['report'], '発見なし')
         self.assertEqual(row['state'], 'waiting')
 
+    def test_kimi_gets_the_prompt_as_an_argument_and_its_last_answer_is_the_report(self):
+        # Kimi Code reads the prompt only from --prompt; stdin_as_arg.py appends stdin there.
+        fake = self.repo / 'fake_kimi.py'
+        fake.write_text('import json, sys\n'
+                        'assert sys.argv[-2] == "--prompt" and "禁止資料" in sys.argv[-1]\n'
+                        'for event in [{"role": "meta", "type": "system.version"},\n'
+                        '              {"role": "assistant", "content": [{"type": "text", "text": "途中の考え"}]},\n'
+                        '              {"role": "assistant", "tool_calls": []},\n'
+                        '              {"role": "assistant", "content": "索引がない"},\n'
+                        '              {"role": "meta", "type": "session.resume_hint", "session_id": "session_k"}]:\n'
+                        '    print(json.dumps(event, ensure_ascii=False))\n')
+        kimi = json.loads((SOURCE / 'config/scout.json').read_text())['scouts']['kimi']
+        self.assertNotIn('unavailable', kimi)
+        self.assertEqual(kimi['argv'][:3], ['python3', 'scripts/scout/stdin_as_arg.py', 'kimi'])
+        self.cfg['scouts']['kimi'] = dict(kimi, argv=[sys.executable, str(SOURCE / 'scripts/scout/stdin_as_arg.py'),
+                                                      sys.executable, str(fake), *kimi['argv'][3:]])
+        with patch.object(runner, 'prompt', return_value='禁止資料は読まない'):
+            self.assertTrue(runner.attempt(self.repo, self.cfg, 'kimi', bundle=self.bundle))
+        row = self.query("SELECT * FROM scouts WHERE name='kimi'")[0]
+        self.assertEqual(row['report'], '索引がない')
+        self.assertEqual(row['session_id'], 'session_k')
+
     def test_failure_backoff_keeps_previous_report(self):
         runner.save_report(self.repo, 'codex', '順調そう', self.bundle, 'ref', 'session')
         self.cli.write_text('import sys\nsys.stdin.read()\nprint("  ")\n')

@@ -115,6 +115,18 @@ def invoke(repo, spec, text, directory, stop, timeout, session, lock_fd=None, ro
         return output.read_text()
     if spec['output'] == 'file':
         return output.read_text()
+    if spec['output'] == 'kimi-json':
+        events = [json.loads(line) for line in raw.splitlines() if line.strip()]
+        def text(content):  # a string, or a list of content blocks
+            if isinstance(content, list):
+                return ''.join(b.get('text', '') for b in content if isinstance(b, dict) and b.get('type') == 'text')
+            return content if isinstance(content, str) else ''
+        answers = [t for e in events if e.get('role') == 'assistant' and (t := text(e.get('content')))]
+        if not answers:
+            raise ValueError('Kimi Codeの最終回答がありません')
+        resumed = next((e.get('session_id') for e in events if e.get('type') == 'session.resume_hint'), None)
+        (directory / 'model.json').write_text(json.dumps({'models': [spec['model']], 'session_id': resumed}))
+        return answers[-1]
     if spec['output'] == 'claude-json':
         value = json.loads(raw)
         if value.get('is_error'):

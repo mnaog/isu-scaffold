@@ -45,12 +45,18 @@
     },
     "kimi": {
       "label": "Kimi Code + Kimi K3",
-      "model": null,
+      "model": "kimi-code/k3",
       "argv": [
-        "kimi"
+        "python3",
+        "scripts/scout/stdin_as_arg.py",
+        "kimi",
+        "--model",
+        "{model}",
+        "--output-format",
+        "stream-json",
+        "--prompt"
       ],
-      "output": "text",
-      "unavailable": "Kimi Code CLIが見つからず、認証とKimi K3の正確なモデルID・非対話引数は未確認"
+      "output": "kimi-json"
     }
   }
 }

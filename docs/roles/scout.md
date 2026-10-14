@@ -29,9 +29,9 @@ make scout-stop     # 最新の報告をdocs/scout-reports.mdへ残す
 
 `config/scout.json`に呼び出しargv、model、出力形式、時間、シナリオ参照先、比較元runを置く。端末固有の上書きはファイル全体を`.local/scout.json`へコピーする。秘密をGit管理設定に入れない。設定変更は常駐処理を停止してから行い、再起動する。
 
-argvはshell文字列でなく配列。`{model}`、`{session}`（各回のUUID）、`{output}`（最終回答ファイル）を置換し、共通プロンプトはstdinに渡す。resume/continue指定は使わない。adapterは`file`、`claude-json`、`codex-json`、`text`を持つ。別CLIがstdin非対応なら、stdinを読み取ってそのCLIへ渡す小さなadapterを設定する。
+argvはshell文字列でなく配列。`{model}`、`{session}`（各回のUUID）、`{output}`（最終回答ファイル）を置換し、共通プロンプトはstdinに渡す。resume/continue指定は使わない。adapterは`file`、`claude-json`、`codex-json`、`kimi-json`、`text`を持つ。別CLIがstdin非対応なら、stdinを読み取ってそのCLIへ渡す小さなadapterを設定する。
 
-未導入CLI・認証不足・model ID未確認は利用不可として表示し、代替モデルへ切り替えない。Kimi Code/Kimi K3は実機確認後に`unavailable`を除き、正確なargv/modelを設定する。Kimiが利用不可のままでも他の2体は動く。採用・除外の判断待ちや準備の完了待ちは設けない。
+未導入CLI・認証不足・model ID未確認は利用不可として表示し、代替モデルへ切り替えない。Kimi Code（2.1.1で確認）はK3をmodel alias `kimi-code/k3`で使う。promptを`--prompt`の引数でしか受け取らないので、`scripts/scout/stdin_as_arg.py`がstdinを最後の引数へ渡し、`--output-format stream-json`の最後のassistantの回答を報告にする（adapter `kimi-json`）。認証は`kimi login`。1体が使えなくても（未導入・認証切れ・利用上限）他のscoutは動く。採用・除外の判断待ちや準備の完了待ちは設けない。
 
 ```bash
 python3 scripts/scout/main.py once claude --smoke
