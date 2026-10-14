@@ -108,7 +108,8 @@ sync_validate() {
     [[ -n "${item_source}" ]] || item_source=${source_node}
     jq -e --arg group "${item_group}" --arg source "${item_source}" \
       '.all.children[$group].hosts | has($source)' "${sync_inventory}" >/dev/null || {
-        echo "source_node ${item_source} is not in sync item group ${item_group}" >&2
+        # node roleを変えた後に起きる（practice-14-forthでMySQLをapp3へ移した）。importの回収元なので、group内のnodeへ直す。
+        echo "source_node ${item_source} is not in sync item group ${item_group} ($(sync_group_nodes "${item_group}" | paste -sd ' ' -)); set the item's source_node in config/sync.json to one of them" >&2
         return 1
       }
   done < <(jq -r '.source_node as $default | .items[] | [.node_group, .local, (.source_node // $default)] | @tsv' "${sync_manifest}")

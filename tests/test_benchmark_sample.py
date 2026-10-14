@@ -64,6 +64,18 @@ class BenchmarkSampleTest(unittest.TestCase):
         self.assertEqual((self.root / 'config/benchmark.env').read_text(), before)
         self.assertFalse((self.root / 'rescored').exists())
 
+    def test_default_patterns_read_key_value_results(self):
+        # ISUCON14 ends with `msg=結果 pass=false スコア=N`; `pass=` alone read as PASS (practice-14-forth).
+        for line, expected in (('msg=結果 pass=false スコア=0 種別エラー数=3', (0, False)),
+                               ('msg=結果 pass=true スコア=850 種別エラー数=0', (850, True))):
+            output = self.root / 'output.log'
+            output.write_text('start\n' + line + '\n')
+            completed = subprocess.run(['.isuscope/benchmark.sh', '--read', str(output)], cwd=self.root,
+                                       capture_output=True, text=True)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            result = json.loads(completed.stdout)
+            self.assertEqual((result['score'], result['pass']), expected, line)
+
     def test_apply_needs_the_values_read_by_hand_to_agree(self):
         completed = self.sample('--apply', '--score', '64', '--pass', 'true')
         self.assertNotEqual(completed.returncode, 0)
