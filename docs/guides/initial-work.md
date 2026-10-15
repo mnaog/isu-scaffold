@@ -6,7 +6,7 @@
 
 また、アプリケーションコードと設定ファイルをすべてローカルリポジトリで管理し、コマンドからサーバーへデプロイできる状態を作る。
 
-SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を4本起動する。`indexes`が索引を、`obvious-fixes`が索引以外の自明な修正を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書く。kickoffは調査結果から`docs/environment.md`も自動で書き、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。mainのセッションはその間に公式資料・ベンチ接続・初期build設定・draftの判断を進め、公式資料をcommitしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
+SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を4本起動する。`indexes`が索引を、`obvious-fixes`が索引以外の自明な修正を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書く。kickoffは、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。mainのセッションはその間に公式資料・ベンチ接続・初期build設定・draftの判断を進め、公式資料をcommitしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
 
 調査・修正・ローカル検証・deploy・ベンチ・採否判断の責任はmainのセッションが持つ。laneの成果は根拠を照合してからmergeする。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
 
@@ -58,7 +58,6 @@ SSH確立直後に採用言語のコードとDB schemaを先行importし、初�
 - 練習でAWS環境を自分で作る場合は、構成定義を`infra/`へ保存し、停止・再開・削除をコマンドで行えるようにする。認証情報はGitへ保存しない
 - `make kickoff`が出す`.local/draft/review.md`のFAILはすべて直し、WARNは内容を読んで判断してから`make kickoff-apply`へ進む。draftのremote path、owner、service、roleは推測にすぎない
 - nodeの分類が誤っている場合はprovider入力やdraftを直して再生成し、生成物を手作業で直し続けない
-- 台数とrole、CPU・メモリ、OS・kernel・nginx・MySQLの版、配布サーバーの言語の版、開始からの計時を`docs/environment.md`へ残す。kickoffが調査結果から`scripts/environment-report.py`で自動で書くので、確かめてcommitし、開始宣言の時刻など足りないものを書き足す
 - importで配布先のdigestが一致しない場合は、sourceを確認するまで進めない
 - 初期状態をcommitし、`make deploy`、`make status`、明示的な`make rollback`で稼働プロセスまで旧構成へ戻ることを確認する
 - 計測と運用の土台は初動のAnsibleで固定化される。レギュレーションで禁止された項目だけ変数で外し、性能を変える設定は初回baselineの後に入れる
@@ -160,7 +159,6 @@ APIの一覧には、各APIのhandler（`file:line`）と主なSQL・外部処�
 記録の置き場所は固定で、一覧は`config/records.json`にある。`make board`の「記録」で、人間が一覧と中身を見る。決まった場所以外に書かない。
 
 - `docs/official/`：公式の一次情報
-- `docs/environment.md`：環境
 - `docs/benchmark-scenario.md`：ベンチの見取り図
 - `docs/state-log.md`：状態ログの対象
 - `docs/cache-design.md`：メモリ化の設計（入れた場合）

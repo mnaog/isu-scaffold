@@ -157,7 +157,6 @@ class KickoffTests(unittest.TestCase):
             for p in (root/'scripts').glob('*.sh'):p.chmod(0o755)
             (root/'scripts/initial-build.py').write_text('import sys\nopen("events","a").write("build-"+sys.argv[1]+"\\n")\n')
             (root/'scripts/lane.py').write_text('import sys\nopen("events","a").write("lanes-"+sys.argv[1]+"\\n")\n')
-            (root/'scripts/environment-report.py').write_text('open("events","a").write("environment\\n")\n')
             (root/'scripts/review-draft.py').write_text('')
             environment = {k: v for k, v in os.environ.items() if not k.startswith(('CODEX_', 'CLAUDE_CODE_SESSION'))}
             environment.update(ISUSCOPE_LOCK_HELD='1', CLAUDE_CODE_SESSION_ID='fixture-session')
@@ -169,12 +168,12 @@ class KickoffTests(unittest.TestCase):
                 self.assertIn('Start a new Codex or Claude Code session inside', result.stderr)
                 return
             self.assertEqual((root/'events').read_text().splitlines(),
-                             ['build-start','lanes-kickoff','bootstrap','inspect','environment','draft','build-status'])
+                             ['build-start','lanes-kickoff','bootstrap','inspect','draft','build-status'])
             self.assertEqual(result.returncode, 0, result.stderr)
             # Nested steps keep their own timing although the outer lock records only kickoff.
             stages = [line.split('\t')[1:3] for line in (root/'.local/stage-timing.tsv').read_text().splitlines()]
             self.assertEqual(stages, [['kickoff.sh', name] for name in
-                                      ('agent-session', 'build-dispatch', 'lanes', 'bootstrap', 'inspect', 'environment-report',
+                                      ('agent-session', 'build-dispatch', 'lanes', 'bootstrap', 'inspect',
                                        'configure-draft', 'review-draft')])
             # The agent following progress.log sees when code can be read and when the draft is ready.
             states = [line.split('\t')[1:3] for line in (root/'.local/progress.log').read_text().splitlines()]

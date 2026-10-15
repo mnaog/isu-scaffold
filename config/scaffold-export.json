@@ -128,8 +128,6 @@
     "tests/test_first_bench.py",
     "scripts/imported-state.py",
     "config/lanes/indexes.md",
-    "scripts/environment-report.py",
-    "tests/test_environment_report.py",
     "config/lanes/local-env.md",
     "config/lanes/scenario.md",
     "config/lanes/state-log.md",
@@ -216,6 +214,8 @@
     "docs/initial-automation.md",
     "docs/scout-board.md",
     "config/lanes/memory.md",
-    "config/lanes/code-map.md"
+    "config/lanes/code-map.md",
+    "scripts/environment-report.py",
+    "tests/test_environment_report.py"
   ]
 }

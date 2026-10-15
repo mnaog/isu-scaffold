@@ -14,12 +14,6 @@
       "contents": "レギュレーション、マニュアル、API仕様などの原文。URLから取ったものは取得元と取得日時。"
     },
     {
-      "path": "docs/environment.md",
-      "title": "環境",
-      "timing": "初動",
-      "contents": "台数とrole、CPU・メモリ、OS・kernel・nginx・MySQLの版、配布サーバーの言語の版、開始からの計時。"
-    },
-    {
       "path": "docs/benchmark-scenario.md",
       "title": "ベンチの見取り図",
       "timing": "初動",

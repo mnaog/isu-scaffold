@@ -96,8 +96,6 @@ export ANSIBLE_FACT_CACHE_DIR
 trap 'rm -rf -- "${ANSIBLE_FACT_CACHE_DIR}"' EXIT
 stage bootstrap env ${bootstrap_env[@]+"${bootstrap_env[@]}"} "${script_dir}/bootstrap.sh"
 stage inspect "${script_dir}/inspect-environment.sh"
-# docs/environment.md from the inspection, without AI; never stops the setup.
-stage environment-report python3 "${script_dir}/environment-report.py" || true
 stage configure-draft "${script_dir}/configure-draft.sh"
 
 echo "== draft review"
