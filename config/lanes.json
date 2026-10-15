@@ -33,6 +33,9 @@
       "Bash(cat:*)",
       "Bash(sed -n:*)",
       "Bash(make local-reset:*)",
+      "Bash(make local-flow:*)",
+      "Bash(make local-state-log:*)",
+      "Bash(python3 scripts/state-log-compare.py:*)",
       "Bash(cp:*)",
       "Bash(mkdir:*)",
       "Bash(curl:*)"
@@ -71,6 +74,11 @@
       "purpose": "状態を持つ対象の状態の変化をisuscopeの状態ログへ書く呼び出しを入れる（baselineまでdeployしない）",
       "prompt": "config/lanes/state-log.md",
       "timeout_minutes": 45
+    },
+    "memory": {
+      "purpose": "状態をすべてメモリに置き、書き込みはDBに残す書き換えを作る（mainが初動のcommitを済ませてから起動）",
+      "prompt": "config/lanes/memory.md",
+      "timeout_minutes": 120
     },
     "scenario": {
       "purpose": "公式資料とコードからdocs/benchmark-scenario.mdを書く（mainがdocs/officialをcommitしてから起動）",

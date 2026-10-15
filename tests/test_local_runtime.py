@@ -35,6 +35,15 @@ class LocalRuntimeTests(unittest.TestCase):
                                "tool": {"image": "busybox"}}}
         self.assertEqual(runtime.split_services(config), (["db", "cache"], ["app", "nginx", "tool"]))
 
+    def test_state_log_is_looked_for_where_each_service_writes_it(self):
+        config = {"services": {"api": {"environment": {"ISUCON_DB_HOST": "db"}},
+                               "worker": {"environment": {"ISUSCOPE_STATE_LOG": "/tmp/state.jsonl"}},
+                               "quiet": {"environment": {"ISUSCOPE_STATE_LOG": ""}},
+                               "db": {}}}
+        self.assertEqual(list(runtime.state_log_sources(config)),
+                         [("api", runtime.DEFAULT_STATE_LOG), ("worker", "/tmp/state.jsonl"),
+                          ("db", runtime.DEFAULT_STATE_LOG)])
+
     def test_reject_unsafe_service_settings(self):
         for key, value in (("container_name", "shared"), ("network_mode", "host"), ("privileged", True),
                            ("ports", [{"host_ip": "0.0.0.0"}]),

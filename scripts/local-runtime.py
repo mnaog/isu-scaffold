@@ -14,6 +14,8 @@ import urllib.error
 import urllib.request
 
 REPO = Path(__file__).resolve().parent.parent
+# config/state-log/state_log.rs writes here unless the service sets ISUSCOPE_STATE_LOG.
+DEFAULT_STATE_LOG = "/var/tmp/isuscope-state.jsonl"
 
 
 def project_name(repo):
@@ -45,10 +47,21 @@ def split_services(config):
     return kept, [name for name in services if name not in kept]
 
 
+def state_log_sources(config):
+    """Each service's state log path inside its container. An empty ISUSCOPE_STATE_LOG turns the writer off."""
+    for name, service in config["services"].items():
+        path = (service.get("environment") or {}).get("ISUSCOPE_STATE_LOG", DEFAULT_STATE_LOG)
+        if path:
+            yield name, path
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["up", "check", "down", "logs", "reset"])
+    parser.add_argument("action", choices=["up", "check", "down", "logs", "reset", "state-log"])
+    parser.add_argument("name", nargs="?", default="latest", help="state-log: saved as .local/local-runtime/state-log/NAME.jsonl")
     args = parser.parse_args()
+    if not args.name.replace("-", "").replace("_", "").replace(".", "").isalnum():
+        raise ValueError(f"state log name must be letters, digits, '-', '_' or '.': {args.name}")
     state = REPO / ".local/local-runtime"
     state.mkdir(parents=True, exist_ok=True)
     project = project_name(REPO)
@@ -126,6 +139,28 @@ def main():
             print(check())
         elif args.action == "logs":
             invoke("logs", "--tail", "100")
+        elif args.action == "state-log":
+            # The writer flushes every 100ms. A container that was recreated (local-up) starts a new file.
+            time.sleep(0.5)
+            target = state / "state-log" / f"{args.name}.jsonl"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            parts = []
+            for service, path in state_log_sources(config):
+                copy = target.with_name(f".{args.name}.{service}.jsonl")
+                copy.unlink(missing_ok=True)
+                result = subprocess.run(command + ["cp", f"{service}:{path}", str(copy)], cwd=REPO, env=env,
+                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if result.returncode == 0 and copy.is_file():
+                    parts.append((service, copy))
+            if not parts:
+                raise ValueError("no service has a state log yet: the app needs state_log.rs and a state change "
+                                 f"after the last local-up (looked for ISUSCOPE_STATE_LOG or {DEFAULT_STATE_LOG})")
+            with target.open("wb") as out:
+                for _, copy in parts:
+                    out.write(copy.read_bytes())
+                    copy.unlink()
+            lines = sum(1 for _ in target.open("rb"))
+            print(json.dumps({"path": str(target), "services": [service for service, _ in parts], "lines": lines}))
         else:
             if args.action == "reset" and os.environ.get("LOCAL_RESET") != "yes":
                 raise ValueError("LOCAL_RESET=yes make local-reset removes only this worktree's DB and build volumes")

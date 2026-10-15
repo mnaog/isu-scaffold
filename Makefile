@@ -8,6 +8,8 @@ help:
 		'make worktree BRANCH=<name> PURPOSE="..."  目的つきで並行laneのworktreeを作る' \
 		'CONFIRM_DRAFT=true make kickoff-apply  検査済みdraftを反映して完全importする' \
 		'make local-up / local-check / local-down  worktree専用のローカル実行環境を操作する' \
+		'make local-flow FLOW=<json> [FROM=<前のflow>]  決まった操作の列をローカルのアプリへ流す' \
+		'make local-state-log NAME=<名前>       ローカルのアプリから状態ログを取り出す' \
 		'make build                            ローカルでLinux向けRust成果物を準備する' \
 		'make builder-images                   準備: 候補baseのRust builder imageを事前に作る' \
 		'make deploy                           commit済みのlocal状態を全nodeへ反映する' \
@@ -79,7 +81,7 @@ scout-status:
 test:
 	@python3 -m unittest discover -s tests -p 'test_*.py' -v
 
-.PHONY: local-up local-check local-down local-logs local-reset
+.PHONY: local-up local-check local-down local-logs local-reset local-state-log local-flow
 local-up:
 	@python3 scripts/local-runtime.py up
 local-check:
@@ -90,6 +92,10 @@ local-logs:
 	@python3 scripts/local-runtime.py logs
 local-reset:
 	@python3 scripts/local-runtime.py reset
+local-state-log:
+	@python3 scripts/local-runtime.py state-log $(NAME)
+local-flow:
+	@python3 scripts/local-flow.py $(FLOW) $(if $(FROM),--continue $(FROM))
 
 .PHONY: preparation-check
 preparation-check:

@@ -16,7 +16,7 @@ SSH確立直後に採用言語のコードとDB schemaを先行importし、初�
 2. kickoffと並行して、公式資料を保存・commitしてlane `scenario`を起動し、`config/benchmark.env`・`benchmark-contract`の用意、`--check`・`--probe`を済ませる。build設定が自動生成されたら確認してcommitし、設定待ちなら`config/initial-build.json`を作る。
 3. draftを判断して`kickoff-apply`し、完全importをcommitする。
 4. 人間の確認を待たずに`make first-bench`を実行する。`bench-check`の後、配布状態のままの初期状態で`survey-run`を取り、その後に同じcommitをdeployする（配布状態で測れない場合はdeployを先にする）。`baseline-ready`が出たらスコア・エラー・HTTP・SQL・ホスト負荷を分析し、lane `code-map`の地図を照合に使う。
-5. 観測とコードから改善を選ぶ。baselineの後の最初のdeployで、lane `state-log`のcommitを他のlaneより先に取り込む（以後のrunで、状態についての問いに計測を足さずに答えられる）。lane `indexes`・`obvious-fixes`のcommitは観測と照合して効くものから`git cherry-pick`し（laneの完了を待たない）、残りは実装・ローカル検証・commit・deployを進める。
+5. 観測とコードから改善を選ぶ。baselineの後の最初のdeployで、lane `state-log`のcommitを他のlaneより先に取り込む（以後のrunで、状態についての問いに計測を足さずに答えられる）。lane `indexes`・`obvious-fixes`のcommitは観測と照合して効くものから`git cherry-pick`し（laneの完了を待たない）、残りは実装・ローカル検証・commit・deployを進める。初動のcommitがmainに揃ったら、lane `memory`を起動する。状態をすべてメモリに置き、書き込みはDBに残す書き換えを、mainの改善と並行して作らせ、終わったらdeployして測る。
 6. 通常の`isuscope run`で比較し、仮説の判定と変更の採否を記録する。障害があれば原因調査から修正・再評価まで続ける。
 
 先行importは読解用の暫定snapshotであり、全配布先のdigest一致と設定の正本化は完全importで確認する。並行作業はlane（`scripts/lane.py`）か`make worktree`で行う。remote操作はmain側で共通lockを使う。
@@ -162,7 +162,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - DB・アプリ・nginxを別のnodeへ分ける配置変更
 - 読み取りのキャッシュ・メモリ化
 
-どちらも根拠（run ID、node別の観測値、期待する効果）を残し、1つずつ入れて通常の`isuscope run`で測る。メモリ化は1つの読み取り経路ずつ進め、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築方法を`docs/cache-design.md`へ書いてから入れる。非同期化やwrite-behindなど、整合性条件や永続化の時機を変える変更が必要なら、根拠を`docs/baseline.md`か分析に残し、[改善](improvement.md)の方針で入れる。
+どちらも根拠（run ID、node別の観測値、期待する効果）を残し、1つずつ入れて通常の`isuscope run`で測る。全メモリ化はlane `memory`に任せる。それより前にmainが入れるメモリ化は1つの読み取り経路ずつ進め、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築方法を`docs/cache-design.md`へ書いてから入れる。WALなどでDBを外すのは、書き込みが律速だと測れてからにする。非同期化やwrite-behindなど、整合性条件や永続化の時機を変える変更が必要なら、根拠を`docs/baseline.md`か分析に残し、[改善](improvement.md)の方針で入れる。
 
 ## 残すもの
 

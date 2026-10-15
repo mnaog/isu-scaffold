@@ -32,6 +32,20 @@ DB・Cargo・target volumeとnetworkはworktreeの絶対pathから作るCompose 
 
 事前取得済みvendorを使う場合は`LOCAL_USE_VENDOR=1 LOCAL_VENDOR_DIR=/absolute/vendor make local-up`とする。通常はCargoが依存を取得し、worktree専用Linux volumeへ保存する。ローカル開発用のnative build cacheは、`make build`のdeploy用cross build cacheとは別である。deploy用cacheは引き続きルートrepoで共有する。
 
+## 同じ操作を流して比べる
+
+書き換えの前と後で挙動が変わっていないかは、決まった操作の列を両方の版に流し、アプリの状態ログを比べて確かめる。
+
+```bash
+make local-flow FLOW=config/local/flows/<流れ>.json      # 操作の列を流す（形はscripts/local-flow.pyの冒頭）
+make local-state-log NAME=before                        # アプリのcontainerから状態ログを取り出す
+# 書き換えてmake local-upし、同じ流れを流してNAME=after
+python3 scripts/state-log-compare.py .local/local-runtime/state-log/before.jsonl .local/local-runtime/state-log/after.jsonl
+make local-flow FLOW=<後半>.json FROM=<前半>               # 前半の値とcookieから続ける（間にmake local-upで再起動）
+```
+
+`local-flow`は`local-up`が記録したloopbackのURLにだけ送る。`local-state-log`は各serviceの`ISUSCOPE_STATE_LOG`（無ければ`/var/tmp/isuscope-state.jsonl`）を`docker compose cp`で取り出す。`local-up`はアプリのcontainerを作り直すので、状態ログは`local-up`のたびに空から始まる。比べるのは、種類ごとに、同じ数の対象が同じ順番で状態を通ったかで、IDの違いは見ない。
+
 ## 検証範囲を記録する
 
 `LOCAL_DATA_LEVEL`に`schema`、`subset`、`full`などを指定する。これは操作者の申告であり、コマンドがデータの完全性を保証するものではない。起動記録にはcommit・webappの未commit変更の有無も保存する。起動後に編集した場合は再起動・再検証する。
