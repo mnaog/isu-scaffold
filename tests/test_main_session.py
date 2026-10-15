@@ -110,6 +110,15 @@ class MainSessionTest(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertIsNone(self.guard(command, 'S-worker'))
         self.assertIsNone(self.guard('make deploy', ''))  # no session id: cannot tell, so not checked
+        # The portal session builds the benchmark connection: the adapter's checks never start a benchmark.
+        for command in ['.isuscope/benchmark.sh --check', 'bash .isuscope/benchmark.sh --probe',
+                        'python3 scripts/benchmark-contract.py --seal']:
+            with self.subTest(command=command):
+                self.assertIsNone(self.guard(command, 'S-worker'))
+        for command in ['.isuscope/benchmark.sh', 'bash .isuscope/benchmark.sh --extract out.txt',
+                        '.isuscope/benchmark.sh --probe --check && .isuscope/benchmark.sh']:
+            with self.subTest(command=command):
+                self.assertIn('mainのセッション', self.guard(command, 'S-worker') or '')
         # Codex: the thread id main claimed with, even when the hook payload carries another id.
         self.assertIsNone(self.guard('make deploy', 'hook-id', env={'CODEX_THREAD_ID': 'S-main'}))
 

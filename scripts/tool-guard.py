@@ -16,8 +16,8 @@ Stopped calls:
   outside `allowed_urls`, and web searches about the current contest
 
 While a main session is declared (/main, scripts/main-session.py), every other session is also
-refused what only main does: deploy, rollback, import, kickoff, the benchmark, isuscope records,
-starting or stopping lanes and scouts, and the operation lock. Calls without a session id, and
+refused what only main does: deploy, rollback, import, kickoff, the benchmark (not the adapter's
+--check and --probe), isuscope records, starting or stopping lanes and scouts, and the operation lock. Calls without a session id, and
 every call while no main is declared, are not checked for this.
 
 Contest keywords and paths come from config/tool-guard.json. Empty lists turn those rules
@@ -342,12 +342,17 @@ class Guard:
 
     def check_main_only(self, program, args):
         """While a main is declared, other sessions leave remote changes and the benchmark to it."""
-        script = program
+        script, script_args = program, args
         operands = [a for a in args if not a.startswith('-')]
         if program in SHELLS | {'python', 'python3'}:
             script = os.path.basename(operands[0]) if operands else ''
+            script_args = args[args.index(operands[0]) + 1:] if operands else []
             operands = operands[1:]
-        if script in MAIN_SCRIPTS or program in {'ansible', 'ansible-playbook'} or any('operation.lock' in a for a in args):
+        # The adapter's --check and --probe never start a benchmark: the portal session (/portal)
+        # builds the connection with them while main runs kickoff.
+        checking = script == 'benchmark.sh' and script_args[:1] in (['--check'], ['--probe'])
+        if ((script in MAIN_SCRIPTS and not checking) or program in {'ansible', 'ansible-playbook'}
+                or any('operation.lock' in a for a in args)):
             raise Denied(MAIN_HINT)
         if script == 'lane.py' and operands[:1] and operands[0] in {'start', 'kickoff', 'stop'}:
             raise Denied(MAIN_HINT)

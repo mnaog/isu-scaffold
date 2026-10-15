@@ -6,15 +6,22 @@
 
 また、アプリケーションコードと設定ファイルをすべてローカルリポジトリで管理し、コマンドからサーバーへデプロイできる状態を作る。
 
-SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を4本起動する。`indexes`が索引を、`obvious-fixes`が索引以外の自明な修正を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書く。kickoffは、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。mainのセッションはその間に公式資料・ベンチ接続・kickoff build設定・draftの判断を進め、公式資料をcommitしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
+SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を4本起動する。`indexes`が索引を、`obvious-fixes`が索引以外の自明な修正を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書く。kickoffは、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。開始と同時に、worktree `portal`で起動したもう1つのセッションが`/portal`で、ポータルと当日マニュアルの保存、サーバーの起動に要る情報、ベンチ接続を作る。mainのセッションはその間にサーバーの起動、kickoff build設定、draftの判断を進め、portalの公式資料をmergeしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
 
 調査・修正・ローカル検証・deploy・ベンチ・採否判断の責任はmainのセッションが持つ。laneの成果は根拠を照合してからmergeする。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
 
 ## 流れ
 
-大会開始後は、`config/environment.example.env`を`.local/environment.env`へコピーしてprovider、SSH、node分類を設定し、次の順で進める。
+開始と同時に、人間が`--remote-debugging-port=9222`のChrome（Playwright MCPがつながるもの）でポータルにログインし、2つのセッションを起動する。rootでmain（`/main`の後に`/goal`）、`make worktree BRANCH=portal PURPOSE="ポータルの情報とベンチ接続"`のworktreeでportal（`/portal`）。portalは結果を`.local/progress.log`へ`portal <official|environment|bench|notice>`の行で書き、mainはkickoffの他の行と一緒に追う。
 
 ```text
+portal（mainと並行。手順は.claude/commands/portal.md）
+  → ポータルと当日マニュアルをdocs/official/へ保存してcommit（portal official）
+  → サーバーの起動に要る情報を.local/environment.envへ（portal environment）
+  → 自動操作が許されていれば、ベンチ接続（benchmark.env、contract、cookie）を作り、--check・--probeを通してcommit（portal bench）
+  → その後はポータルの告知と質問への回答を見張る（portal notice）
+main: portal environmentを見たらサーバーを起動し、.local/environment.env（形はconfig/environment.example.env）の
+  provider、SSH、node分類を確かめてから
 make kickoff（backgroundで実行し、.local/progress.logを追う）
   → 回収元1台のSSH確立後、webapp/rustとDDLを先行回収し、その範囲だけ自動commit（code-ready）
   → 並行して1台目のbuild環境を調査。build設定を自動生成できれば即build、できなければ設定待ち
@@ -26,8 +33,8 @@ make kickoff（backgroundで実行し、.local/progress.logを追う）
   → node role、同期対象、Ansible変数、log pathの候補を.local/draftへ生成
   → draftを実nodeと照合し、.local/draft/review.mdを出して停止（draft-ready）
 make kickoffの実行中にmainのセッションが並行して進める
-  → 公式資料をdocs/official/へ保存してcommitし、すぐlane scenario（docs/benchmark-scenario.md）を起動
-  → config/benchmark.envとbenchmark-contractを用意し、.isuscope/benchmark.sh --check、--probe（discoverの後なら実行できる）
+  → portal officialを見たらgit merge --no-ff portalし、すぐlane scenario（docs/benchmark-scenario.md）を起動
+  → portal benchを見たらgit merge --no-ff portalし、.isuscope/benchmark.sh --check。portal noticeは内容を確かめる
   → build設定待ちならconfig/kickoff-build.jsonを作る。自動生成されたら確認してcommit
   → progress.logのinitialize-routeがneeds_choice（候補が無い・複数）なら、選んでset-routeしてcommit
     （scripts/benchmark-markers.py suggest-route → set-route）
@@ -53,9 +60,9 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 
 ### 待ち時間を使う
 
-時間の大半は「`make kickoff`が終わるのを待つ間」と「deployから初回ベンチまで」に出る。mainのセッションは`make kickoff`の終了を待たず、`.local/progress.log`の行（`code-ready`、`initialize-route`、`kickoff-build configured / needs_configuration / complete / failed`、`lane:<名前> complete / failed`、`draft-ready / draft-failed`、段階の`failed`）を見て次の操作へ移る。`make kickoff`は`run_in_background`で起動し、Monitorで`tail -n +1 -f .local/progress.log`を追う。
+時間の大半は「`make kickoff`が終わるのを待つ間」と「deployから初回ベンチまで」に出る。mainのセッションは`make kickoff`の終了を待たず、`.local/progress.log`の行（`portal official / environment / bench / notice`、`code-ready`、`initialize-route`、`kickoff-build configured / needs_configuration / complete / failed`、`lane:<名前> complete / failed`、`draft-ready / draft-failed`、段階の`failed`）を見て次の操作へ移る。`make kickoff`は`run_in_background`で起動し、Monitorで`tail -n +1 -f .local/progress.log`を追う。
 
-- ベンチ接続の準備は`make kickoff`の結果を使わないので、開始と同時に始める。
+- 公式資料とベンチ接続は`make kickoff`の結果を使わないので、portalのセッションが開始と同時に始める。
 - `make first-bench`は段階の間でAIの手番を待たない。
 - 本番当日はRustのkickoff build（キャッシュなしで4〜5分）が最も長い待ちになる。最初のdeploy前はサーバーが配布状態のまま動いていることを使い、baselineをbuildとdeployの前に取る。
 - `bench-check`はdeployに依存しないので、deployの前に流す。deployで設定（nginx、MySQL、unit）を変えたときだけ再実行する。
@@ -90,7 +97,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 
 ## 公式情報を保存する
 
-大会運営から提供された情報を`docs/official/`へ保存する。
+portalのセッション（`/portal`）が、大会運営から提供された情報を`docs/official/`へ保存する。
 
 対象には次を含める。
 

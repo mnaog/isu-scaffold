@@ -24,7 +24,7 @@
 | 段階 | すること | 手順書 |
 | --- | --- | --- |
 | 準備（開始前） | 問題に依存しない道具・認証・検証を済ませる | [準備](docs/guides/preparation.md) |
-| kickoff | `make kickoff`をbackgroundで始めて`.local/progress.log`を追い、並行して公式資料の保存、lane `scenario`の起動、ベンチ接続、draftの判断を進める。完全importをcommitしたら、人間の確認を待たずに`make first-bench`で初回baselineを取る。laneのcommitを観測と照合して取り込み、`state-log`と`local-env`を取り込んだらlane `full-memory`で全メモリ化を並行させる | [kickoff](docs/guides/kickoff.md) |
+| kickoff | portalのセッションが公式資料とベンチ接続を作る間に、`make kickoff`をbackgroundで始めて`.local/progress.log`を追い、サーバーの起動、portalのmergeとlane `scenario`の起動、draftの判断を進める。完全importをcommitしたら、人間の確認を待たずに`make first-bench`で初回baselineを取る。laneのcommitを観測と照合して取り込み、`state-log`と`local-env`を取り込んだらlane `full-memory`で全メモリ化を並行させる | [kickoff](docs/guides/kickoff.md) |
 | 改善 | 観測された最大の制約から順に、継続的に構成を含めて変える | このファイルの「判断の原則」 |
 | 終了前 | 開始時に決めた時刻になったら新しい変更を止め、最終構成を固定し、確認のベンチを3回行う。時刻が決まっていなければ開始時に人間に確認する | [終了前](docs/guides/finish.md) |
 
@@ -58,6 +58,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 
 ## 並行作業
 - lane: `claude -p`が自分のworktreeとbranch（`lane/<名前>`）で1回だけ動き、commitして終わる。出力が決まった有限のタスクにだけ使い、常駐させない。mainは`python3 scripts/lane.py status <名前>`で結果を読み、根拠を照合してから取り込む。起動と取り込みの順番は[kickoff](docs/guides/kickoff.md#laneの起動と取り込み)にある。
+- portal: kickoffの間、`make worktree BRANCH=portal`のworktreeで起動したセッションが`/portal`で、ポータルと当日マニュアルの保存、サーバーの起動に要る情報、ベンチ接続を作り、`.local/progress.log`へ`portal official / environment / bench / notice`を書く。mainはその行を見て`git merge --no-ff portal`する（[kickoff](docs/guides/kickoff.md)）。
 - scout（Claude Code・Codex・Kimi Code）: `make first-bench`がbaselineの後に起動し、8分ごとに新しいセッションで探索して`.local/scout/reports.md`へ書く。報告はベンチの起動時にhookが渡す。古い可能性を踏まえ、それぞれの視点を次の改善の参考にする。止めるのは`make scout-stop`。詳細は[scout](docs/roles/scout.md)。
 - 人間や手で動かすClaude Codeは、`make worktree BRANCH=<name> PURPOSE="..."`のworktreeで調査・実装・ローカル検証をし、変更目的ごとにcommitを分ける。ローカル環境は各worktreeで`make local-up / local-check / local-down`で使える（[ローカル実行環境](docs/local-development.md)）。
 - worktreeの変更は`python3 scripts/proposal.py submit --hypothesis ... --expect ... --verified ...`で投稿する。mainのbranchへ衝突なく入る投稿だけが、ベンチの起動時にmainへ渡る。衝突する投稿は`needs-sync`で投稿者へ返るので、mainのbranchをmergeして投稿し直す。mainは測った結果を`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID>`で返す。一覧は`make proposals`。

@@ -290,6 +290,22 @@ isuscope routes suggest <run-id> --output .local/route-suggestions.toml
 
 `.local/route-suggestions.toml`は候補であり、自動適用されません。実例とpatternを確認し、必要な規則だけ`.isuscope/routes.toml`へ移します。
 
+### isuxportalのポータルにつなぐ
+
+ISUCON10〜14のポータル（isuxportal、`isucon/isucon14-portal`）は、選手のページと同じAPI（protobuf over HTTP、ログインのcookie）でベンチを受け付けます。当日のポータルがこれなら、`scripts/isuxportal-bench.py`を操作端末から動かします（`BENCHMARK_TRANSPORT=local`）。先に当日マニュアルで、ポータルの自動操作が禁止されていないかを確かめます。
+
+```bash
+python3 scripts/portal-cookie.py --portal https://portal.example   # ログインしたChrome（--remote-debugging-port=9222）からcookieを.local/benchmark-secrets.envへ
+set -a; source .local/benchmark-secrets.env; set +a
+python3 scripts/isuxportal-bench.py targets --portal https://portal.example   # 選手のサーバーとid
+python3 scripts/isuxportal-bench.py probe --portal https://portal.example --target-id 123   # ログインと競技中かだけを確かめる
+```
+
+- `config/benchmark.env`は`BENCHMARK_COMMAND='python3 scripts/isuxportal-bench.py run --portal URL --target-id ID'`、`BENCHMARK_PROBE_COMMAND`は同じ引数の`probe`にします。`run`はベンチを依頼し、終わるまで待ち、選手向けの出力の後に`ISUXPORTAL job=<id> status=<s> passed=<true|false> score=<n>`の1行を出します。regexはこの行だけに合わせます（`config/benchmark.env`のコメント）。ベンチ自身の出力にある`score`や`failed`を拾わないためです。
+- contractは`invocation.executable`を`scripts/isuxportal-bench.py`、`required_flags`を`{"--portal": "URL", "--target-id": "ID"}`にします。cookieは`PORTAL_COOKIE`（秘密設定）なので、取り直してもsealし直す必要はありません。
+- 書き込みにはRailsのCSRF tokenが要るので、scriptはポータルのページの`<meta name="csrf-token">`を読み、そのときに更新されたcookieで依頼します。cookieが切れると、`run`は結果の行を出さずに終了コード2で止まり、cookieの取り直しを促します。
+- 選手はジョブを取り消せません。`scripts/benchmark-stop.sh`やadapterの期限で止めても、ポータル上のベンチは最後まで動きます。
+
 ### isuscopeの設定で確認すること
 
 - `make discover`が生成する`.isuscope/config.toml`のnode、role、SSH設定は生成物なので、直す場合はprovider入力とdraftを直して再生成する。roleは複数指定でき、collectorの対象nodeを選ぶtagとして使う

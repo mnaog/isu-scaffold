@@ -87,6 +87,22 @@ class AdapterTest(unittest.TestCase):
             {'all': {'children': {'application': {'hosts': {'app1': {}}},
                                   'benchmark': {'hosts': {name: {} for name in benchmark_hosts}}}}}))
 
+    def test_a_worktree_checks_against_the_root_repositorys_secrets(self):
+        # The portal session builds the connection in a worktree; secrets exist only in the root's .local.
+        self.configure(FINAL_OUTPUT, BENCHMARK_PROBE_COMMAND='test "$PORTAL_COOKIE" = from-root')
+        git_env = dict(os.environ, GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@example.com',
+                       GIT_COMMITTER_NAME='t', GIT_COMMITTER_EMAIL='t@example.com')
+        worktree = self.root.parent / (self.root.name + '-portal')
+        self.addCleanup(shutil.rmtree, worktree, True)
+        for args in (['init', '-q', '-b', 'main'], ['add', '.'], ['commit', '-qm', 'fixture'],
+                     ['worktree', 'add', '-q', str(worktree)]):
+            subprocess.run(['git', *args], cwd=self.root, check=True, capture_output=True, env=git_env)
+        (self.root / '.local').mkdir()
+        (self.root / '.local/benchmark-secrets.env').write_text('export PORTAL_COOKIE=from-root\n')
+        probe = subprocess.run(['bash', str(ROOT / '.isuscope/benchmark.sh'), '--probe'], capture_output=True,
+                               text=True, env=dict(os.environ, ISUSCOPE_PROJECT_ROOT=str(worktree)))
+        self.assertEqual(probe.returncode, 0, probe.stderr)
+
     def test_an_empty_benchmark_node_is_the_only_benchmark_host(self):
         # practice-12-sixth: discover named the node <stack>-bench, and the old default `bench`
         # failed --check. Empty means the inventory's single benchmark node.

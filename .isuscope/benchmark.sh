@@ -9,8 +9,15 @@ set -euo pipefail
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 project_root=${ISUSCOPE_PROJECT_ROOT:-$(cd -- "${script_dir}/.." && pwd)}
 benchmark_config=${BENCHMARK_CONFIG_FILE:-${project_root}/config/benchmark.env}
-benchmark_secrets=${BENCHMARK_SECRETS_FILE:-${project_root}/.local/benchmark-secrets.env}
-inventory_path=${ANSIBLE_INVENTORY:-${project_root}/.local/ansible-inventory.json}
+# Secrets and the inventory live in the root repository's .local only. A worktree (the portal
+# session builds the connection in one) checks the adapter against those, as progress.log does.
+local_root=${project_root}
+common_dir=$(git -C "${project_root}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+if [[ -n "${common_dir}" && -d "$(dirname -- "${common_dir}")/.local" ]]; then
+  local_root=$(dirname -- "${common_dir}")
+fi
+benchmark_secrets=${BENCHMARK_SECRETS_FILE:-${local_root}/.local/benchmark-secrets.env}
+inventory_path=${ANSIBLE_INVENTORY:-${local_root}/.local/ansible-inventory.json}
 
 load_config() {
   test -f "${benchmark_config}" || { echo "missing ${benchmark_config}" >&2; return 1; }
