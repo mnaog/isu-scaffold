@@ -7,6 +7,7 @@
 
 ## 目的と制約
 - 競技時間内に、最終的なスコアを最大にする。時間が最大の制約である。
+- 言語はRustを採用する。
 - 公式のレギュレーション・当日マニュアル・整合性条件・失格条件を常に守る。当日マニュアルは事前の資料より優先する。
 - mainのセッション（このrepoで起動したClaude Code）が、調査・実装・検証・deploy・ベンチ・採否判断まで一貫して進める。問題を理解したセッションで修正と評価を続け、人間の確認を待たない。
 - mainは、このrepoのrootで起動したClaude Codeが最初に`/main`で宣言する。isuscopeは各ベンチをこのrepoの`docs/agent-history/`にある会話へ結び付けるので、別のdirectoryで起動したセッションでは`make kickoff`が止まる。目標は人間が`/main`の後に`/goal`で渡す。
@@ -43,11 +44,10 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 
 - ベンチ（`isuscope run`・`survey-run`・`make first-bench`）は、Bashの`run_in_background`で起動する。foregroundの起動はhookが止める。`kickoff`・`bootstrap`・`bench-check`・laneからは起動しない。
 - PASSしたrunは、分析を記録するまで次のベンチを始められない。仮説の判定（`supported`・`rejected`・`inconclusive`・`skipped`）と変更の採否（`accepted`・`provisional`・`rejected`・`deferred`）は別に記録する。
-- 待つ間に、hookが渡す見取り図（`docs/benchmark-scenario.md`）、scoutの報告、worktreeからの投稿を読み、今回の仮説と次の候補が得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめる。観測と食い違う記述があれば文書を直す。次に測るものを選んだら、投稿なら`git merge --no-ff <branch>`し、`make build`しておく。1回のベンチで測る変更は1つにする。sleepやpollingで待たない。
+- 待つ間に、hookが渡す見取り図（`docs/benchmark-scenario.md`）、scoutの報告、worktreeからの投稿を読み、今回の仮説と次の候補が得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめる。観測と食い違う記述があれば文書を直す。次に測るものを選んだら、投稿なら`git merge --no-ff <branch>`し、`make build`しておく。sleepやpollingで待たない。
 - Monitorで`.local/progress.log`を追う。`benchmark slow`が出たら、アプリ・nginxのerror logとnodeの負荷を確かめ、止まっていれば`scripts/benchmark-stop.sh`で止める。
 - 同じ構成はisuscopeが測り直さない。意図した測り直しだけ`--repeat "理由"`を付ける。同じ変更の比較のためにベンチを重ねない。
 - 最後にdeployしたcommitとHEADがずれていると、ベンチは始まらない。commitして`make deploy`するか、HEADを戻す。
-- 失敗や遅さの原因は、SSHで手調べする前に`brief`の`benchmark_messages`・`logs`・`database_io`・`states`を見る。
 
 ### isuscopeで読む・比べる
 - 比べるときは対象を絞る。HTTPは`--view http --label route=...`、DBは`--view database --window load`（initializeを除く）に`--group-by sql-shape`や`--label-contains digest=...`を足す。絞らない巨大JSONを避ける。
@@ -87,4 +87,3 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 
 - 過去のベンチは`isuscope list`・`isuscope brief <run>`で読む。
 - Claude Codeの生ログ（`~/.claude/projects/<作業ディレクトリのパスの/を-にした名前>/<Session>.jsonl`）は、内部形式が変わり得るので読むだけにし、秘密情報を含み得るのでリポジトリへコピーしない。
-- 人間は`make board`のボードで、スコアの推移、runの比較と負荷、必ず残す記録を見る（[ボード](docs/board.md)）。
