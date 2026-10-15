@@ -4,7 +4,7 @@ help:
 	@printf '%s\n' \
 		'make discover                         providerからnodeと全設定を再生成する' \
 		'make kickoff                          コード先行回収・初期buildからdraft生成と検査まで進める' \
-		'make lanes                            claude -pのAI lane（code-map、indexes、local-envなど）の状態を見る' \
+		'make lanes                            claude -pのAI lane（indexes、local-env、scenarioなど）の状態を見る' \
 		'make worktree BRANCH=<name> PURPOSE="..."  目的つきで並行laneのworktreeを作る' \
 		'make proposals                        worktreeからmainへの投稿と、その状態を見る' \
 		'CONFIRM_DRAFT=true make kickoff-apply  検査済みdraftを反映して完全importする' \

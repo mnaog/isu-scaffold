@@ -72,5 +72,25 @@ class BenchmarkMarkersTests(unittest.TestCase):
         self.assertEqual(self.markers('check').returncode, 0)
 
 
+    def test_auto_route_sets_a_single_candidate_and_leaves_several_to_main(self):
+        source = self.root / 'webapp/rust/src/main.rs'
+        source.parent.mkdir(parents=True)
+        source.write_text('    .route("/api/initialize", post(initialize))\n')
+        result = self.markers('auto-route')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        import tomllib
+        routes = tomllib.loads((self.root / '.isuscope/routes.toml').read_text())
+        self.assertEqual(routes['initialize'], {'method': 'POST', 'path': '/api/initialize'})
+        self.assertIn('already POST /api/initialize', self.markers('auto-route').stdout)
+        (self.root / '.isuscope/routes.toml').unlink()
+        source.write_text('    .route("/api/initialize", post(a))\n    .route("/initialize", post(b))\n')
+        result = self.markers('auto-route')
+        self.assertEqual(result.returncode, 3)
+        self.assertIn('2 initialize candidates', result.stderr)
+        self.assertFalse((self.root / '.isuscope/routes.toml').exists())
+        source.write_text('fn main() {}\n')
+        self.assertEqual(self.markers('auto-route').returncode, 3)
+
+
 if __name__ == '__main__':
     unittest.main()

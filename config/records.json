@@ -23,19 +23,7 @@
       "path": "docs/benchmark-scenario.md",
       "title": "ベンチの見取り図",
       "timing": "初動",
-      "contents": "シナリオ、APIの順番、得点、FAIL条件、並列数と繰り返し、initialize後の状態、整合性チェック。事実・推測・不明を分ける。"
-    },
-    {
-      "path": "docs/code-map.md",
-      "title": "コードの地図",
-      "timing": "初動",
-      "contents": "主要な処理ごとに、シナリオ → API → handler → SQL・外部処理 → サーバー → 得点・失敗のつながり。"
-    },
-    {
-      "path": "docs/baseline.md",
-      "title": "初回baselineの制約",
-      "timing": "初動",
-      "contents": "初回baselineで観測された最大の制約と、その根拠（run ID、node別の観測値）。"
+      "contents": "シナリオ、APIの順番、得点、FAIL条件、並列数と繰り返し、initialize後の状態、整合性チェック。事実・推測・不明を分ける。APIごとのhandler（file:line）と主なSQL。"
     },
     {
       "path": "docs/state-log.md",

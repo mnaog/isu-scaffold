@@ -121,7 +121,6 @@
     "scripts/lane.py",
     "scripts/progress.py",
     "config/lanes.json",
-    "config/lanes/code-map.md",
     "config/lanes/obvious-fixes.md",
     "config/rust-builder/bases.json",
     "tests/test_lane.py",
@@ -216,6 +215,7 @@
     "tests/test_initial_phase_report.py",
     "docs/initial-automation.md",
     "docs/scout-board.md",
-    "config/lanes/memory.md"
+    "config/lanes/memory.md",
+    "config/lanes/code-map.md"
   ]
 }

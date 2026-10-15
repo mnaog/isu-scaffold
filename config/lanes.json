@@ -43,18 +43,12 @@
     "timeout_minutes": 60
   },
   "kickoff": [
-    "code-map",
     "indexes",
     "obvious-fixes",
     "local-env",
     "state-log"
   ],
   "lanes": {
-    "code-map": {
-      "purpose": "回収したコードからdocs/code-map.mdを書く",
-      "prompt": "config/lanes/code-map.md",
-      "timeout_minutes": 40
-    },
     "indexes": {
       "purpose": "索引不足だけを1索引1commitで先行実装する（baselineまでdeployしない）",
       "prompt": "config/lanes/indexes.md",

@@ -6,7 +6,7 @@
 
 また、アプリケーションコードと設定ファイルをすべてローカルリポジトリで管理し、コマンドからサーバーへデプロイできる状態を作る。
 
-SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を5本起動する。`code-map`が`docs/code-map.md`を書き、`indexes`が索引を、`obvious-fixes`が索引以外の自明な修正を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書く。kickoffは調査結果から`docs/environment.md`も自動で書く。mainのセッションはその間に公式資料・ベンチ接続・初期build設定・draftの判断を進め、公式資料をcommitしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
+SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を4本起動する。`indexes`が索引を、`obvious-fixes`が索引以外の自明な修正を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書く。kickoffは調査結果から`docs/environment.md`も自動で書き、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。mainのセッションはその間に公式資料・ベンチ接続・初期build設定・draftの判断を進め、公式資料をcommitしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
 
 調査・修正・ローカル検証・deploy・ベンチ・採否判断の責任はmainのセッションが持つ。laneの成果は根拠を照合してからmergeする。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
 
@@ -15,7 +15,7 @@ SSH確立直後に採用言語のコードとDB schemaを先行importし、初�
 1. `make kickoff`をバックグラウンドで始め、`.local/progress.log`を追う。コードとschemaの先行回収・commitの後、build laneとAI laneが並行で始まる。
 2. kickoffと並行して、公式資料を保存・commitしてlane `scenario`を起動し、`config/benchmark.env`・`benchmark-contract`の用意、`--check`・`--probe`を済ませる。build設定が自動生成されたら確認してcommitし、設定待ちなら`config/initial-build.json`を作る。
 3. draftを判断して`kickoff-apply`し、完全importをcommitする。
-4. 人間の確認を待たずに`make first-bench`を実行する。`bench-check`の後、配布状態のままの初期状態で`survey-run`を取り、その後に同じcommitをdeployする（配布状態で測れない場合はdeployを先にする）。`baseline-ready`が出たらスコア・エラー・HTTP・SQL・ホスト負荷を分析し、lane `code-map`の地図を照合に使う。
+4. 人間の確認を待たずに`make first-bench`を実行する。`bench-check`の後、配布状態のままの初期状態で`survey-run`を取り、その後に同じcommitをdeployする（配布状態で測れない場合はdeployを先にする）。`baseline-ready`が出たらスコア・エラー・HTTP・SQL・ホスト負荷を分析し、最大の制約と根拠を初回runの`isuscope analyze`に書く。
 5. 観測とコードから改善を選ぶ。baselineの後の最初のdeployで、lane `state-log`のcommitを他のlaneより先に取り込む（以後のrunで、状態についての問いに計測を足さずに答えられる）。lane `indexes`・`obvious-fixes`のcommitは観測と照合して効くものから`git cherry-pick`し（laneの完了を待たない）、残りは実装・ローカル検証・commit・deployを進める。state-logを取り込んだdeployをcommitしたら、そのベンチを待たずにlane `full-memory`（全メモリ化）を起動する（`local-env`もmerge済みであること。`indexes`・`obvious-fixes`は待たない）。状態をすべてメモリに置き、書き込みはDBに残す書き換えを、mainの改善と並行して作らせる。laneは終わる前に最新のmainを取り込んで確かめ直すので、終わったら`git merge lane/full-memory`でmainへ入れ、deployして直前のrunと比べる。
 6. 通常の`isuscope run`で比較し、仮説の判定と変更の採否を記録する。障害があれば原因調査から修正・再評価まで続ける。
 
@@ -92,9 +92,9 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 ## 初回ベンチを実行する
 
-初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。initializeと負荷走行の境界は、初回runより前に`.isuscope/routes.toml`の`[initialize]`で決めておく（`scripts/benchmark-markers.py suggest-route`→`set-route`）。完全importのcommit後に`make first-bench`で、人間の確認を待たずに実行する。
+初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。initializeと負荷走行の境界は、初回runより前に`.isuscope/routes.toml`の`[initialize]`で決めておく。コードに候補が1つだけならkickoffが書いてcommitする。`.local/progress.log`の`initialize-route`が`needs_choice`なら、`scripts/benchmark-markers.py suggest-route`の候補から選んで`set-route`する。完全importのcommit後に`make first-bench`で、人間の確認を待たずに実行する。
 
-最初のdeployの前は、サーバーが完全importと同じ内容（配布状態）で動いている。`make first-bench`は、HEADがimportしたdigestのままで（`scripts/imported-state.py`）、アプリのunitが全nodeで動いてlistenしていれば、そのcommitを稼働中として記録し（`.local/current-import-commit`）、ローカルbuildとdeployを待たずにbaselineを取る。その後に同じcommitをdeployし、deploy経路を最初の改善より前に確かめる。baselineの実行ファイルは配布されたbuild、2本目以降は自前のbuild（Rust 1.99.0）になるので、最初の改善runの比較にはその差が混ざり得る。配布サーバーのRust版（`.local/initial-build/environment.txt`）が大きく違う場合は`docs/baseline.md`に書き、小さな差の判定に注意する。配布状態で測れないとき（記録がない、importの後に配る対象を変えた、unitが動いていない、既にdeployした）は、deployしてから測る。`FIRST_BENCH_MODE=deploy`なら常にdeployが先になる。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[自動化の仕様](../reference/automation.md)の「ベンチ前gateと初回run」を参照する。
+最初のdeployの前は、サーバーが完全importと同じ内容（配布状態）で動いている。`make first-bench`は、HEADがimportしたdigestのままで（`scripts/imported-state.py`）、アプリのunitが全nodeで動いてlistenしていれば、そのcommitを稼働中として記録し（`.local/current-import-commit`）、ローカルbuildとdeployを待たずにbaselineを取る。その後に同じcommitをdeployし、deploy経路を最初の改善より前に確かめる。baselineの実行ファイルは配布されたbuild、2本目以降は自前のbuild（Rust 1.99.0）になるので、最初の改善runの比較にはその差が混ざり得る。配布サーバーのRust版（`.local/initial-build/environment.txt`）が大きく違う場合は初回runの分析に書き、小さな差の判定に注意する。配布状態で測れないとき（記録がない、importの後に配る対象を変えた、unitが動いていない、既にdeployした）は、deployしてから測る。`FIRST_BENCH_MODE=deploy`なら常にdeployが先になる。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[自動化の仕様](../reference/automation.md)の「ベンチ前gateと初回run」を参照する。
 
 確認するもの：
 
@@ -120,16 +120,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - 整合性チェックと失格条件
 - 得点へ直接つながる処理
 
-主要な処理について、次のつながりを`docs/code-map.md`（コードの地図）へ整理する。コードの先行回収の直後にlane `code-map`が書き始め、mainのセッションは`lane/code-map`をmergeしてから、公式資料と初回runの観測で得点・失敗の対応を補う。
-
-```text
-シナリオ
-  → API
-  → handler
-  → SQL・外部処理
-  → 使用するサーバーやサービス
-  → 得点または失敗条件
-```
+APIの一覧には、各APIのhandler（`file:line`）と主なSQL・外部処理を付ける。シナリオ → API → handler → SQL → 得点・失敗のつながりは、この見取り図だけに置く（コードの地図は別に作らない）。
 
 ## 自明なボトルネックを一掃する
 
@@ -149,7 +140,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 ## baselineの後に次の変更を選ぶ
 
-初回baselineの分析では、SQLの候補を消化する前に、観測された最大の制約を特定し、根拠とともに`docs/baseline.md`へ残す。`isuscope brief`のnode別CPU・iowait・disk util・network、`database_io`、`logs`から、少なくとも次を確認する。
+初回baselineの分析では、SQLの候補を消化する前に、観測された最大の制約を特定し、根拠（node別の観測値）とともに初回runの`isuscope analyze`の分析に書く（survey-runがPASSなら、分析を記録するまで次のベンチは始められない）。`isuscope brief`のnode別CPU・iowait・disk util・network、`database_io`、`logs`から、少なくとも次を確認する。
 
 - 負荷が1台に集中し、他のnodeが空いていないか
 - CPUよりI/O待ち（iowait、disk util、COMMITやfile待ち）が支配的でないか
@@ -162,7 +153,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - DB・アプリ・nginxを別のnodeへ分ける配置変更
 - 読み取りのキャッシュ・メモリ化
 
-どちらも根拠（run ID、node別の観測値、期待する効果）を残し、1つずつ入れて通常の`isuscope run`で測る。全メモリ化はlane `full-memory`に任せる。それより前にmainが入れるメモリ化は1つの読み取り経路ずつ進め、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築方法を`docs/cache-design.md`へ書いてから入れる。WALなどでDBを外すのは、書き込みが律速だと測れてからにする。非同期化やwrite-behindなど、整合性条件や永続化の時機を変える変更が必要なら、根拠を`docs/baseline.md`か分析に残し、[改善](improvement.md)の方針で入れる。
+どちらも根拠（run ID、node別の観測値、期待する効果）を残し、1つずつ入れて通常の`isuscope run`で測る。全メモリ化はlane `full-memory`に任せる。それより前にmainが入れるメモリ化は1つの読み取り経路ずつ進め、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築方法を`docs/cache-design.md`へ書いてから入れる。WALなどでDBを外すのは、書き込みが律速だと測れてからにする。非同期化やwrite-behindなど、整合性条件や永続化の時機を変える変更が必要なら、根拠をrunの分析に残し、[改善](improvement.md)の方針で入れる。
 
 ## 残すもの
 
@@ -171,8 +162,6 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - `docs/official/`：公式の一次情報
 - `docs/environment.md`：環境
 - `docs/benchmark-scenario.md`：ベンチの見取り図
-- `docs/code-map.md`：コードの地図
-- `docs/baseline.md`：初回baselineの制約
 - `docs/state-log.md`：状態ログの対象
 - `docs/cache-design.md`：メモリ化の設計（入れた場合）
 - isuscopeによる初回ベンチ結果
@@ -184,14 +173,14 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 - 公式から提供された一次情報が`docs/official/`に揃っている
 - コードと設定ファイルがローカルリポジトリで管理されている
-- ローカル環境で改善を検証できる（構築できなければ、理由と代わりの検証手段を`docs/baseline.md`に書く）
+- ローカル環境で改善を検証できる（構築できなければ、理由と代わりの検証手段を初回runの分析に書く）
 - ローカルからコマンドでデプロイできる
 - サーバーを直接編集せずに構成を再現できる
 - 初期状態へ戻せる
 - isuscopeでベンチと計測を実行できる
 - 許可された資料・計測で確認できる得点、失敗条件、主要シナリオを説明でき、推測と不明点を記録している
 - 確認できた主要シナリオとアプリ内の処理経路が対応付けられている
-- 初回baselineで観測された最大の制約と、その根拠が記録されている
+- 初回baselineで観測された最大の制約と、その根拠が初回runの分析に記録されている
 - 主要SQLの明らかなインデックス不足が解消されている
 - 高頻度経路の主要なN+1、重複処理、逐次writeが解消されている
 - 自明な修正を統合したrunをbaselineと比較し、採否を記録している
