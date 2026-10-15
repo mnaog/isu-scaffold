@@ -440,8 +440,8 @@ build_input_id() {
     sed -E "s/.*ISUCON_DEPLOY_BUILD_INPUT_ID='([^']+)'.*/\\1/"
 }
 grep -q "ISUCON_DEPLOY_BUILD_INPUTS_UNCHANGED='false'" "${ssh_call_log}"
-initial_build_input_id=$(build_input_id "${ssh_call_log}")
-test -n "${initial_build_input_id}"
+kickoff_build_input_id=$(build_input_id "${ssh_call_log}")
+test -n "${kickoff_build_input_id}"
 build_line=$(grep -n -m1 'fixture-build-command' "${ssh_call_log}" | cut -d: -f1)
 switch_line=$(grep -n -m1 "sudo test -e '/home/isucon/webapp.isuscope-staging.*'; if sudo test" \
   "${ssh_call_log}" | cut -d: -f1)
@@ -505,7 +505,7 @@ printf 'events { worker_connections 2; }\n' >"${fixture_repo}/config/nginx/nginx
 (cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" ./scripts/deploy.sh)
 tail -n "+$((unchanged_build_start + 1))" "${ssh_call_log}" >"${fixture_repo}/.local/unchanged-build-calls.log"
 grep -q "ISUCON_DEPLOY_BUILD_INPUTS_UNCHANGED='true'" "${fixture_repo}/.local/unchanged-build-calls.log"
-test "$(build_input_id "${fixture_repo}/.local/unchanged-build-calls.log")" = "${initial_build_input_id}"
+test "$(build_input_id "${fixture_repo}/.local/unchanged-build-calls.log")" = "${kickoff_build_input_id}"
 
 changed_build_start=$(wc -l <"${ssh_call_log}" | tr -d ' ')
 printf 'changed build input\n' >>"${fixture_repo}/webapp/README.txt"
@@ -513,7 +513,7 @@ printf 'changed build input\n' >>"${fixture_repo}/webapp/README.txt"
 (cd "${fixture_repo}" && SSH_CALL_LOG="${ssh_call_log}" ./scripts/deploy.sh)
 tail -n "+$((changed_build_start + 1))" "${ssh_call_log}" >"${fixture_repo}/.local/changed-build-calls.log"
 grep -q "ISUCON_DEPLOY_BUILD_INPUTS_UNCHANGED='false'" "${fixture_repo}/.local/changed-build-calls.log"
-test "$(build_input_id "${fixture_repo}/.local/changed-build-calls.log")" != "${initial_build_input_id}"
+test "$(build_input_id "${fixture_repo}/.local/changed-build-calls.log")" != "${kickoff_build_input_id}"
 
 overlap_manifest=${fixture_repo}/.local/sync-overlap.json
 jq '.items += [(.items[0] | .name = "overlap" | .local = (.local + "/nested") | .remote = "/tmp/isuscope-overlap")]' \
@@ -648,7 +648,7 @@ if (cd "${fixture_repo}" && ./scripts/configure-draft.sh >.local/missing-rust.lo
 fi
 grep -q 'complete early import' "${fixture_repo}/.local/missing-rust.log"
 mv "${fixture_repo}/.local/Cargo.toml.saved" "${fixture_repo}/webapp/rust/Cargo.toml"
-cat >"${fixture_repo}/config/initial-build.json" <<'JSON'
+cat >"${fixture_repo}/config/kickoff-build.json" <<'JSON'
 {"base_image":"rust:1.80-bullseye","target":"x86_64-unknown-linux-gnu","binary":"isu-app","dockerfile":"config/rust-builder/Dockerfile"}
 JSON
 (cd "${fixture_repo}" && ./scripts/configure-draft.sh)
@@ -717,4 +717,4 @@ printf 'observability_mysql_slow_log: true\n' >"${fixture_repo}/ansible/playbook
 (cd "${fixture_repo}" && ./scripts/configure-draft.sh >/dev/null)
 jq -e '.warnings | any(test("MySQL slow log was not detected"))' "${fixture_repo}/.local/draft/summary.json" >/dev/null
 
-echo "initial automation fixture passed"
+echo "kickoff automation fixture passed"

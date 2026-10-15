@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  initial-automation:
+  kickoff-automation:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -51,11 +51,11 @@ jobs:
           fi
           find scripts .isuscope tests -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
 
-      - name: Run initial automation fixture
+      - name: Run kickoff automation fixture
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
           isuscope --version
-          ./tests/initial-automation.sh
+          ./tests/kickoff-automation.sh
 
       - name: Run local tooling tests
         run: python3 -m unittest discover -s tests -p 'test_*.py' -v

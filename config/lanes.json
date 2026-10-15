@@ -76,7 +76,7 @@
       "timeout_minutes": 45
     },
     "memory": {
-      "purpose": "状態をすべてメモリに置き、書き込みはDBに残す書き換えを作る（mainが初動のcommitを済ませてから起動）",
+      "purpose": "状態をすべてメモリに置き、書き込みはDBに残す書き換えを作る（mainがkickoffのcommitを済ませてから起動）",
       "prompt": "config/lanes/memory.md",
       "timeout_minutes": 120
     },

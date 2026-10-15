@@ -11,7 +11,7 @@ policy = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(policy)
 
 
-class InitialSetupTest(unittest.TestCase):
+class KickoffSetupTest(unittest.TestCase):
     def test_hooks_and_the_benchmark_timeout_reach_the_generated_config(self):
         import tempfile
         with tempfile.TemporaryDirectory() as d:

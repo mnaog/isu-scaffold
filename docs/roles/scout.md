@@ -3,7 +3,7 @@
 役割はscout。現状を把握して自由に探索し、見落とし・疑問・仮説を報告する。報告の長さは制限しない。3体（Claude Code、Codex、Kimi Code）の指示と入力形式は同じで、探索角度や専門分野は割り当てない。「発見なし」「順調そう」も最新報告として保存する。
 共通指示は[scout-prompt.txt](scout-prompt.txt)。読み取り専用はプロンプトで指示する。CLI権限制御は必須条件ではなく、OSレベルで保証するものではない。
 
-報告の読み手はmainのセッションで、人間の中継を待たない。Claude Codeのmainがベンチ（`isuscope run`・`survey-run`・`make first-bench`）を`run_in_background`で起動すると、PostToolUseのhook（`scripts/bench-hook.py --post`）が、ベンチの見取り図（`docs/benchmark-scenario.md`）を読み返す指示に続けて最新報告（`.local/scout/reports.md`）を投稿からの経過分つきで会話へ渡す。各報告は同じセッションへ1回だけ渡す（渡した報告は`.local/scout/delivered.json`に記録する）。以後のベンチでは前回から新しく出た報告だけを渡し、なければscoutの内容は付けない。同じ報告を毎回渡すと読み流されるため。報告は「並列で動かしている調査エージェントによる報告。内容が古くなっている可能性もあるが、それぞれの視点を参考にして、次回の改善のための参考として確認する」という位置づけで渡し、mainはベンチの完了を待つ間に確認する。foregroundのベンチは同じhookがPreToolUse（`--pre`）で止める。Codexにはbackgroundで起動する手段がないので、ベンチを起動する直前に見取り図を読み返し、`.local/scout/reports.md`を読む。
+報告の読み手はmainのセッションで、人間の中継を待たない。mainがベンチ（`isuscope run`・`survey-run`・`make first-bench`）を`run_in_background`で起動すると、PostToolUseのhook（`scripts/bench-hook.py --post`）が、ベンチの見取り図（`docs/benchmark-scenario.md`）を読み返す指示に続けて最新報告（`.local/scout/reports.md`）を投稿からの経過分つきで会話へ渡す。各報告は同じセッションへ1回だけ渡す（渡した報告は`.local/scout/delivered.json`に記録する）。以後のベンチでは前回から新しく出た報告だけを渡し、なければscoutの内容は付けない。同じ報告を毎回渡すと読み流されるため。報告は「並列で動かしている調査エージェントによる報告。内容が古くなっている可能性もあるが、それぞれの視点を参考にして、次回の改善のための参考として確認する」という位置づけで渡し、mainはベンチの完了を待つ間に確認する。foregroundのベンチは同じhookがPreToolUse（`--pre`）で止める。
 
 ## 起動と停止
 
@@ -43,7 +43,7 @@ smokeは共通指示に接続確認指示を加えて各CLIを新規起動する
 
 ## 入力と保存先
 
-- シナリオ: 初動で書く`docs/benchmark-scenario.md`。公式ルールとAGENTS.mdの指示に従う資料だけで整理する。
+- シナリオ: kickoffで書く`docs/benchmark-scenario.md`。公式ルールとAGENTS.mdの指示に従う資料だけで整理する。
 - 計測: `isuscope list`の最新の終了run（失敗・中断も明示）、`brief --limit 5`、HTTP・SQL load・ホストload・benchmarkの`query --limit 8`。比較元は設定の`base_run`を明示使用し、未指定なら比較なし。採用runを推測しない。
 - 会話: 明示指定した会話セッションだけ（利用するagent分のみ指定）。各直近6000文字、元ファイルとIDを添える。
 - 根拠: run ID、比較元ID、runのcommit/dirty、現在のcommit/dirty、取得時刻、実行した取得コマンド、資料のパス。

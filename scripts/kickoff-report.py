@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Measure the initial work of a practice from what is already recorded.
+"""Measure the kickoff of a practice from what is already recorded.
 
-The four numbers that show whether the changes to the initial work worked:
+The four numbers that show whether the changes to the kickoff worked:
 - minutes from the start to the baseline (the first passing survey-run)
 - runs in the window that failed on a connection or file limit (brief's `limits`)
 - seconds isuscope spent after each benchmark (collection and parsing)
@@ -10,7 +10,7 @@ The four numbers that show whether the changes to the initial work worked:
 Sources: isuscope (`isuscope sql`, `isuscope brief`, isuscope-data/runs/*/run.json) and the
 conversation events in docs/agent-history. Nothing is changed. Run it from the practice repository:
 
-    python3 scripts/initial-report.py --start 2026-10-10T15:01:05+09:00
+    python3 scripts/kickoff-report.py --start 2026-10-10T15:01:05+09:00
 """
 import argparse
 import glob
@@ -142,7 +142,7 @@ def main():
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0
     hours = f'{args.hours:g}'
-    print(f'初動の指標（{start:%Y-%m-%d %H:%M:%S}から{hours}時間）')
+    print(f'kickoffの指標（{start:%Y-%m-%d %H:%M:%S}から{hours}時間）')
     print(f"- 開始からbaselineまで: {report['baseline_minutes']}分（{report['baseline_run']}、"
           f"その前のsurvey-run {report['survey_runs_before_baseline']}回）")
     print(f"- run: {report['runs']}回（PASS {report['passed']}、FAIL・中断 {report['failed']}）、"

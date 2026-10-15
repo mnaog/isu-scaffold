@@ -26,7 +26,7 @@ node=$(jq -ce --arg name "${node_name}" '
   exit 1
 }
 
-# ベンチnodeにはベンチadapterと初動の検査だけが入る。練習の規則（ベンチnodeを観測しない、
+# ベンチnodeにはベンチadapterとkickoffの検査だけが入る。練習の規則（ベンチnodeを観測しない、
 # ベンチマーカーを写さない）を、hookで見えないscript経由の接続でも守るため、ここでも断る。
 if [[ "${ISUCON_ALLOW_BENCHMARK_NODE:-}" != 1 ]] &&
   jq -e --arg name "${node_name}" '.all.children.benchmark.hosts // {} | has($name)' "${inventory_path}" >/dev/null; then

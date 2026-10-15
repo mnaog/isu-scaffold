@@ -1,6 +1,6 @@
 # Nginxのタレ
 
-初回baselineを未変更で取った後に、1つの変更としてdeployで入れて`isuscope run`で測る。計測用の設定（LTSV access log）はAnsible bootstrapが初動で固定化するので、ここには含めない。
+初回baselineを未変更で取った後に、1つの変更としてdeployで入れて`isuscope run`で測る。計測用の設定（LTSV access log）はAnsible bootstrapがkickoffで固定化するので、ここには含めない。
 
 ## make tare（baselineの後に1 commitで入れる）
 

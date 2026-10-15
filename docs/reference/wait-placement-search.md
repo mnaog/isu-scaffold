@@ -40,7 +40,7 @@ ISUCON12本選のように1回ごとの配点が表で示される場合は、�
 
 ### 2. 周回を数える
 
-アクセスログをsession単位でつなぎ、分類ごとの件数と周回の回転を出す。初動のAnsibleで入れるLTSVログにはsession（`observability_nginx_session_source`）が入っている。初回の`isuscope survey-run`で記録する行動遷移も使う。
+アクセスログをsession単位でつなぎ、分類ごとの件数と周回の回転を出す。kickoffのAnsibleで入れるLTSVログにはsession（`observability_nginx_session_source`）が入っている。初回の`isuscope survey-run`で記録する行動遷移も使う。
 
 1分あたりで次を出す。
 

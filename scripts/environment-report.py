@@ -2,7 +2,7 @@
 """Write docs/environment.md from what kickoff already collected, without any AI.
 
 Sources: .local/ansible-inventory.json (nodes and groups), .local/inspection/<node>.json
-(OS, kernel, CPU, memory, middleware versions), .local/initial-build/environment.txt
+(OS, kernel, CPU, memory, middleware versions), .local/kickoff-build/environment.txt
 (the Rust toolchain on the source node) and .local/progress.log (milestones since kickoff
 started). kickoff runs it after the inspection; rerun it after the baseline to extend the
 timeline. A file that no longer starts with the generated marker was edited by hand and
@@ -92,14 +92,14 @@ def report():
     found = [t for t in TOOLS if any((i.get('versions') or {}).get(t) for i in inspections.values())]
     out += ['', '## ミドルウェアと言語の版', '', 'inspectionのuserのPATHで見つかったもの。見つからないものは`-`。', '']
     out += table(['node', *found], [(n, *[(i.get('versions') or {}).get(t) for t in found]) for n, i in inspections.items()])
-    environment = ROOT / '.local/initial-build/environment.txt'
-    out += ['', '## 配布サーバーのRust（初期build処理の調査、isucon user）', '']
+    environment = ROOT / '.local/kickoff-build/environment.txt'
+    out += ['', '## 配布サーバーのRust（kickoff build処理の調査、isucon user）', '']
     if environment.exists():
         lines = [line for line in environment.read_text().splitlines()
                  if line.startswith(('rustc ', 'cargo ', 'glibc ', 'OpenSSL ', 'PRETTY_NAME=')) or line.endswith('/rustc')]
         out += ['```text', *(lines or ['(rustc not found)']), '```']
     else:
-        out += ['未取得（`.local/initial-build/environment.txt`がない）']
+        out += ['未取得（`.local/kickoff-build/environment.txt`がない）']
     rows = timeline(progress.log_path(ROOT))
     out += ['', '## 開始からの計時', '',
             '開始宣言の時刻: （人間が記入）。経過はkickoffの開始から。`.local/progress.log`の行をそのまま並べた。', '']

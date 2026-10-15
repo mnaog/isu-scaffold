@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PreToolUse hook that stops the practice rule violations seen so far.
 
-Claude Code (.claude/settings.json) and Codex (.codex/hooks.json) pass the tool call as
+Claude Code (.claude/settings.json) and the Codex scout (.codex/hooks.json) pass the tool call as
 JSON on stdin. A denied call prints a PreToolUse decision with the reason; anything
 else prints nothing and lets the call through. The hook only sees the command it is
 given, so scripts/ssh-node.sh refuses the benchmark node by itself as well.
@@ -53,7 +53,7 @@ LANE_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-
                 'bootstrap-ssh.sh', 'discover.sh', 'configure-draft.sh', 'configure-apply.sh',
                 'inspect-environment.sh', 'bench-check.sh', 'quick-import-code.sh', 'run-ansible-playbook.sh',
                 'status.sh', 'switch-language-service.sh', 'sync-check.sh', 'benchmark.sh',
-                'benchmark-prepare.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'initial-build.py',
+                'benchmark-prepare.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'kickoff-build.py',
                 'lane.py', 'review-draft.py', 'check-deployed-commit.sh', 'first-bench.sh',
                 'benchmark-markers.py', 'deploy-plan.py'}
 LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap',
@@ -184,7 +184,7 @@ class Guard:
             return
         text = strip_data_heredocs(text, self.drop_heredocs)
         if re.search(r'(?<![\w])' + ALLOW_VARIABLE + r'\s*=', text):
-            raise Denied(f'{ALLOW_VARIABLE} はベンチadapterと初動の検査だけが設定する。')
+            raise Denied(f'{ALLOW_VARIABLE} はベンチadapterとkickoffの検査だけが設定する。')
         try:
             # A newline outside quotes ends a command; inside quotes it stays in the word.
             lexer = shlex.shlex(text, posix=True, punctuation_chars=';&|()\n')

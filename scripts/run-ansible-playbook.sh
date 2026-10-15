@@ -22,7 +22,7 @@ test -f "${repo_dir}/ansible/playbooks/${playbook_name}"
 
 export ANSIBLE_PYTHON_INTERPRETER=${ANSIBLE_PYTHON_INTERPRETER:-/usr/bin/python3}
 export ANSIBLE_CONFIG=${repo_dir}/ansible/ansible.cfg
-# Per-task wall time (ansible/callback_plugins/task_timing.py) for tuning the initial work.
+# Per-task wall time (ansible/callback_plugins/task_timing.py) for tuning the kickoff.
 export ANSIBLE_TASK_TIMING_FILE=${ANSIBLE_TASK_TIMING_FILE:-${repo_dir}/.local/ansible-task-timing.tsv}
 # kickoff hands bootstrap and inspect one fact cache for that run only, so inspect reads the
 # OS, CPU and memory bootstrap already gathered. It never outlives the run: a cache shared

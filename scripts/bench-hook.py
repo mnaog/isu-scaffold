@@ -13,8 +13,6 @@ Bash call. Heredoc bodies and `bash -n` syntax checks do not count as starting o
   a session once (.local/scout/delivered.json); a later benchmark gets only the reports posted
   since. It prints nothing while neither the map nor an undelivered report exists.
 
-Codex has no background shell and does not run this; it reviews the map and reads the reports
-before a benchmark.
 Internal errors let the call through, like tool-guard.
 """
 import calendar

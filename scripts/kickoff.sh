@@ -69,7 +69,7 @@ progress code-ready "${application_path} and ${schema_path} at $(git rev-parse -
 
 source_node=${CODE_SOURCE_NODE:-$(jq -r '.all.children.application.hosts | keys[0] // empty' "${inventory}")}
 echo "== parallel build lane: inspect source node and start with reviewed or proposed settings"
-stage build-dispatch python3 "${script_dir}/initial-build.py" start --node "${source_node}" --application "${application_path}"
+stage build-dispatch python3 "${script_dir}/kickoff-build.py" start --node "${source_node}" --application "${application_path}"
 echo "== AI lanes: claude -p in their own worktrees (config/lanes.json; KICKOFF_LANES= disables)"
 # A lane that fails to start never stops the setup; progress.log and lane.py status show it.
 stage lanes python3 "${script_dir}/lane.py" kickoff || echo "some AI lanes did not start: python3 scripts/lane.py status" >&2
@@ -96,7 +96,7 @@ fi
 
 echo
 echo "kickoff stopped before applying the draft"
-python3 "${script_dir}/initial-build.py" status || review_status=1
+python3 "${script_dir}/kickoff-build.py" status || review_status=1
 if [[ "${review_status}" -ne 0 ]]; then
   echo "kickoff needs attention: check build status, and .local/draft/review.md"
   exit "${review_status}"

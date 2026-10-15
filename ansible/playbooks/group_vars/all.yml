@@ -1,9 +1,9 @@
 ---
-# 全playbookで共有する初動変数です。レギュレーションと実環境を確認するまで、自動package導入は行いません。
+# 全playbookで共有するkickoff変数です。レギュレーションと実環境を確認するまで、自動package導入は行いません。
 bootstrap_install_packages: false
 bootstrap_packages: []
 
-# 計測と運用の土台は初動で固定化します（性能は変えない）。レギュレーションで禁止された項目だけfalseにします。
+# 計測と運用の土台はkickoffで固定化します（性能は変えない）。レギュレーションで禁止された項目だけfalseにします。
 # 性能の変更（config/nginx/tare、networking sysctl、MySQL buffer）は初回baselineの後にdeployで入れます。
 observability_install_packages: true
 observability_packages:

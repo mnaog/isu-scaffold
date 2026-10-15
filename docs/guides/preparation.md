@@ -4,6 +4,8 @@
 
 本番開始前に許され、かつ問題固有の情報なしで実施できる準備を終える。開始時には、問題公開後にしかできない作業だけが残る状態にする。repo作成だけで準備完了とはしない。
 
+開始後に初めて分かる配布AMI・台数・構成・コード・schema・依存版の選定と、実環境への適用は開始後に行う。練習運営側が事前に用意した配布物も、参加者へ渡すのは開始宣言後とする。ファイルを開始後用と名付けるだけで、開始前の参加者repoへ問題固有の情報を入れてはいけない。
+
 事前に公開された公式情報と汎用tool・スクリプト・空の設定雛形を準備する。接続情報等が事前配布される場合は、その時点で許可された範囲を記録して準備する。
 
 全項目を「確認済み」「未完了」「対象外」「公開待ち」に分け、確認日・使用版・根拠を`docs/preparation/readiness.md`へまとめる（長い検証記録は`docs/preparation/`の別ファイルに置き、readinessから参照する）。秘密情報と生の認証出力は`.local/`へ置く。「公開待ち」は本番でも開始前に取得できない情報に限る。CLI未導入、未検証の起動経路は公開待ちにしない。保留した事前確認があれば準備は未完了である。
@@ -24,7 +26,7 @@
 - `./scripts/fetch-observability-tools.sh`で、repoへ取り込んだalp・slp・FlameGraphがpin済みの版とSHA256SUMSに一致することを確認する。版を上げる場合だけ`--update`で取り直してcommitする。
 - `make builder-images`で`config/rust-builder/bases.json`の候補base×targetのbuilder imageを作り、所要時間と取得できなかったtagを記録する。問題のコードは使わない。
 - 配布可能な計測toolの取得元・版を固定する。ローカルへ事前取得する場合はhashと再取得手順を残す。サーバーのOS・architecture・kernelに依存するpackageの選択と導入は公開後に行う。
-- `bash tests/initial-automation.sh`と`make test`で、問題や実サーバーを使わずimport/deploy/rollback、worktree、ボードの動作を確認する。
+- `bash tests/kickoff-automation.sh`と`make test`で、問題や実サーバーを使わずimport/deploy/rollback、worktree、ボードの動作を確認する。
 
 ## AIと運用経路
 
@@ -34,7 +36,7 @@
 - 開始後のコード先行回収と非同期buildの手順を確認する。
 - ボード（`make board`）のローカル表示を確認する。テストデータ・常駐processは開始前に残さない。
 - scout（Claude Code・Codex・Kimi Code）を`python3 scripts/scout/main.py once <name> --smoke`で接続確認する。探索とscoutの定期実行は開始しない。smokeセッションをscoutの会話入力として登録しない。Kimiは任意で、CLIの導入と`kimi login`の認証がなければ失敗として表示され、他の2体は動く。詳細は[scout](../roles/scout.md)。
-- 禁止操作を止めるhookを確認する。Claude Codeは`.claude/settings.json`、Codexは`.codex/hooks.json`から`scripts/tool-guard.py`を呼ぶ。Codexでは初めて開いたときにhookを信頼する。練習では`config/tool-guard.json`に、対象の開催回を表す語（`contest_keywords`、例: `isucon14`。アプリのhost名に含まれる語は入れない）とベンチマーカーの置き場所（`benchmarker_paths`、例: `/home/isucon/bench`）を書く。練習の資料を取得し終えてから書くか、取得してよい資料のURLを`allowed_urls`に入れる。練習が終わったら空に戻す。ベンチnodeへの直接の接続は、設定がなくても止まる。
+- 禁止操作を止めるhookを確認する。Claude Codeは`.claude/settings.json`から`scripts/tool-guard.py`を呼ぶ。Codexのscoutは`.codex/hooks.json`から同じhookを呼ぶので、Codexで一度このrepoを開いてhookを信頼する。練習では`config/tool-guard.json`に、対象の開催回を表す語（`contest_keywords`、例: `isucon14`。アプリのhost名に含まれる語は入れない）とベンチマーカーの置き場所（`benchmarker_paths`、例: `/home/isucon/bench`）を書く。練習の資料を取得し終えてから書くか、取得してよい資料のURLを`allowed_urls`に入れる。練習が終わったら空に戻す。ベンチnodeへの直接の接続は、設定がなくても止まる。
 
 ## アカウント・接続・参加準備
 
@@ -44,7 +46,7 @@
 
 ## 開始後へ残すもの
 
-開始後に公開されるAMI・サーバー情報・正式手順を受け取り、サーバー起動、SSH確立、コード/schema先行回収、remoteのtoolchain・計測導入、実設定照合、完全import、deploy、初回baselineへ進む。実アプリ固有の依存解決・シナリオ読解・route設定・collectorの実データ検証も開始後に行う（[初動](initial-work.md)）。開始前に利用できない問題情報を使って先に済ませない。
+開始後に公開されるAMI・サーバー情報・正式手順を受け取り、サーバー起動、SSH確立、コード/schema先行回収、remoteのtoolchain・計測導入、実設定照合、完全import、deploy、初回baselineへ進む。実アプリ固有の依存解決・シナリオ読解・route設定・collectorの実データ検証も開始後に行う（[kickoff](kickoff.md)）。開始前に利用できない問題情報を使って先に済ませない。
 
 ## 完了条件
 

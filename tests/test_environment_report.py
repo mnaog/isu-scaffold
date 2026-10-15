@@ -20,7 +20,7 @@ class EnvironmentReportTests(unittest.TestCase):
             shutil.copy(ROOT / 'scripts' / name, self.repo / 'scripts' / name)
         local = self.repo / '.local'
         (local / 'inspection').mkdir(parents=True)
-        (local / 'initial-build').mkdir()
+        (local / 'kickoff-build').mkdir()
         (local / 'ansible-inventory.json').write_text(json.dumps({'all': {'children': {
             'application': {'hosts': {'app1': {}, 'app2': {}}}, 'benchmark': {'hosts': {'bench': {}}}}}}))
         for node in ('app1', 'app2'):
@@ -28,7 +28,7 @@ class EnvironmentReportTests(unittest.TestCase):
                 'node': node, 'distribution': 'Ubuntu', 'distribution_version': '24.04', 'kernel': '6.8.0',
                 'architecture': 'x86_64', 'processor_vcpus': 2, 'memory_mb': 3900,
                 'versions': {'nginx': 'nginx version: nginx/1.24.0', 'mysql': 'mysql  Ver 8.0.36', 'go': ''}}))
-        (local / 'initial-build/environment.txt').write_text(
+        (local / 'kickoff-build/environment.txt').write_text(
             'x86_64\nPRETTY_NAME="Ubuntu 24.04 LTS"\nglibc 2.39\n/home/isucon/.cargo/bin/rustc\nrustc 1.80.0\ncargo 1.80.0\n')
         (local / 'progress.log').write_text(
             '2026-10-13T10:00:00+0900\tkickoff\tstarted\tmake kickoff\n'

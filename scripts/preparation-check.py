@@ -8,7 +8,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 AMI = re.compile(rb"ami-" + rb"[0-9a-f]{8,17}\b")
-FORBIDDEN = {"config/benchmark-contract.json","config/initial-build.json", "config/local/compose.yaml", "infra/practice-stack.json",
+FORBIDDEN = {"config/benchmark-contract.json","config/kickoff-build.json", "config/local/compose.yaml", "infra/practice-stack.json",
              "config/practice-stack.example.env", "scripts/practice-stack.py", "scripts/practice-stack.sh"}
 
 

@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('initial_build', ROOT / 'scripts/initial-build.py')
+spec = importlib.util.spec_from_file_location('kickoff_build', ROOT / 'scripts/kickoff-build.py')
 build = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(build)
 
@@ -37,7 +37,7 @@ class BuildLaneTests(unittest.TestCase):
             # The time spent waiting for settings is recorded beside kickoff's stages.
             rows = [line.split('\t') for line in (root/'.local/stage-timing.tsv').read_text().splitlines()]
             self.assertEqual([row[2] for row in rows], ['inspecting', 'needs_configuration', 'building', 'complete'])
-            self.assertTrue(all(row[1] == 'initial-build' and row[4] == '0' for row in rows))
+            self.assertTrue(all(row[1] == 'kickoff-build' and row[4] == '0' for row in rows))
 
     def test_probe_failure_never_compiles(self):
         with tempfile.TemporaryDirectory() as d:
@@ -103,17 +103,17 @@ class ProposalTests(unittest.TestCase):
             def run(args, **kwargs):
                 calls.append(args)
                 return subprocess.CompletedProcess(args, 0, 'x86_64\nglibc 2.36\n', '')
-            with patch.multiple(build, ROOT=root, STATE=root/'state', CONFIG=root/'config/initial-build.json',
+            with patch.multiple(build, ROOT=root, STATE=root/'state', CONFIG=root/'config/kickoff-build.json',
                                 BASES=root/'config/rust-builder/bases.json'), \
                     patch.object(build.subprocess, 'run', run), patch.object(build.time, 'sleep', side_effect=AssertionError('waited')):
                 build.run('app1', 'webapp/rust')
-            self.assertEqual(json.loads((root/'config/initial-build.json').read_text())['base_image'], 'rust:1-bookworm')
+            self.assertEqual(json.loads((root/'config/kickoff-build.json').read_text())['base_image'], 'rust:1-bookworm')
             states = [line.split('\t')[2] for line in (root/'.local/stage-timing.tsv').read_text().splitlines()]
             self.assertEqual(states, ['inspecting', 'configured', 'building', 'complete'])
             # The agent following progress.log learns the settings were written for it to review.
             log = (root/'.local/progress.log').read_text()
-            self.assertIn('initial-build\tconfigured', log)
-            self.assertIn('initial-build\tcomplete', log)
+            self.assertIn('kickoff-build\tconfigured', log)
+            self.assertIn('kickoff-build\tcomplete', log)
 
     def test_auto_configuration_can_be_turned_off(self):
         with tempfile.TemporaryDirectory() as d:
@@ -124,7 +124,7 @@ class ProposalTests(unittest.TestCase):
             def run(args, **kwargs):
                 return subprocess.CompletedProcess(args, 0, 'x86_64\nglibc 2.36\n', '')
             with patch.multiple(build, ROOT=root, STATE=root/'state', CONFIG=root/'config.json'), \
-                    patch.dict(os.environ, {'INITIAL_BUILD_AUTO_CONFIG': '0'}), \
+                    patch.dict(os.environ, {'KICKOFF_BUILD_AUTO_CONFIG': '0'}), \
                     patch.object(build.subprocess, 'run', run), patch.object(build.time, 'sleep', side_effect=RuntimeError('stop')), \
                     patch.object(build.time, 'monotonic', return_value=0):
                 with self.assertRaises(RuntimeError):
@@ -153,7 +153,7 @@ class KickoffTests(unittest.TestCase):
             for name, event in [('bootstrap.sh','bootstrap'), ('inspect-environment.sh','inspect'), ('configure-draft.sh','draft')]:
                 (root/'scripts'/name).write_text('#!/bin/sh\necho '+event+' >> events\n')
             for p in (root/'scripts').glob('*.sh'):p.chmod(0o755)
-            (root/'scripts/initial-build.py').write_text('import sys\nopen("events","a").write("build-"+sys.argv[1]+"\\n")\n')
+            (root/'scripts/kickoff-build.py').write_text('import sys\nopen("events","a").write("build-"+sys.argv[1]+"\\n")\n')
             (root/'scripts/lane.py').write_text('import sys\nopen("events","a").write("lanes-"+sys.argv[1]+"\\n")\n')
             (root/'scripts/environment-report.py').write_text('open("events","a").write("environment\\n")\n')
             (root/'scripts/review-draft.py').write_text('')
@@ -164,7 +164,7 @@ class KickoffTests(unittest.TestCase):
                 # A session started elsewhere stops before anything reaches a node.
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse((root/'events').exists())
-                self.assertIn('Start a new Codex or Claude Code session inside', result.stderr)
+                self.assertIn('Start a new Claude Code session inside', result.stderr)
                 return
             self.assertEqual((root/'events').read_text().splitlines(),
                              ['build-start','lanes-kickoff','bootstrap','inspect','environment','draft','build-status'])

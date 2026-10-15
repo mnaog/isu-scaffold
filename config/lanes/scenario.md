@@ -10,7 +10,7 @@
 
 ## 書く内容
 
-`config/records.json`の「ベンチの見取り図」の定義と`docs/guides/initial-work.md`「ベンチマークシナリオを分析する」に沿って、次を書く。
+`config/records.json`の「ベンチの見取り図」の定義と`docs/guides/kickoff.md`「ベンチマークシナリオを分析する」に沿って、次を書く。
 
 1. **得点**: 何をすると何点か。資料の表・式をそのまま引用し、出典（`docs/official/`のfileと見出し）を付ける。
 2. **FAILと減点**: 何が起きるとシナリオが止まるか、失格になるか。整合性チェックの内容。

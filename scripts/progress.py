@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One line per milestone of the initial work, for the agent that keeps working meanwhile.
+"""One line per milestone of the kickoff, for the agent that keeps working meanwhile.
 
 `make kickoff`, the build lane and the AI lanes append to .local/progress.log as
 started_at, source, state, message (tab separated). An agent that runs kickoff in the

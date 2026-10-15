@@ -1,11 +1,11 @@
 # lane: memory
 
-あなたは、アプリが持つ状態をすべてメモリに置く書き換え（全メモリ化）を、このbranchで作る。読み取りと状態の判定はメモリで行い、書き込みはDBに残す。mainのセッションは初動のcommitを済ませてからこのlaneを起動し、終わったらこのbranchをdeployして測り、PASSしてスコアが上がれば取り込む。価値は、応答と永続性を変えずに、DBへの読み取りとDBでの判定をなくすこと。
+あなたは、アプリが持つ状態をすべてメモリに置く書き換え（全メモリ化）を、このbranchで作る。読み取りと状態の判定はメモリで行い、書き込みはDBに残す。mainのセッションはkickoffのcommitを済ませてからこのlaneを起動し、終わったらこのbranchをdeployして測り、PASSしてスコアが上がれば取り込む。価値は、応答と永続性を変えずに、DBへの読み取りとDBでの判定をなくすこと。
 
 ## 前提
 
 - 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。
-- このbranchは、初動のcommit（lane `state-log`の状態ログの呼び出し、lane `local-env`のローカル環境、取り込んだ索引と修正）を含むmainから分かれている。状態ログの呼び出しかローカル環境が無ければ、最後の回答にそう書き、無いものを使う確認を飛ばす。
+- このbranchは、kickoffのcommit（lane `state-log`の状態ログの呼び出し、lane `local-env`のローカル環境、取り込んだ索引と修正）を含むmainから分かれている。状態ログの呼び出しかローカル環境が無ければ、最後の回答にそう書き、無いものを使う確認を飛ばす。
 - 読むもの: `docs/official/`（特に、更新の即時反映、整合性の検査、再起動の後に求められること）、`docs/code-map.md`、`docs/state-log.md`、`docs/benchmark-scenario.md`、`docs/local-verification.md`。
 - 変えてよいもの: `webapp/`のアプリのコード、`docs/cache-design.md`、`config/local/flows/`（確かめるための操作の列）。schema、他の`config/`・`scripts/`・文書は変えない。mainはこのlaneの間も別の改善を続けるので、変更はメモリ化に要る範囲に留める。
 

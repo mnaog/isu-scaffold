@@ -9,7 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parent.parent
 
 
-class InitialReportTest(unittest.TestCase):
+class KickoffReportTest(unittest.TestCase):
     """The report reads isuscope and the conversation events; isuscope is a stand-in here."""
 
     def test_reports_baseline_limits_post_processing_and_questions(self):
@@ -50,7 +50,7 @@ esac
             ]
             history.write_text(''.join(json.dumps(event, ensure_ascii=False) + '\n' for event in events))
             result = subprocess.run(
-                ['python3', str(ROOT / 'scripts/initial-report.py'), '--start', '2026-10-10T15:01:05+09:00',
+                ['python3', str(ROOT / 'scripts/kickoff-report.py'), '--start', '2026-10-10T15:01:05+09:00',
                  '--root', str(root), '--json'],
                 capture_output=True, text=True, env={**os.environ, 'PATH': f"{stub.parent}:{os.environ['PATH']}"})
             self.assertEqual(result.returncode, 0, result.stderr)

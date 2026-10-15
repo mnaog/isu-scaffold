@@ -374,7 +374,7 @@ def main() -> int:
             "exclude": ["target", ".git"],
         })
         example = read_json(REPO_DIR / "config/sync.rust.example.json")
-        early_build = REPO_DIR / "config/initial-build.json"
+        early_build = REPO_DIR / "config/kickoff-build.json"
         manifest_dir = read_json(early_build).get("manifest_dir", ".") if early_build.exists() else "."
         manifest_application = (local_application / manifest_dir).resolve()
         if not manifest_application.is_relative_to(local_application.resolve()):
@@ -402,12 +402,12 @@ def main() -> int:
 
         local_builds = [dict(build, binary=adapt(build["binary"]))
                         for build in example["local_builds"]]
-        early_build = REPO_DIR / "config/initial-build.json"
+        early_build = REPO_DIR / "config/kickoff-build.json"
         if early_build.exists():
             # Preserve the early compiler/target recipe so later deploy reuses its cache.
             settings = read_json(early_build)
             if not {'base_image', 'target', 'binary', 'dockerfile'} <= set(settings) or set(settings) - {'base_image', 'target', 'binary', 'dockerfile', 'source_root', 'manifest_dir', 'toolchain', 'packages'}:
-                raise ValueError("invalid config/initial-build.json")
+                raise ValueError("invalid config/kickoff-build.json")
             if binary and settings["binary"] != binary:
                 raise ValueError("early build binary differs from imported Cargo manifest")
             local_builds = [dict(settings, item="rust-app")]

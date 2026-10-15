@@ -1,4 +1,4 @@
-# 自動化の仕様（初動・deploy・rollback・ベンチ接続）
+# 自動化の仕様（kickoff・deploy・rollback・ベンチ接続）
 
 大会ごとに変わる接続先、配布path、ベンチ起動方法だけを宣言し、node発見からisuscopeの初回`survey-run`直前までを再現可能にします。生成されるIP、SSH秘密鍵、調査結果は`.local/`へ置き、コード、同期規則、ベンチ接続はGitへ残します。
 
@@ -11,11 +11,11 @@ mkdir -p .local
 cp config/environment.example.env .local/environment.env
 ```
 
-初動は次の2コマンドで進めます。採用言語はRustに固定しており、`config/application.env`の`APPLICATION_LANGUAGE=rust`、`APPLICATION_PATH=webapp/rust`を使います。問題にRust実装がない場合だけ、このファイルを書き換えてから始めます。
+kickoffは次の2コマンドで進めます。採用言語はRustに固定しており、`config/application.env`の`APPLICATION_LANGUAGE=rust`、`APPLICATION_PATH=webapp/rust`を使います。問題にRust実装がない場合だけ、このファイルを書き換えてから始めます。
 
 ```bash
 make kickoff   # バックグラウンドで実行し、tail -n +1 -f .local/progress.log を追う
-# 先行回収・commit後に、初期buildの調査とAI lane（code-map、indexes、obvious-fixes、local-env、state-log）が並行で始まる
+# 先行回収・commit後に、kickoff buildの調査とAI lane（code-map、indexes、obvious-fixes、local-env、state-log）が並行で始まる
 # 実行中に: 公式資料を保存・commitして python3 scripts/lane.py start scenario
 # 実行中に: config/benchmark.env・benchmark-contract、benchmark.sh --check/--probe
 # 実行中に: 自動生成されたbuild設定を確認してcommit（設定待ちなら作る）
@@ -25,20 +25,20 @@ CONFIRM_DRAFT=true make kickoff-apply
 make first-bench   # bench-check → 配布状態のままsurvey-run → deploy（配布状態で測れなければdeploy → survey-run）
 ```
 
-`kickoff`は最初に、実行したCodex・Claude Codeのセッションがこのrepoの`docs/agent-history/`へ会話を記録しているかを`scripts/check-agent-session.py`で確かめます。別のdirectoryで起動したセッションは、ここで止まります（ベンチをこの会話へ結び付けられず、`bench-check`の`isuscope doctor`で止まるため）。AIの外の端末から実行した場合は確かめません。続いてnode発見後、回収元の1台（既定では最初のapplication node）だけSSHを確立し、`/home/isucon/webapp/rust`と`/home/isucon/webapp/sql`のDDL・初期化script（`.sql`、`.sh`、`.py`、`.rb`、`.pl`）だけを先行回収します。1ファイル1MiB・合計16MiBを超えるものやそれ以外の初期データは後回しにし、`.local/code-schema-manifest.log`へ`INCLUDED`／`DEFERRED`として記録します。上限は`CODE_SCHEMA_MAX_FILE_BYTES`、`CODE_SCHEMA_MAX_TOTAL_BYTES`で変更できます。生成物の`target`、`node_modules`、`.git`は除外します。pathが異なる場合は`CODE_SOURCE_NODE`、`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`、`CODE_SCHEMA_PATH`を環境変数で明示します。回収した`config/application.env`、`webapp/rust`、`webapp/sql`だけを自動commitし、他の未commit変更は含めません。この回収はコード読解開始用の暫定snapshotであり、全node一致の保証は後続の完全importが担当します。残りのnodeのSSH確立はこの転送と並行して行い（log は`.local/kickoff-other-ssh.log`）、同じkickoffの`bootstrap`はnodeの発見をやり直さず、全nodeへ届いていればSSHの確認も飛ばします。届かなかったnodeがあれば`bootstrap`のSSH段階が改めて確立し、失敗を報告します。
+`kickoff`は最初に、実行したClaude Codeのセッションがこのrepoの`docs/agent-history/`へ会話を記録しているかを`scripts/check-agent-session.py`で確かめます。別のdirectoryで起動したセッションは、ここで止まります（ベンチをこの会話へ結び付けられず、`bench-check`の`isuscope doctor`で止まるため）。Claude Codeの外の端末から実行した場合は確かめません。続いてnode発見後、回収元の1台（既定では最初のapplication node）だけSSHを確立し、`/home/isucon/webapp/rust`と`/home/isucon/webapp/sql`のDDL・初期化script（`.sql`、`.sh`、`.py`、`.rb`、`.pl`）だけを先行回収します。1ファイル1MiB・合計16MiBを超えるものやそれ以外の初期データは後回しにし、`.local/code-schema-manifest.log`へ`INCLUDED`／`DEFERRED`として記録します。上限は`CODE_SCHEMA_MAX_FILE_BYTES`、`CODE_SCHEMA_MAX_TOTAL_BYTES`で変更できます。生成物の`target`、`node_modules`、`.git`は除外します。pathが異なる場合は`CODE_SOURCE_NODE`、`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`、`CODE_SCHEMA_PATH`を環境変数で明示します。回収した`config/application.env`、`webapp/rust`、`webapp/sql`だけを自動commitし、他の未commit変更は含めません。この回収はコード読解開始用の暫定snapshotであり、全node一致の保証は後続の完全importが担当します。残りのnodeのSSH確立はこの転送と並行して行い（log は`.local/kickoff-other-ssh.log`）、同じkickoffの`bootstrap`はnodeの発見をやり直さず、全nodeへ届いていればSSHの確認も飛ばします。届かなかったnodeがあれば`bootstrap`のSSH段階が改めて確立し、失敗を報告します。
 
-続いて初期build処理が1台目のCPU・OS・glibc・OpenSSL・Rust版を調査し、回収したCargo.toml・Cargo.lockと合わせてbuild設定を提案します。判断できれば`config/initial-build.json`を書いてすぐbuildを始め、判断できなければ理由を`.local/initial-build/proposal.json`へ残して設定を待ちます（`docs/guides/initial-work.md`の「非同期buildの開始と確認」）。同時に`config/lanes.json`の`kickoff`にあるAI laneを起動します。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。inspectionの直後には`scripts/environment-report.py`が、inventory、inspection、初期build処理の調査（`environment.txt`）、`progress.log`から`docs/environment.md`（台数とrole、OS・kernel・CPU・memory、ミドルウェアの版、配布サーバーのRust、kickoffからの計時）をAIを使わずに書きます。1行目の生成markerが残っている間は再実行で上書きし、markerを消した（手で直した）fileは上書きせず`.local/environment-report.md`へ書きます。
+続いてkickoff build処理が1台目のCPU・OS・glibc・OpenSSL・Rust版を調査し、回収したCargo.toml・Cargo.lockと合わせてbuild設定を提案します。判断できれば`config/kickoff-build.json`を書いてすぐbuildを始め、判断できなければ理由を`.local/kickoff-build/proposal.json`へ残して設定を待ちます（`docs/guides/kickoff.md`の「非同期buildの開始と確認」）。同時に`config/lanes.json`の`kickoff`にあるAI laneを起動します。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。inspectionの直後には`scripts/environment-report.py`が、inventory、inspection、kickoff build処理の調査（`environment.txt`）、`progress.log`から`docs/environment.md`（台数とrole、OS・kernel・CPU・memory、ミドルウェアの版、配布サーバーのRust、kickoffからの計時）をAIを使わずに書きます。1行目の生成markerが残っている間は再実行で上書きし、markerを消した（手で直した）fileは上書きせず`.local/environment-report.md`へ書きます。
 
 ### 進行の通知
 
-`kickoff`、初期build処理、AI laneは、次に操作できることを`.local/progress.log`へ1行ずつ書きます（開始時刻、出どころ、状態、内容をtab区切り）。worktreeから書いてもルートrepoのfileへ集まります。kickoffの終了を待たず、この行を見て次の操作へ移ります。
+`kickoff`、kickoff build処理、AI laneは、次に操作できることを`.local/progress.log`へ1行ずつ書きます（開始時刻、出どころ、状態、内容をtab区切り）。worktreeから書いてもルートrepoのfileへ集まります。kickoffの終了を待たず、この行を見て次の操作へ移ります。
 
 | 出どころ | 状態 | 次の操作 |
 | --- | --- | --- |
 | `kickoff` | `code-ready` | コードを読める。laneはここから動く |
-| `initial-build` | `configured` | 自動生成された`config/initial-build.json`を確認してcommit |
-| `initial-build` | `needs_configuration` | `proposal.json`の理由を読み、設定を作る |
-| `initial-build` | `complete`／`failed` | deployできる／`build.log`を読んで直し、`initial-build.py start` |
+| `kickoff-build` | `configured` | 自動生成された`config/kickoff-build.json`を確認してcommit |
+| `kickoff-build` | `needs_configuration` | `proposal.json`の理由を読み、設定を作る |
+| `kickoff-build` | `complete`／`failed` | deployできる／`build.log`を読んで直し、`kickoff-build.py start` |
 | `lane:<名前>` | `commit` | そのcommitを観測と照合し、効くなら`git cherry-pick`（laneの完了を待たない） |
 | `lane:<名前>` | `complete`／`failed`／`timeout` | 結果を読んでmergeを判断／`lane.py status <名前>`で原因を見る |
 | `first-bench` | `baseline-ready` | `isuscope brief latest`で分析を始める（deployは続いている） |
@@ -60,7 +60,7 @@ git merge lane/code-map                      # 取り込みはmainのセッシ�
 
 - **設定**: `config/lanes.json`の`claude`にcommand、model（既定`claude-opus-5-5`）、effort（既定`high`）、permission mode、`allowed_tools`、時間上限を置きます。permission modeは`dontAsk`で、`allowed_tools`にないtool（Web、remote command、任意のshell）は確認なしで拒否されます。人間が途中で承認しないので、laneが自分の権限を広げられないようにするためです。
 - **remote操作の禁止**: laneは環境変数`ISUCON_LANE`付きで動きます。`scripts/tool-guard.py`はこれを見て、SSH・コピー、Ansible、deploy・import・kickoffなどremoteへ触れるscriptとmake target、ベンチ、isuscopeの記録系command、`.local/operation.lock`、`git push`、laneやAI CLIの起動を拒否します。
-- **起動**: `make kickoff`は先行回収のcommit直後に`kickoff`のlane（既定は`code-map`、`indexes`、`obvious-fixes`、`local-env`、`state-log`）を起動します。`code-map`は`docs/code-map.md`、`indexes`はschema（根拠はcommit messageに書き、`docs/indexes.md`へは効果を測ったmainが写す）、`obvious-fixes`はアプリのコード、`local-env`は`config/local/`と`docs/local-verification.md`、`state-log`は書き手のmodule（`config/state-log/state_log.rs`の写し）と呼び出しの追加、`docs/state-log.md`だけを変えます。`obvious-fixes`と`state-log`は同じ関数に行を足すことがあるので、`state-log`を先に取り込み、衝突したら両方の行を残します。`scenario`（`docs/benchmark-scenario.md`）は公式資料が要るので、mainが`docs/official/`をcommitした直後に`python3 scripts/lane.py start scenario`で起動します。`memory`（全メモリ化。書き込みはDBに残す）は、初動のcommitがmainに揃ってから`python3 scripts/lane.py start memory`で起動します。書き換えの前と後に同じ操作の列（`make local-flow`）を流し、状態ログ（`make local-state-log`）を`scripts/state-log-compare.py`で比べて、変化が漏れていないことを確かめます。laneは起動時のbranchから分かれるので、commitの前に起動すると公式資料が見えません。実行中は15秒ごと（`LANE_POLL_SECONDS`）にbranchを見て、新しいcommitを`lane:<名前> commit`として知らせます。完了・実行中のlaneは再実行しません。`KICKOFF_LANES=`で止め、`KICKOFF_LANES=code-map`で選べます。laneの起動に失敗してもkickoffは続きます。
+- **起動**: `make kickoff`は先行回収のcommit直後に`kickoff`のlane（既定は`code-map`、`indexes`、`obvious-fixes`、`local-env`、`state-log`）を起動します。`code-map`は`docs/code-map.md`、`indexes`はschema（根拠はcommit messageに書き、`docs/indexes.md`へは効果を測ったmainが写す）、`obvious-fixes`はアプリのコード、`local-env`は`config/local/`と`docs/local-verification.md`、`state-log`は書き手のmodule（`config/state-log/state_log.rs`の写し）と呼び出しの追加、`docs/state-log.md`だけを変えます。`obvious-fixes`と`state-log`は同じ関数に行を足すことがあるので、`state-log`を先に取り込み、衝突したら両方の行を残します。`scenario`（`docs/benchmark-scenario.md`）は公式資料が要るので、mainが`docs/official/`をcommitした直後に`python3 scripts/lane.py start scenario`で起動します。`memory`（全メモリ化。書き込みはDBに残す）は、kickoffのcommitがmainに揃ってから`python3 scripts/lane.py start memory`で起動します。書き換えの前と後に同じ操作の列（`make local-flow`）を流し、状態ログ（`make local-state-log`）を`scripts/state-log-compare.py`で比べて、変化が漏れていないことを確かめます。laneは起動時のbranchから分かれるので、commitの前に起動すると公式資料が見えません。実行中は15秒ごと（`LANE_POLL_SECONDS`）にbranchを見て、新しいcommitを`lane:<名前> commit`として知らせます。完了・実行中のlaneは再実行しません。`KICKOFF_LANES=`で止め、`KICKOFF_LANES=code-map`で選べます。laneの起動に失敗してもkickoffは続きます。
 - **記録**: `.local/lanes/<名前>/`に`status.json`（状態、branch、worktree、commit一覧、秒数、費用）、`stream.jsonl`（stream-json出力）、`result.md`（最後の回答）が残ります。Claudeが最後のcommitの後に書いた会話履歴（`docs/agent-history/`）は、lane.pyがbranchへcommitします。所要時間は`.local/stage-timing.tsv`へ`lane`として入ります。
 - **時間上限**: laneごとの`timeout_minutes`を過ぎるとprocess groupを止めて`timeout`にします。それまでのcommitはbranchに残ります。
 - **後始末**: mergeが済んだlaneは、worktreeで`make local-down`してから`git worktree remove`します。
@@ -84,7 +84,7 @@ draft reviewはnodeごとに1回のSSHで事実を集め、次をFAILにしま�
 
 draft生成は、採用言語のコードからsessionを識別するheaderやcookie（`x-session`、`Cookie::build("app_session"`、`const SESSION_ID_KEY: &str = "SESSIONID"`など）を探し、`observability_nginx_session_source`の候補（例: `$http_x_session`、`$cookie_SESSIONID`）を`ansible-vars.json`へ入れてWARNで確認を促します。見つからなければ設定を促すWARNになります。`kickoff-apply`は反映後に計測用logのdrop-inだけを書き直します。アプリがSQLiteやPostgreSQLに依存する場合、またはPostgreSQLが動いている場合は、DB計測がMySQL slow logだけであることをWARNにします。結果は`.local/draft/review.md`へ残ります。FAILがある場合`kickoff`は非0で終わり、draftを直して`python3 scripts/review-draft.py`で再検査します。`kickoff-apply`は反映前にもう一度同じ検査を行い、FAILなら何も変更しません。WARNの判断は、`review.md`を読んだ操作者（人間またはその作業セッション）が行います。
 
-`kickoff-apply`は検査済みdraftの反映、再discover、sync検査、完全import、採用言語の固定まで進めます。ベンチ前gateは`make bench-check`を一度だけ実行します。`bench-check`はdeployに依存しないので、完全importのcommit後、初期buildの完了を待つ間に実行してからdeployします。deployで設定（nginx、MySQL、unit）を変えたときだけ再実行します。個別の段階をやり直す場合は、以下の各節にある`scripts/`のscriptを直接実行します。kickoff・kickoff-apply・laneは初回`survey-run`、deploy、mergeを実行しません。
+`kickoff-apply`は検査済みdraftの反映、再discover、sync検査、完全import、採用言語の固定まで進めます。ベンチ前gateは`make bench-check`を一度だけ実行します。`bench-check`はdeployに依存しないので、完全importのcommit後、kickoff buildの完了を待つ間に実行してからdeployします。deployで設定（nginx、MySQL、unit）を変えたときだけ再実行します。個別の段階をやり直す場合は、以下の各節にある`scripts/`のscriptを直接実行します。kickoff・kickoff-apply・laneは初回`survey-run`、deploy、mergeを実行しません。
 
 完全importをcommitしたら、`make first-bench`が`bench-check`、`isuscope survey-run --hypothesis "${HYPOTHESIS}"`（既定は「初期状態の負荷構造とベンチシナリオを記録する」）、`deploy`を続けて実行し、失敗した段階で止まります。
 
@@ -92,7 +92,7 @@ draft生成は、採用言語のコードからsessionを識別するheaderやco
 
 SSH確立はinventoryのnode名で重複排除し、`SSH_MAX_PARALLEL_NODES`（既定5）台ずつ並列に行います。完全importはnodeごとに全itemのdigestを1回のSSHでまとめて計算し（`IMPORT_MAX_PARALLEL_NODES`、既定5）、localの内容がsourceのdigestと一致するitemは再転送しません。全itemのstagingと検証が終わるまで既存のlocalを置き換えず、途中で失敗した場合は元へ戻します。Ansible requirementsは内容hashが同じなら再installせず、bootstrap内のapplication nodeのfact収集も一度だけです。
 
-lockを取る変更系操作は、終了時に`.local/operation-timing.tsv`へ開始時刻・操作名・秒数・終了codeを残します。外側のlockだけが記録されるので、`kickoff`・`bootstrap`・`kickoff-apply`の中の段階は`.local/stage-timing.tsv`へ同じ形式（開始時刻・操作名・段階・秒数・終了code）で残します。初期buildの状態ごとの滞在時間（設定待ちの`needs_configuration`、`building`など）も同じfileへ`initial-build`として入ります。Ansibleはtaskごとの経過時間（全hostの完了まで）を`.local/ansible-task-timing.tsv`へ残します（`ansible/callback_plugins/task_timing.py`、collection不要）。次回の初動改善はこれらの実測を根拠に判断します。練習の後は`python3 scripts/initial-report.py --start <練習・競技の開始時刻>`で、開始からbaselineまでの時間、上限（briefの`limits`）に当たったFAIL、isuscopeのベンチ後の処理の秒数、エージェントが確認で止まった回数と返事待ちの時間を、isuscopeと会話の記録からまとめて出します（`--hours`で区間、`--json`で機械向け）。
+lockを取る変更系操作は、終了時に`.local/operation-timing.tsv`へ開始時刻・操作名・秒数・終了codeを残します。外側のlockだけが記録されるので、`kickoff`・`bootstrap`・`kickoff-apply`の中の段階は`.local/stage-timing.tsv`へ同じ形式（開始時刻・操作名・段階・秒数・終了code）で残します。kickoff buildの状態ごとの滞在時間（設定待ちの`needs_configuration`、`building`など）も同じfileへ`kickoff-build`として入ります。Ansibleはtaskごとの経過時間（全hostの完了まで）を`.local/ansible-task-timing.tsv`へ残します（`ansible/callback_plugins/task_timing.py`、collection不要）。次回のkickoff改善はこれらの実測を根拠に判断します。練習の後は`python3 scripts/kickoff-report.py --start <練習・競技の開始時刻>`で、開始からbaselineまでの時間、上限（briefの`limits`）に当たったFAIL、isuscopeのベンチ後の処理の秒数、エージェントが確認で止まった回数と返事待ちの時間を、isuscopeと会話の記録からまとめて出します（`--hours`で区間、`--json`で機械向け）。
 
 接続先の取得方法は2種類です。
 
@@ -200,7 +200,7 @@ commandのobjectには`"when": ["nginx-*"]`のように、そのcommandが扱う
 
 build成果物は`ISUCON_DEPLOY_STAGING_PATH`配下へ配置し、実行ファイルなど必要なartifactを最後に検証します。失敗した場合はlive pathを切り替えず、transactionを中断してstagingを除去します。node上の永続build cacheはtransaction外に残るため、cacheには再生成可能なartifactだけを置き、秘密情報やruntime dataを保存しません。
 
-Rustは`local_builds`を既定とし、配布サーバーではコンパイルしません。`config/sync.rust.example.json`の`binary`・service名・配置先に加えて、`base_image`（Linuxディストリビューションとglibc互換性）、`target`、`dockerfile`を配布環境に合わせて確認します。標準コンパイラはRust 1.99.0です。Dockerfile内で公式rustupから取得し、`RUSTUP_TOOLCHAIN=1.99.0`で選択します。準備ではOSを推測せず、`rust:replace-with-compatible-distribution`を残します。その代わり、`config/rust-builder/bases.json`の候補base（bullseye・bookworm・trixieのRust公式イメージと、そのglibc・libssl）×targetのbuilder imageを`make builder-images`（`local-build.py prepare-images`）で事前に作っておきます。当日の初回buildではrustup、apt、cross linkerの準備が省かれ、依存crateのcompileから始まります。取得できないtagがあれば止まるので、bases.jsonを直します。開始後は初期build処理が配布コードと実行環境からこの候補を選ぶか、操作者が互換性のある既存のRust公式イメージを設定します。例えば既存のbullseye環境ならbaseを維持し、Rust版だけを更新します。配布サーバーのRust版は`docs/environment.md`へ残し、標準版の選択とは分けます。厳密に固定する場合は`base_image`をdigest指定にします。追加のCライブラリなどが必要なら、Git管理するDockerfileへ明示します。
+Rustは`local_builds`を既定とし、配布サーバーではコンパイルしません。`config/sync.rust.example.json`の`binary`・service名・配置先に加えて、`base_image`（Linuxディストリビューションとglibc互換性）、`target`、`dockerfile`を配布環境に合わせて確認します。標準コンパイラはRust 1.99.0です。Dockerfile内で公式rustupから取得し、`RUSTUP_TOOLCHAIN=1.99.0`で選択します。準備ではOSを推測せず、`rust:replace-with-compatible-distribution`を残します。その代わり、`config/rust-builder/bases.json`の候補base（bullseye・bookworm・trixieのRust公式イメージと、そのglibc・libssl）×targetのbuilder imageを`make builder-images`（`local-build.py prepare-images`）で事前に作っておきます。当日の初回buildではrustup、apt、cross linkerの準備が省かれ、依存crateのcompileから始まります。取得できないtagがあれば止まるので、bases.jsonを直します。開始後はkickoff build処理が配布コードと実行環境からこの候補を選ぶか、操作者が互換性のある既存のRust公式イメージを設定します。例えば既存のbullseye環境ならbaseを維持し、Rust版だけを更新します。配布サーバーのRust版は`docs/environment.md`へ残し、標準版の選択とは分けます。厳密に固定する場合は`base_image`をdigest指定にします。追加のCライブラリなどが必要なら、Git管理するDockerfileへ明示します。
 
 ```bash
 make build                   # SSH/inventory不要。先行回収のcommit後から準備可能
@@ -211,9 +211,9 @@ make build SYNC_MANIFEST=.local/draft/sync.json
 
 ローカルにはPython 3と起動済みのDockerが必要です。Linux Docker hostのARM64/AMD64でネイティブにcompilerを動かし、`x86_64-unknown-linux-gnu`または`aarch64-unknown-linux-gnu`を出力します。Docker DesktopのMac共有ディレクトリにtargetを置かず、Linux named volumeへCargo targetと依存取得cacheを保存します。初回だけimage・依存の取得が必要です。既存vendorを使うオフライン検証では`RUST_BUILD_VENDOR_DIR=/absolute/vendor make build`を使えます（imageは事前準備が必要）。vendorは今回のlockfileに対応したものを使います。
 
-入力はcommit済みのitem全体と`Cargo.lock`です。配布物がworkspaceの一部で、`Cargo.lock`やpath依存がitemの外（親directory）にある場合は、`local_builds`（と`config/initial-build.json`）へ`source_root`（`webapp/`配下でitemを含むworkspace root）と`manifest_dir`（itemから見たbinaryのCargo.tomlの位置）を指定します。配布の`Cargo.lock`は再生成しません。標準以外のRust版が必要なら`toolchain`、target向けのCライブラリ（例: `libssl-dev:amd64`）は`packages`へ明示します。builderはtargetのarchitectureを追加し、`pkg-config`がtarget側のライブラリを参照するように設定します。ソースが未commitなら停止します。`make build`はDockerfile・manifestの調整中にも使えますが、deploy時はmanifest・Dockerfile・builder scriptもcommit済みであることが必要です。成果物は`.local/rust-build/`、直近の索引は`.local/local-build.json`に置き、Gitには追加しません。
+入力はcommit済みのitem全体と`Cargo.lock`です。配布物がworkspaceの一部で、`Cargo.lock`やpath依存がitemの外（親directory）にある場合は、`local_builds`（と`config/kickoff-build.json`）へ`source_root`（`webapp/`配下でitemを含むworkspace root）と`manifest_dir`（itemから見たbinaryのCargo.tomlの位置）を指定します。配布の`Cargo.lock`は再生成しません。標準以外のRust版が必要なら`toolchain`、target向けのCライブラリ（例: `libssl-dev:amd64`）は`packages`へ明示します。builderはtargetのarchitectureを追加し、`pkg-config`がtarget側のライブラリを参照するように設定します。ソースが未commitなら停止します。`make build`はDockerfile・manifestの調整中にも使えますが、deploy時はmanifest・Dockerfile・builder scriptもcommit済みであることが必要です。成果物は`.local/rust-build/`、直近の索引は`.local/local-build.json`に置き、Gitには追加しません。
 
-worktreeからもルートリポジトリのcacheを共用します。専用build lockで同時書込みを直列化し、通常の初動setupは止めません。ソースtree・build設定・image ID・builder scriptが同じならSHA-256検証後に完成済みbinaryを再利用します。ソースやCargo.lockが変わればCargoを再実行し、image・target等が同じなら依存crateのcacheを再利用します。imageやtargetが変われば別cacheになります。Docker image/volumeと`.local/rust-build`は明示的に削除するまで残ります。壊れたartifactは自動配布せず停止するため、該当input IDの成果物ディレクトリを除いて再buildしてください。
+worktreeからもルートリポジトリのcacheを共用します。専用build lockで同時書込みを直列化し、通常のkickoffsetupは止めません。ソースtree・build設定・image ID・builder scriptが同じならSHA-256検証後に完成済みbinaryを再利用します。ソースやCargo.lockが変わればCargoを再実行し、image・target等が同じなら依存crateのcacheを再利用します。imageやtargetが変われば別cacheになります。Docker image/volumeと`.local/rust-build`は明示的に削除するまで残ります。壊れたartifactは自動配布せず停止するため、該当input IDの成果物ディレクトリを除いて再buildしてください。
 
 deployはローカルbuildを完了してから全nodeのpreflightに進みます。source archiveへ生成binaryだけを追加し、nodeのCPUを検査します。stagingでSHA-256・実行権限・`ldd`による共有ライブラリ解決を確認し、全台成功してからliveへ切り替えます。transactionごとの索引は`.local/deploy-transactions/<release>.artifacts.json`です。切替失敗時は従来どおりsourceとbinaryを一緒にrollbackします。`ldd`は実アプリの動作保証ではないので、当日の環境でhealth checkとベンチも必要です。
 
@@ -300,7 +300,7 @@ isuscopeは毎回のベンチの前（collectorより前）に、`config/isuscop
 
 ベンチの期限はisuscopeの`[benchmark] timeout_seconds`で、`isuscope-policy.py`が`config/benchmark.env`の`BENCHMARK_TIMEOUT_SECONDS`から書きます。isuscopeはこれを`ISUSCOPE_BENCHMARK_TIMEOUT_SECONDS`としてadapterへ渡し（adapterは`BENCHMARK_TIMEOUT_SECONDS`よりこちらを使います）、自分はその30秒後に止めます。出力が`idle_timeout_seconds`（policyで300秒）途絶えたときも止めます。`BENCHMARK_TRANSPORT=ssh`では、ローカルのSSHに加えて、ベンチnode側のコマンドも`timeout -k 10 <期限>`で包みます（ローカルはその30秒後に止めます）。pty無しのSSHを止めてもremoteのベンチは走り続け、次のrunと重なり得るためです。isuscopeがベンチを止めたとき（`benchmark.stopped_by`が`timeout`／`idle`／`interrupted`）は、`cleanup_command`の`.isuscope/benchmark.sh --cleanup`が、ベンチnodeに残ったprocess group（run時に`/tmp/isuscope-benchmark.pid`へ残したもの）を止め、持ち主の消えたadapterのlockを外します。
 
-期限の前に、遅いベンチをAIへ知らせます。adapterは、最初に自然に終わった（exit 0で出力のある）ベンチの所要時間をbaselineとして`.local/benchmark-baseline-seconds`へ残します。以後のベンチがその`BENCHMARK_SLOW_FACTOR`倍（既定2、`config/benchmark.env`で変えられます）を超えて動いていると、`.local/progress.log`へ`benchmark slow`の行を1行書きます。ベンチは止めません。AIは行を見て原因を確かめ、止めるなら`scripts/benchmark-stop.sh`を実行します。これはadapterが`.local/benchmark-run.pid`に残した`isuscope run`のprocessへSIGTERMを送るので、isuscopeはrunを`interrupted`として記録し、上の後始末を動かします。baselineを測り直したいときは`.local/benchmark-baseline-seconds`を消します。
+期限の前に、遅いベンチをAIへ知らせます。adapterは、最初に自然に終わった（exit 0で出力のある）ベンチの所要時間をbaselineとして`.local/benchmark-baseline-seconds`へ残します。以後のベンチがその`BENCHMARK_SLOW_FACTOR`倍（既定2、`config/benchmark.env`で変えられます）を超えて動いていると、`.local/progress.log`へ`benchmark slow`の行を1行書きます。ベンチは止めません。AIは行を見て原因を確かめ、止めるなら`scripts/benchmark-stop.sh`を実行します。これはadapterが`.local/benchmark-run.pid`に残した`isuscope run`のprocessへSIGTERMを送るので、isuscopeはrunを`interrupted`として記録し、上の後始末を動かします。baselineを測り直したいときは`.local/benchmark-baseline-seconds`を消します。期限（`BENCHMARK_TIMEOUT_SECONDS`）だけに頼ると、practice-14-secondのように15.5分かかって失敗したrunを4回待ち、約1時間を失います。
 
 再起動の前に、`scripts/check-deployed-commit.sh`で、最後に成功したdeployのcommit（`.local/current-deploy-commit`）とHEADを、deployが配るファイル（sync.jsonのitem、local buildのDockerfile、sync.json自身）に限って比べます。違うcommitか、それらのファイルに未commitの変更があれば、ベンチを始めません。isuscopeはrunをHEADのcommitとして記録するため、そのまま回すと、記録上のcommitとサーバーで動いているcommitが違うrunになります（practice-14のeb28e94a）。docsやisuscope-dataだけのcommitでは止まりません。deployの記録がない環境で意図して回す場合だけ、`SKIP_DEPLOYED_COMMIT_CHECK=1`を付けます。
 
