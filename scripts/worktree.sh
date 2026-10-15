@@ -54,9 +54,9 @@ write_brief() {
     printf '# lane: %s\n\n- worktree: %s\n- branch: %s\n- base: %s\n- 目的: %s\n\n' \
       "${branch}" "${worktree}" "${branch}" "${base}" "${purpose}"
     printf '## このlaneでやること\n\n目的だけを小さいcommitで進める。各commitに、直した問題（file:line）、変更、期待する観測値を1行で書く。\n\n'
-    printf '## 作業と評価\n\n調査・実装・検証から統合・deploy・ベンチ・採否まで進める。remote変更はmain側で共通lockを使う。初回baseline前に性能変更をremoteへ反映しない。\n\n'
+    printf '## 作業と評価\n\n調査・実装・ローカル検証まで進めてcommitする。deploy・ベンチ・isuscopeの記録・採否はmain（/mainで宣言したセッション）が行い、mainが宣言されている間はtool-guardが他のセッションのそれらを止める。\n\n'
     printf '## ローカル実行環境\n\nconfig/local/compose.yamlが準備済みなら、このworktreeでmake local-up / local-check / local-downを使用できる。DB・network・portはworktree専用。docs/local-development.mdを参照。\n\n'
-    printf '## mainへ渡すとき\n\n目的に対する結果を1行で報告し、mainへマージする前にローカルのbuildとテストを通す。\n\n'
+    printf '## mainへ渡すとき\n\nローカルのbuildとテストを通してcommitし、このworktreeで投稿する。mainが次にベンチを起動したときに渡り、採否は`python3 scripts/proposal.py show`（Claude Codeならプロンプトの上の帯）で分かる。衝突（needs-sync）と返ったら、mainのbranchをmergeして投稿し直す。\n\n    python3 scripts/proposal.py submit --hypothesis \"何を変えて、なぜ点が上がるか\" --expect \"期待する観測値（route・SQLなど）\" --verified \"ローカルで確かめたこと\"\n\n'
     local others
     others=$(lanes)
     if [[ -n "${others}" ]]; then
