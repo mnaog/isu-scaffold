@@ -11,9 +11,12 @@ Code headless there with ISUCON_LANE set (tool-guard then refuses remote nodes, 
 benchmarks and the operation lock), commits its conversation log when Claude exits, and
 records status.json, the stream and the final answer under .local/lanes/<name>/ of the
 root repository. Milestones go to .local/progress.log. The main session reads the answer
-and merges the branch; lanes never merge or push. config/lanes.json holds the model,
-effort, timeouts, the named prompts and the tools a lane may use: permission mode dontAsk
-denies everything else without asking, so an unattended lane cannot widen its own access.
+and merges the branch; lanes never merge into other branches or push (a lane whose prompt
+says so may merge the branch it started from into its own). config/lanes.json holds the
+model, effort, timeouts, the named prompts and the tools a lane may use: permission mode
+dontAsk denies everything else without asking, so an unattended lane cannot widen its own
+access. A lane may list `requires`: files the starting commit must already hold, so a lane
+that builds on earlier lanes cannot start before main has taken them in.
 """
 import argparse
 import fcntl
@@ -83,7 +86,15 @@ def lane_settings(name, prompt_file=None, purpose=None):
         raise SystemExit(f'lane {name} is not in config/lanes.json; give --prompt-file and --purpose')
     claude = dict(config.get('claude', {}))
     claude['timeout_minutes'] = defined.get('timeout_minutes', claude.get('timeout_minutes', 60))
+    claude['allowed_tools'] = claude.get('allowed_tools', []) + defined.get('extra_allowed_tools', [])
     return claude, Path(prompt), purpose
+
+
+def missing_requirements(name):
+    """Files the lane's definition requires that the commit it would start from lacks."""
+    required = load_config().get('lanes', {}).get(name, {}).get('requires', [])
+    return [path for path in required
+            if subprocess.run(['git', 'cat-file', '-e', f'HEAD:{path}'], cwd=ROOT, capture_output=True).returncode]
 
 
 def start(name, prompt_file=None, purpose=None):
@@ -93,6 +104,9 @@ def start(name, prompt_file=None, purpose=None):
     prompt = prompt if prompt.is_absolute() else ROOT / prompt
     if not prompt.is_file():
         raise SystemExit(f'prompt not found: {prompt}')
+    missing = missing_requirements(name)
+    if missing:
+        raise SystemExit(f'lane {name} needs these files committed on the current branch first: {", ".join(missing)}')
     if not shutil.which(claude.get('command', 'claude')):
         progress.emit(f'lane:{name}', 'failed', f'{claude.get("command", "claude")} command not found', root=ROOT)
         raise SystemExit(1)
@@ -151,14 +165,15 @@ def create_worktree(name, purpose):
     path = next((line.split(':', 1)[1].strip() for line in result.stdout.splitlines() if line.startswith('worktree:')), None)
     if not path:
         raise RuntimeError('worktree.sh did not print the worktree path')
-    return Path(path), branch, git('rev-parse', branch)
+    return Path(path), branch, base, git('rev-parse', branch)
 
 
-def lane_prompt(name, prompt, worktree, branch, base_commit):
+def lane_prompt(name, prompt, worktree, branch, base, base_commit):
     return (f'あなたはISUCONの並行lane「{name}」として、mainのセッションとは別に1回だけ動くClaude Codeです。\n'
-            f'作業場所: {worktree}（branch {branch}、分岐元commit {base_commit[:12]}）。'
+            f'作業場所: {worktree}（branch {branch}、分岐元branch {base}、分岐元commit {base_commit[:12]}）。'
             '人間とmainのセッションは途中で返事をしない。確認を待たずに最後まで進め、判断が要るものは最後の回答に書く。\n'
-            'このbranchへcommitだけを行い、mainへのmerge・push・他のworktreeの変更・remote操作はしない。\n\n'
+            'このbranchへcommitだけを行い、他のbranchへのmerge・push・他のworktreeの変更・remote操作はしない'
+            '（分岐元branchをこのbranchへ取り込むのは、下の指示がそう求める場合だけ）。\n\n'
             + prompt.read_text())
 
 
@@ -178,9 +193,14 @@ def result_of(stream):
     return final
 
 
-def report_commits(source, name, base_commit, branch, reported):
+def lane_commits(branch, base, base_commit, *options):
+    """The lane's own commits: those the base branch already has (merged in by the lane) are main's."""
+    return git('log', *options, '--format=%h %s', branch, '--not', base_commit, base, check=False).splitlines()
+
+
+def report_commits(source, name, base, base_commit, branch, reported):
     """Each commit is usable on its own, so main may cherry-pick it before the lane ends."""
-    for line in git('log', '--reverse', '--format=%h %s', f'{base_commit}..{branch}', check=False).splitlines():
+    for line in lane_commits(branch, base, base_commit, '--reverse'):
         if line and line not in reported:
             reported.add(line)
             progress.emit(source, 'commit', f'{line} (git cherry-pick {line.split()[0]})', root=ROOT)
@@ -220,19 +240,19 @@ def run(name, prompt_file, purpose):
              effort=claude.get('effort'), result=None, error=None)
         code = 1
         try:
-            worktree, branch, base_commit = create_worktree(name, purpose)
+            worktree, branch, base, base_commit = create_worktree(name, purpose)
             command = [claude.get('command', 'claude'), '-p', '--output-format', 'stream-json', '--verbose',
                        '--model', claude['model'], '--effort', claude['effort'],
                        '--permission-mode', claude.get('permission_mode', 'dontAsk'),
                        '--allowedTools', ','.join(claude.get('allowed_tools', []))]
             # --allowedTools takes several values, so the prompt goes through stdin, not argv.
-            text = lane_prompt(name, prompt, worktree, branch, base_commit)
+            text = lane_prompt(name, prompt, worktree, branch, base, base_commit)
             environment = dict(os.environ, ISUCON_LANE=name, ISUCON_LANE_ROOT=str(root_repo()))
             # Started from a main session that is itself Claude Code: run as a fresh top-level session.
             for variable in ('ISUSCOPE_LOCK_HELD', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT'):
                 environment.pop(variable, None)
             timeout = float(claude['timeout_minutes']) * 60
-            save(name, 'running', worktree=str(worktree), branch=branch, base_commit=base_commit,
+            save(name, 'running', worktree=str(worktree), branch=branch, base=base, base_commit=base_commit,
                  timeout_minutes=claude['timeout_minutes'])
             progress.emit(source, 'running', f'{branch} at {worktree}', root=ROOT)
             stream = directory / 'stream.jsonl'
@@ -254,7 +274,7 @@ def run(name, prompt_file, purpose):
                         returncode = child.wait(timeout=max(0.1, min(poll, deadline - time.monotonic())))
                         break
                     except subprocess.TimeoutExpired:
-                        report_commits(source, name, base_commit, branch, reported)
+                        report_commits(source, name, base, base_commit, branch, reported)
                         if time.monotonic() < deadline:
                             continue
                     os.killpg(child.pid, signal.SIGTERM)
@@ -265,12 +285,12 @@ def run(name, prompt_file, purpose):
                         returncode = child.wait()
                     timed_out = True
                     break
-            report_commits(source, name, base_commit, branch, reported)
+            report_commits(source, name, base, base_commit, branch, reported)
             commit_history(worktree)
             final = result_of(stream) or {}
             answer = final.get('result') or ''
             (directory / 'result.md').write_text(answer + '\n')
-            commits = git('log', '--format=%h %s', f'{base_commit}..{branch}', check=False).splitlines()
+            commits = lane_commits(branch, base, base_commit)
             ok = returncode == 0 and not timed_out and final and not final.get('is_error')
             code = 0 if ok else 1
             state = 'complete' if ok else ('timeout' if timed_out else 'failed')

@@ -16,7 +16,7 @@ SSH確立直後に採用言語のコードとDB schemaを先行importし、初�
 2. kickoffと並行して、公式資料を保存・commitしてlane `scenario`を起動し、`config/benchmark.env`・`benchmark-contract`の用意、`--check`・`--probe`を済ませる。build設定が自動生成されたら確認してcommitし、設定待ちなら`config/initial-build.json`を作る。
 3. draftを判断して`kickoff-apply`し、完全importをcommitする。
 4. 人間の確認を待たずに`make first-bench`を実行する。`bench-check`の後、配布状態のままの初期状態で`survey-run`を取り、その後に同じcommitをdeployする（配布状態で測れない場合はdeployを先にする）。`baseline-ready`が出たらスコア・エラー・HTTP・SQL・ホスト負荷を分析し、lane `code-map`の地図を照合に使う。
-5. 観測とコードから改善を選ぶ。baselineの後の最初のdeployで、lane `state-log`のcommitを他のlaneより先に取り込む（以後のrunで、状態についての問いに計測を足さずに答えられる）。lane `indexes`・`obvious-fixes`のcommitは観測と照合して効くものから`git cherry-pick`し（laneの完了を待たない）、残りは実装・ローカル検証・commit・deployを進める。初動のcommitがmainに揃ったら、lane `memory`を起動する。状態をすべてメモリに置き、書き込みはDBに残す書き換えを、mainの改善と並行して作らせ、終わったらdeployして測る。
+5. 観測とコードから改善を選ぶ。baselineの後の最初のdeployで、lane `state-log`のcommitを他のlaneより先に取り込む（以後のrunで、状態についての問いに計測を足さずに答えられる）。lane `indexes`・`obvious-fixes`のcommitは観測と照合して効くものから`git cherry-pick`し（laneの完了を待たない）、残りは実装・ローカル検証・commit・deployを進める。state-logを取り込んだdeployをcommitしたら、そのベンチを待たずにlane `memory`を起動する（`local-env`もmerge済みであること。`indexes`・`obvious-fixes`は待たない）。状態をすべてメモリに置き、書き込みはDBに残す書き換えを、mainの改善と並行して作らせる。laneは終わる前に最新のmainを取り込んで確かめ直すので、終わったら`git merge lane/memory`でmainへ入れ、deployして直前のrunと比べる。
 6. 通常の`isuscope run`で比較し、仮説の判定と変更の採否を記録する。障害があれば原因調査から修正・再評価まで続ける。
 
 先行importは読解用の暫定snapshotであり、全配布先のdigest一致と設定の正本化は完全importで確認する。並行作業はlane（`scripts/lane.py`）か`make worktree`で行う。remote操作はmain側で共通lockを使う。
