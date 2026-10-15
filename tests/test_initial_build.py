@@ -139,10 +139,12 @@ class KickoffTests(unittest.TestCase):
             root = Path(d)
             for folder in ('scripts', 'config', 'webapp/rust', 'webapp/sql', '.local'):
                 (root/folder).mkdir(parents=True)
-            for name in ('kickoff.sh', 'application-policy.sh', 'stage-lib.sh', 'progress.py', 'check-agent-session.py'):
+            for name in ('kickoff.sh', 'application-policy.sh', 'stage-lib.sh', 'progress.py', 'check-agent-session.py',
+                         'benchmark-markers.py'):
                 shutil.copy(ROOT/'scripts'/name, root/'scripts'/name)
             (root/'config/application.env').write_text('APPLICATION_LANGUAGE=rust\nAPPLICATION_PATH=webapp/rust\n')
             (root/'webapp/rust/Cargo.toml').write_text('[package]\nname="fixture"\n')
+            (root/'webapp/rust/main.rs').write_text('.route("/api/initialize", post(initialize))\n')
             if history:
                 (root/'docs/agent-history').mkdir(parents=True)
                 (root/'docs/agent-history/20261013-000000.md').write_text(
@@ -155,7 +157,6 @@ class KickoffTests(unittest.TestCase):
             for p in (root/'scripts').glob('*.sh'):p.chmod(0o755)
             (root/'scripts/initial-build.py').write_text('import sys\nopen("events","a").write("build-"+sys.argv[1]+"\\n")\n')
             (root/'scripts/lane.py').write_text('import sys\nopen("events","a").write("lanes-"+sys.argv[1]+"\\n")\n')
-            (root/'scripts/environment-report.py').write_text('open("events","a").write("environment\\n")\n')
             (root/'scripts/review-draft.py').write_text('')
             environment = {k: v for k, v in os.environ.items() if not k.startswith(('CODEX_', 'CLAUDE_CODE_SESSION'))}
             environment.update(ISUSCOPE_LOCK_HELD='1', CLAUDE_CODE_SESSION_ID='fixture-session')
@@ -167,16 +168,21 @@ class KickoffTests(unittest.TestCase):
                 self.assertIn('Start a new Codex or Claude Code session inside', result.stderr)
                 return
             self.assertEqual((root/'events').read_text().splitlines(),
-                             ['build-start','lanes-kickoff','bootstrap','inspect','environment','draft','build-status'])
+                             ['build-start','lanes-kickoff','bootstrap','inspect','draft','build-status'])
             self.assertEqual(result.returncode, 0, result.stderr)
             # Nested steps keep their own timing although the outer lock records only kickoff.
             stages = [line.split('\t')[1:3] for line in (root/'.local/stage-timing.tsv').read_text().splitlines()]
             self.assertEqual(stages, [['kickoff.sh', name] for name in
-                                      ('agent-session', 'build-dispatch', 'lanes', 'bootstrap', 'inspect', 'environment-report',
+                                      ('agent-session', 'build-dispatch', 'lanes', 'bootstrap', 'inspect',
                                        'configure-draft', 'review-draft')])
             # The agent following progress.log sees when code can be read and when the draft is ready.
             states = [line.split('\t')[1:3] for line in (root/'.local/progress.log').read_text().splitlines()]
-            self.assertEqual(states, [['kickoff', 'started'], ['kickoff', 'code-ready'], ['kickoff', 'draft-ready']])
+            self.assertEqual(states, [['kickoff', 'started'], ['kickoff', 'code-ready'], ['kickoff', 'initialize-route'],
+                                      ['kickoff', 'draft-ready']])
+            # The one initialize route in the code is set and committed before the lanes start.
+            self.assertIn('path = "/api/initialize"', (root/'.isuscope/routes.toml').read_text())
+            self.assertEqual(subprocess.run(['git', '-C', d, 'status', '--porcelain', '--', '.isuscope'],
+                                            capture_output=True, text=True).stdout, '')
 
     def test_build_starts_before_bootstrap_without_another_session(self):
         self.exercise()

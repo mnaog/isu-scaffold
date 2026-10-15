@@ -17,7 +17,7 @@
 | `ansible/` | 全nodeの初期access、toolchain、observability前提を冪等に揃えるplaybookと変数。 |
 | `scripts/` | `import`、`deploy`、`restart`、`status`、`rollback`など、ローカルから環境を操作する処理。通常操作はMakefileから呼び出す。 |
 | `docs/` | `official/`へ一次情報、`preparation.md`（準備）・`initial-work.md`（初動）・`improvement.md`（改善）・`finish.md`（終了前）へ進め方、`agent-history/`へCodex・Claude Code・OpenCodeの会話・操作履歴（自動生成）を保存する。調査やシナリオ分析もここへ残す。 |
-| `.claude/` | Claude Codeがこの`AGENTS.md`を起動時に読み込むためのrule symlinkと、禁止操作を止めるhook（`tool-guard.py`）と、foregroundのベンチを止めてベンチ中にscout報告を渡すhook（`bench-hook.py`）の設定（`settings.json`）。`CLAUDE.md`は作成しない。 |
+| `.claude/` | Claude Codeがこの`AGENTS.md`を起動時に読み込むためのrule symlinkと、禁止操作を止めるhook（`tool-guard.py`）と、foregroundのベンチを止めてベンチ中にscout報告と投稿を渡すhook（`bench-hook.py`）の設定（`settings.json`）。mainを宣言する`/main`（`commands/main.md`）と、mainのセッションのプロンプトの上に`★ MAIN`の帯を出すmod（`skills/isucon-main/`）。`CLAUDE.md`は作成しない。 |
 | `.codex/` | Codexが同じhookを読む`hooks.json`。初めて開いたときにCodexでhookを信頼する。 |
 | `.isuscope/` | node、collector、route正規化、ベンチ実行方法など、isuscopeの計測設定。 |
 | `isuscope-data/` | スコア、仮説、分析、Git状態など、isuscopeのrun。生ログは既定で除外し、重要なrunだけ強制追加する。 |
@@ -36,7 +36,7 @@
 
 ## 必ず残す記録
 
-ベンチの見取り図（`docs/benchmark-scenario.md`）、コードの地図（`docs/code-map.md`）など、必ず残す記録は置き場所が固定で、一覧は`config/records.json`にある。各手順書の「残すもの」が指す場所へ書き、別の場所や別名のファイルに分けない。人間は`make board`の「記録」で読む。
+ベンチの見取り図（`docs/benchmark-scenario.md`）、状態ログの対象（`docs/state-log.md`）など、必ず残す記録は置き場所が固定で、一覧は`config/records.json`にある。各手順書の「残すもの」が指す場所へ書き、別の場所や別名のファイルに分けない。人間は`make board`の「記録」で読む。
 
 ## 作業ルール
 
@@ -52,7 +52,9 @@
 ## 作業の進め方
 
 作業するAI（mainのセッション）は、調査・実装・検証・deploy・ベンチ・採否判断まで一貫して進める。問題を理解したセッションで修正と評価を続ける。
-並行させるAIは、すべてClaude Codeのheadless実行（`claude -p`）のlaneにする。laneは`scripts/lane.py`が自分のworktreeとbranch（`lane/<名前>`）で1回だけ動かし、そのbranchへcommitして終わる。mainのセッションは結果（`python3 scripts/lane.py status <名前>`）を読み、根拠を照合してから`git merge`で取り込む。laneは出力が決まった有限のタスクだけに使い、常駐させない。モデル・effort・使えるtool・時間上限・promptは`config/lanes.json`と`config/lanes/`が正で、laneは許可したtool以外を確認なしで拒否される。laneのremote node・deploy・ベンチ・isuscopeの記録・`.local/operation.lock`・push・laneの起動は`scripts/tool-guard.py`が止める。
+mainはrepoのrootで起動したセッションが`/main`で宣言する（Codexは`python3 scripts/main-session.py claim --agent codex`）。宣言は`.local/main-session.json`に残り、宣言がある間は、deploy・rollback・import・kickoff、ベンチ、isuscopeの記録、laneとscoutの起動・停止、`.local/operation.lock`を、ほかのセッションから`scripts/tool-guard.py`が止める。別のセッションで`/main`を打ち直すとmainが移る。Claude Codeでは、mod（`.claude/skills/isucon-main/`）がmainのプロンプトの上に`★ MAIN`の帯を出し、ほかのセッションには`WORKTREE`・`NOT MAIN`と自分の投稿の状態を出すので、人間はどの窓がmainかを見分けられる（modは信頼したworkspaceで読み込まれる）。目標は人間が`/main`の後に`/goal`で渡す。
+人間や手で動かすClaude Codeは、`make worktree`のworktreeで調査・実装・ローカル検証をしてcommitし、`python3 scripts/proposal.py submit --hypothesis ... --expect ... --verified ...`で投稿する。mainがベンチを`run_in_background`で起動すると、`bench-hook.py`がscoutの報告と一緒に、まだ読んでいない投稿のうちmainのbranchへ衝突なく入るものをmainにだけ渡す。mainは待つ間に読んで次に測るものを選び、`git merge --no-ff <branch>`と`make build`をしておく。衝突する投稿は渡さずに`needs-sync`として投稿者へ返し、投稿者がmainのbranchをmergeして投稿し直す。mainは測った結果を`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID>`で返す。一覧は`make proposals`。
+並行させるheadlessのAIは、Claude Codeのheadless実行（`claude -p`）のlaneにする。laneは`scripts/lane.py`が自分のworktreeとbranch（`lane/<名前>`）で1回だけ動かし、そのbranchへcommitして終わる。mainのセッションは結果（`python3 scripts/lane.py status <名前>`）を読み、根拠を照合してから`git merge`で取り込む。laneは出力が決まった有限のタスクだけに使い、常駐させない。モデル・effort・使えるtool・時間上限・promptは`config/lanes.json`と`config/lanes/`が正で、laneは許可したtool以外を確認なしで拒否される。laneのremote node・deploy・ベンチ・isuscopeの記録・`.local/operation.lock`・push・laneの起動は`scripts/tool-guard.py`が止める。
 remote変更・deploy・共有ベンチはmain側で既存の共通lockを使い、実行中の操作と競合させない。作業中の他worktreeを変更・削除しない。
 人間は`make board`で開く読み取り専用の画面（ボード）で、スコアの推移、runの比較と負荷、必ず残す記録を見る。詳細は`docs/board.md`。
 scout（Claude Code・Codex・Kimi Code）は`make first-bench`が初回baselineの後に起動し（`FIRST_BENCH_SCOUT=0`なら起動しない。手では`make scout-start`）、`make scout-stop`で止める。各scoutは前回の報告を保存してから8分後に新しいセッションで探索し、最新の報告を`.local/scout/reports.md`へ書く（Gitには入れない。`make scout-stop`が`docs/scout-reports.md`へ残すので、それをcommitする）。参照する会話は、scoutを起動したセッション（`make first-bench`・`make scout-start`を実行したmainのセッション）が自動で登録される。別の会話にするときは`python3 scripts/scout/main.py conversation <agent> <実セッションID>`で明示し、更新時刻から推測しない。報告はmainのセッションがベンチの待ち時間に読む。詳細は`docs/roles/scout.md`。
@@ -67,7 +69,7 @@ sfs（spawn-forked-session）は、現在の会話履歴と作業状態を引き
 
 ## 初動の自動化
 
-mainのAIセッション（Codex・Claude Code）は、このrepoの中で起動する。isuscopeは各ベンチをこのrepoの`docs/agent-history/`にある会話へ結び付けるので、別のdirectory（scaffoldなど）で起動したセッションからはベンチを動かせない（`make kickoff`が最初に`scripts/check-agent-session.py`で止める）。
+mainのAIセッション（Codex・Claude Code）は、このrepoのrootで起動し、最初に`/main`で宣言する（Codexは`python3 scripts/main-session.py claim --agent codex`）。isuscopeは各ベンチをこのrepoの`docs/agent-history/`にある会話へ結び付けるので、別のdirectory（scaffoldなど）で起動したセッションからはベンチを動かせない（`make kickoff`が最初に`scripts/check-agent-session.py`で止める）。
 
 大会開始後は、`config/environment.example.env`を`.local/environment.env`へコピーしてprovider、SSH、node分類を設定し、次の順で初動を進める。
 
@@ -75,18 +77,20 @@ mainのAIセッション（Codex・Claude Code）は、このrepoの中で起動
 make kickoff（バックグラウンドで実行し、.local/progress.logを追う）
   → 回収元1台のSSH確立後、webapp/rustとDDLを先行回収し、その範囲だけ自動commit（code-ready）
   → 並行して1台目のbuild環境を調査。build設定を自動生成できれば即build、できなければ設定待ち
-  → 並行してlane code-map（docs/code-map.md）、indexes（索引を1件1commit）、obvious-fixes（索引以外の自明な修正を1件1commit）、
-    local-env（config/local/compose.yamlとdocs/local-verification.md）、state-log（状態ログの書き手と呼び出し、docs/state-log.md）を起動
-  → 全nodeのSSH確立、Ansible導入、初期収束、初期構成の調査。調査結果からdocs/environment.mdを自動で書く
+  → initializeの経路がコードに1つだけなら.isuscope/routes.tomlの[initialize]へ書いてcommit（initialize-route）。
+    isuscopeがaccess logからinitializeと負荷走行を分けるので、初回runから要約にinitializeが混ざらない
+  → 並行してlane indexes（索引を1件1commit）、obvious-fixes（索引以外の自明な修正を1件1commit）、
+    local-env（config/local/compose.yaml）、state-log（状態ログの書き手と呼び出し、docs/state-log.md）を起動
+  → 全nodeのSSH確立、Ansible導入、初期収束、初期構成の調査
   → node role、同期対象、Ansible変数、log pathの候補を.local/draftへ生成
   → draftを実nodeと照合し、.local/draft/review.mdを出して停止（draft-ready）
 kickoffの実行中にmainのセッションが並行して進める
   → 公式資料をdocs/official/へ保存してcommitし、すぐlane scenario（docs/benchmark-scenario.md）を起動
   → config/benchmark.envとbenchmark-contractを用意し、.isuscope/benchmark.sh --check、--probe（discoverの後なら実行できる）
   → build設定待ちならconfig/initial-build.jsonを作る。自動生成されたら確認してcommit
-  → initializeの経路を.isuscope/routes.tomlの[initialize]へ書いてcommit（scripts/benchmark-markers.py suggest-route → set-route）。
-    isuscopeがaccess logからinitializeと負荷走行を分けるので、初回runから要約にinitializeが混ざらない
-  → laneが終わったものから結果を読んでmergeする（code-map、local-env、scenarioは文書と構成だけ）
+  → progress.logのinitialize-routeがneeds_choice（候補が無い・複数）なら、選んでset-routeしてcommit
+    （scripts/benchmark-markers.py suggest-route → set-route）
+  → laneが終わったものから結果を読んでmergeする（local-env、scenarioは文書と構成だけ）
 review.mdのFAILを直し、WARNをすべて判断してからCONFIRM_DRAFT=true make kickoff-apply
   → draftを再検査して反映し、全配布先のdigest一致を確認して完全import
 完全importを確認して初期状態をcommit
@@ -97,25 +101,26 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
   → そうでなければ、make deploy（初期buildの完了を待つ）の後にsurvey-run、続けてscoutを起動
   → 出力の形を確かめる前ならresultはPENDING。python3 scripts/benchmark-sample.py <run>で読み取りを確かめ、
     --apply --score N --pass true|false（自分で読んだ値）でsample・contract・--check・rescoreまで済ませる
-初回runの分析後に観測に基づいて改善を実装・検証
+初回runの分析（最大の制約と根拠をisuscope analyzeに書く）の後に観測に基づいて改善を実装・検証
   → baselineの後の最初のdeployで、lane state-logのcommitを他のlaneより先に取り込む（次のrunからbriefのstates欄が埋まる）
+  → そのdeployをcommitしたら、ベンチの結果を待たずにlane full-memory（全メモリ化。書き込みはDBのまま）を起動する
   → lane indexes・obvious-fixesのcommitをbaselineの観測と照合して選んで取り込む（laneの途中でもcommit単位で取り込める）
-  → 初動のcommitがmainに揃ったら、lane memory（全メモリ化。書き込みはDBのまま）を起動し、終わったらdeployして測る
+  → 改善を続け、lane full-memoryが終わったら（最新のmainを取り込み済み）mainへmergeしてdeployし、直前のrunと比べる
   → deployし、通常のisuscope runでbaselineと比較
 ```
 
-時間の大半は「kickoffが終わるのを待つ間」と「deployから初回ベンチまで」に出る。mainのセッションは`make kickoff`の終了を待たず、`.local/progress.log`の行（`code-ready`、`initial-build configured / needs_configuration / complete / failed`、`lane:<名前> complete / failed`、`draft-ready / draft-failed`、段階の`failed`）を見て次の操作へ移る。Claude Codeならkickoffを`run_in_background`で起動し、Monitorで`tail -n +1 -f .local/progress.log`を追う。Codexでは別のshellでkickoffを動かし、同じfileを作業の区切りごとに読む。ベンチ接続の準備はkickoffの結果を使わないので、kickoffの開始と同時に始める。`make first-bench`は段階の間でAIの手番を待たない。本番当日はRustの初期build（キャッシュなしで4〜5分）が最も長い待ちなので、最初のdeploy前はサーバーが配布状態のまま動いていることを使い、baselineをbuildとdeployの前に取る。`bench-check`はdeployに依存しないので、deployの前に流す。段階を個別にやり直すときは`make bench-check`、`make deploy`、`isuscope survey-run`を直接使う。deployで設定（nginx、MySQL、unit）を変えたときだけ`bench-check`を再実行する。
+時間の大半は「kickoffが終わるのを待つ間」と「deployから初回ベンチまで」に出る。mainのセッションは`make kickoff`の終了を待たず、`.local/progress.log`の行（`code-ready`、`initialize-route`、`initial-build configured / needs_configuration / complete / failed`、`lane:<名前> complete / failed`、`draft-ready / draft-failed`、段階の`failed`）を見て次の操作へ移る。Claude Codeならkickoffを`run_in_background`で起動し、Monitorで`tail -n +1 -f .local/progress.log`を追う。Codexでは別のshellでkickoffを動かし、同じfileを作業の区切りごとに読む。ベンチ接続の準備はkickoffの結果を使わないので、kickoffの開始と同時に始める。`make first-bench`は段階の間でAIの手番を待たない。本番当日はRustの初期build（キャッシュなしで4〜5分）が最も長い待ちなので、最初のdeploy前はサーバーが配布状態のまま動いていることを使い、baselineをbuildとdeployの前に取る。`bench-check`はdeployに依存しないので、deployの前に流す。段階を個別にやり直すときは`make bench-check`、`make deploy`、`isuscope survey-run`を直接使う。deployで設定（nginx、MySQL、unit）を変えたときだけ`bench-check`を再実行する。
 
 採用言語はRustに固定する（`config/application.env`）。先行回収は完全importを待たない暫定回収であり、対象はコードとschemaだけに限定する。完全な初期状態の正本化と全配布先の一致確認は`kickoff-apply`のimportで完了する。`kickoff`は再実行でき、回収済みならimportを飛ばし、初期buildと完了・実行中のlaneは重複起動しない。draftの判断は`review.md`を読んだ操作者（人間またはこのセッション）が行い、`make`の中で別のAIを呼んで承認させない。`make`は初動・deploy・検査とボード・scout常駐処理の入口に絞っており、個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
 
 - 計測と運用の土台（計測tool、LTSV access log、時刻同期、journal、自動更新停止）は初動のAnsibleで固定化し（SQLはisuscopeがperformance_schemaから取るので、slow logは既定で無効）、レギュレーションで禁止された項目だけ変数で外す。性能を変える設定（`config/nginx/tare`、networking sysctl、MySQLの性能設定）は初回baselineの後に1つの変更として入れる。接続・fdの上限（nginxのworker_connections・backlog・keepalive、アプリのLimitNOFILE、sysctl、MySQLのmax_connectionsとbuffer pool）は`make tare`が1つのcommitにするので、baselineの後に早めにdeployして`isuscope run`で測る。
-- ベンチ（`isuscope run`・`survey-run`・`make first-bench`）は、Claude CodeではBashの`run_in_background`で起動する。foregroundの起動はPreToolUseのhook（`scripts/bench-hook.py`）が止める。起動すると同じhookがPostToolUseで、ベンチの見取り図（`docs/benchmark-scenario.md`）の振り返りと、並列で動く調査エージェント（scout）の報告（投稿からの経過分つき）を渡す。各報告は同じセッションへ1回だけ渡し、以後のベンチでは前回から新しく出た報告だけを渡す（新しい報告がなければscoutの内容は付けない）。完了の通知を待つ間に、見取り図を読み返して今回の仮説と次の候補が得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめ（観測と食い違う記述や新しく分かった事実があれば文書を直す）、scoutの報告は古くなっている可能性を踏まえてそれぞれの視点を次回の改善の参考にする。同じ待ち時間に次の候補を`make build`しておく。sleepやpollingで完了を待たない。Codexはbackgroundで起動できないので、ベンチを起動する直前に見取り図を読み返し、`.local/scout/reports.md`を読む。
+- ベンチ（`isuscope run`・`survey-run`・`make first-bench`）は、Claude CodeではBashの`run_in_background`で起動する。foregroundの起動はPreToolUseのhook（`scripts/bench-hook.py`）が止める。起動すると同じhookがPostToolUseで、ベンチの見取り図（`docs/benchmark-scenario.md`）の振り返りと、並列で動く調査エージェント（scout）の報告（投稿からの経過分つき）と、worktreeからの新しい投稿を渡す。各報告は同じセッションへ1回だけ渡し、以後のベンチでは前回から新しく出た報告だけを渡す（新しい報告がなければscoutの内容は付けない）。完了の通知を待つ間に、見取り図を読み返して今回の仮説と次の候補が得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめ（観測と食い違う記述や新しく分かった事実があれば文書を直す）、scoutの報告は古くなっている可能性を踏まえてそれぞれの視点を次回の改善の参考にする。同じ待ち時間に次の候補を`make build`しておく。sleepやpollingで完了を待たない。Codexはbackgroundで起動できないので、ベンチを起動する直前に見取り図を読み返し、`.local/scout/reports.md`と`make proposals`を読む。
 - ベンチの前には毎回、isuscopeの`prepare_command`（`scripts/benchmark-prepare.sh`）が、前回のベンチを処理したprocessがまだ動いているアプリのunitを再起動し、listenを待つ。前のベンチが途中で切ったrequestのtransactionが、次のinitializeを止めないようにするため（deployで起動し直したprocessは再起動しない）。前回のベンチと同じ配布物・計測設定なら、isuscopeがベンチを始めない（`identity_command`とfingerprintで比べる）ので、意図した再測定だけ`isuscope run --repeat "理由"`を付ける。その前に、最後にdeployしたcommitとHEADを、deployが配るファイルに限って照合し、ずれていればベンチを始めない（`scripts/check-deployed-commit.sh`）。止まったら、commitして`make deploy`するか、HEADを戻す。
 - `kickoff`、`bootstrap`、`bench-check`、laneからベンチを起動しない。初回ベンチは`make first-bench`（または`isuscope survey-run`）を独立した明示操作としてmainのセッションから実行し、runへその会話を紐付ける。import のcommitが済んだら、作業中のAIが人間の確認を待たずに実行する。
-- kickoffが起動するlaneは`config/lanes.json`の`kickoff`（既定は`code-map`、`indexes`、`obvious-fixes`、`local-env`、`state-log`）。`scenario`は公式資料が要るので、mainが`docs/official/`をcommitした直後に`python3 scripts/lane.py start scenario`で起動する。`memory`（全メモリ化）は、初動のcommit（`state-log`・`local-env`と、取り込んだ`indexes`・`obvious-fixes`）がmainに揃ったら`python3 scripts/lane.py start memory`で起動する。`KICKOFF_LANES=`で止め、`KICKOFF_LANES="code-map"`のように選べる。baseline後に並行させたい調査や実装は、promptを書いて`python3 scripts/lane.py start <名前> --prompt-file <path> --purpose "..."`で起動する。進行は`make lanes`で見る。
-- laneの`code-map`・`scenario`は文書だけ、`local-env`はローカル環境の構成と文書だけなので、結果を読んで終わり次第mainへmergeしてよい。`docs/environment.md`はkickoffが調査結果から自動で書くので、確かめてcommitする（手で補足するときは1行目の生成markerを消す。baseline後に`python3 scripts/environment-report.py`で計時を延ばせる）。`state-log`は書き手のmoduleと呼び出しを2つのcommitにするので、baselineの後の最初のdeployで他のlaneより先に`git cherry-pick`する（取り込む前に`docs/state-log.md`と最後の回答で、lockの中に残した呼び出しや`entered`にした箇所を確かめる）。`indexes`と`obvious-fixes`は1件1commitで積み、commitのたびに`.local/progress.log`へ`lane:<名前> commit <hash>`が出る。初回baselineの分析の後、観測と照合して効くcommitから`git cherry-pick`で取り込み（laneの完了は待たない）、deployして`isuscope run`で測る。laneの最後の回答にある「実装しなかった候補」も次の変更を選ぶ材料にする。
-- 並行作業を手で行うなら`make worktree BRANCH=<name> PURPOSE="..."`で作る。目的はbranchへ記録する。変更目的ごとにcommitを分け、検証結果と評価したcommitを残す。
-- 並行worktreeでも目的に必要なコード・設定・文書を扱ってよい。remote変更、deploy、ベンチ、`.local/operation.lock`を使う操作はmain側だけが行う。
+- kickoffが起動するlaneは`config/lanes.json`の`kickoff`（既定は`indexes`、`obvious-fixes`、`local-env`、`state-log`）。`scenario`は公式資料が要るので、mainが`docs/official/`をcommitした直後に`python3 scripts/lane.py start scenario`で起動する。`full-memory`（全メモリ化）は、`state-log`と`local-env`をmainへ取り込んだら（baselineの後の最初のdeployのcommit）、そのベンチを待たずに`python3 scripts/lane.py start full-memory`で起動する。`indexes`・`obvious-fixes`の取り込みは待たない。laneが終わる前に最新のmainを自分のbranchへmergeし、メモリ化の形に合わせて確かめ直すので、mainは改善を止めずに続け、終わったら`git merge lane/full-memory`で取り込む。`docs/state-log.md`か`config/local/compose.yaml`がHEADに無いと`lane.py start`が止める。`KICKOFF_LANES=`で止め、`KICKOFF_LANES="indexes"`のように選べる。baseline後に並行させたい調査や実装は、promptを書いて`python3 scripts/lane.py start <名前> --prompt-file <path> --purpose "..."`で起動する。進行は`make lanes`で見る。
+- laneの`scenario`は文書だけ、`local-env`はローカル環境の構成と文書だけなので、結果を読んで終わり次第mainへmergeしてよい。`state-log`は書き手のmoduleと呼び出しを2つのcommitにするので、baselineの後の最初のdeployで他のlaneより先に`git cherry-pick`する（取り込む前に`docs/state-log.md`と最後の回答で、lockの中に残した呼び出しや`entered`にした箇所を確かめる）。`indexes`と`obvious-fixes`は1件1commitで積み、commitのたびに`.local/progress.log`へ`lane:<名前> commit <hash>`が出る。初回baselineの分析の後、観測と照合して効くcommitから`git cherry-pick`で取り込み（laneの完了は待たない）、deployして`isuscope run`で測る。laneの最後の回答にある「実装しなかった候補」も次の変更を選ぶ材料にする。
+- 並行作業を手で行うなら`make worktree BRANCH=<name> PURPOSE="..."`で作る。目的はbranchへ記録する。変更目的ごとにcommitを分け、検証結果と評価したcommitを残し、終わったら投稿（`scripts/proposal.py submit`）でmainへ渡す。
+- 並行worktreeでも目的に必要なコード・設定・文書を扱ってよい。remote変更、deploy、ベンチ、`.local/operation.lock`を使う操作はmain側だけが行う（mainの宣言がある間はtool-guardが止める）。
 - ローカル実行環境は各worktreeで`make local-up / local-check / local-down`で操作してよい。worktree専用のDB・network・port・lockを使う。初回baselineの開始はローカル環境の完成を待たない。詳細は`docs/local-development.md`を参照する。
 - 自明な修正は初回baselineを取るまでremoteへ反映しない。baselineの分析後にmainの最新設定を取り込み、変更根拠を照合してから統合する。
 - `config/sync.json`のitemとcommandには対象node groupを明示し、役割を持たないnodeへ設定や再起動を配らない。再起動・reloadのcommandには`"when"`で対象のitem名（pattern）を書き、そのitemが変わったdeployでだけ実行させる。deployは前回のdeployから変わったitemだけを送る（全部送るなら`DEPLOY_ALL=1`）。

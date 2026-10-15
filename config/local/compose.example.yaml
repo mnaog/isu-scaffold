@@ -1,4 +1,7 @@
 # Copy to compose.yaml after code import, then adapt services, SQL and app settings.
+# Lane local-env replaces the next lines with: how to start and check (make local-up / local-check,
+# the GET that stands in for health), and what does not run here (missing services, initial data:
+# schema only / reduced / full). Whoever verifies locally reads this before trusting a result.
 # Never use container_name, external volumes/networks, or host networking here.
 services:
   db:

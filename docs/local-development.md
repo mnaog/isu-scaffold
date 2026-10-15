@@ -1,6 +1,6 @@
 # ローカル実行環境
 
-コード回収後、配布サーバーの準備と並行して、回収したアプリをDockerで起動する。構成と検証範囲の記録は、`make kickoff`が起動するlane `local-env`（`config/lanes/local-env.md`）が作り、mainのセッションは`git merge lane/local-env`で取り込む。初回baselineはローカル環境の完成を待たない。各worktreeで構成を用意し、検証する。準備で用意するのはDocker Composeと汎用コマンドだけで、問題のコードやデータを先読みしない。
+コード回収後、配布サーバーの準備と並行して、回収したアプリをDockerで起動する。構成（起動・確認の手順と手元で動かないものは`compose.yaml`の冒頭のコメント）は、`make kickoff`が起動するlane `local-env`（`config/lanes/local-env.md`）が作り、mainのセッションは`git merge lane/local-env`で取り込む。初回baselineはローカル環境の完成を待たない。各worktreeで構成を用意し、検証する。準備で用意するのはDocker Composeと汎用コマンドだけで、問題のコードやデータを先読みしない。
 
 ## 構成する
 

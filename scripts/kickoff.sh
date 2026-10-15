@@ -67,6 +67,21 @@ fi
 
 progress code-ready "${application_path} and ${schema_path} at $(git rev-parse --short HEAD)"
 
+# The first run needs the initialize boundary; the code usually names one route. Never a stage:
+# with none or several candidates main chooses (scripts/benchmark-markers.py set-route).
+routes_file=.isuscope/routes.toml
+if [[ -n "$(git status --porcelain -- "${routes_file}")" ]]; then
+  progress initialize-route "${routes_file} has uncommitted changes; set [initialize] by hand"
+elif route_output=$(python3 "${script_dir}/benchmark-markers.py" auto-route 2>&1); then
+  if [[ -n "$(git status --porcelain -- "${routes_file}")" ]]; then
+    git add -- "${routes_file}"
+    git commit -q -m "Set the initialize route found in the imported code" -- "${routes_file}"
+  fi
+  progress initialize-route "$(printf '%s' "${route_output}" | head -n 1)"
+else
+  progress initialize-route "needs_choice: $(printf '%s' "${route_output}" | tr '\n' ' ')"
+fi
+
 source_node=${CODE_SOURCE_NODE:-$(jq -r '.all.children.application.hosts | keys[0] // empty' "${inventory}")}
 echo "== parallel build lane: inspect source node and start with reviewed or proposed settings"
 stage build-dispatch python3 "${script_dir}/initial-build.py" start --node "${source_node}" --application "${application_path}"
@@ -81,8 +96,6 @@ export ANSIBLE_FACT_CACHE_DIR
 trap 'rm -rf -- "${ANSIBLE_FACT_CACHE_DIR}"' EXIT
 stage bootstrap env ${bootstrap_env[@]+"${bootstrap_env[@]}"} "${script_dir}/bootstrap.sh"
 stage inspect "${script_dir}/inspect-environment.sh"
-# docs/environment.md from the inspection, without AI; never stops the setup.
-stage environment-report python3 "${script_dir}/environment-report.py" || true
 stage configure-draft "${script_dir}/configure-draft.sh"
 
 echo "== draft review"

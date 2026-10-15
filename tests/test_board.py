@@ -377,7 +377,7 @@ class BoardTests(unittest.TestCase):
         self.write_record('docs/official/manual.md', '# manual\n')
         self.git('add', '.')
         self.git('commit', '-m', 'Write the scenario')
-        self.write_record('docs/code-map.md', '# 地図\n')
+        self.write_record('docs/state-log.md', '# 状態\n')
         listing = records.listing(self.repo)
         by_path = {record['path']: record for record in listing['records']}
         declared = [record['path'] for record in json.loads((SOURCE / 'config/records.json').read_text())['records']]
@@ -386,9 +386,9 @@ class BoardTests(unittest.TestCase):
         self.assertTrue(scenario['exists'])
         self.assertFalse(scenario['uncommitted'])
         self.assertEqual(scenario['last_commit']['subject'], 'Write the scenario')
-        self.assertTrue(by_path['docs/code-map.md']['uncommitted'])
-        self.assertIsNone(by_path['docs/code-map.md']['last_commit'])
-        self.assertFalse(by_path['docs/baseline.md']['exists'])
+        self.assertTrue(by_path['docs/state-log.md']['uncommitted'])
+        self.assertIsNone(by_path['docs/state-log.md']['last_commit'])
+        self.assertFalse(by_path['docs/cache-design.md']['exists'])
         official = by_path['docs/official/']
         self.assertEqual([f['path'] for f in official['files']], ['docs/official/manual.md'])
 
@@ -398,7 +398,7 @@ class BoardTests(unittest.TestCase):
         self.write_record('AGENTS.md', 'not a record')
         self.assertEqual(records.content(self.repo, 'docs/benchmark-scenario.md')['text'], 'scenario')
         self.assertEqual(records.content(self.repo, 'docs/official/manual.md')['text'], 'manual text')
-        self.assertIn('error', records.content(self.repo, 'docs/baseline.md'))
+        self.assertIn('error', records.content(self.repo, 'docs/cache-design.md'))
         for path in ('AGENTS.md', 'docs/official/../../AGENTS.md', '/etc/passwd', 'docs/official/', ''):
             if path == 'docs/official/':
                 self.assertIn('error', records.content(self.repo, path))
