@@ -1,5 +1,5 @@
 {
-  "description": "AI lanes: each runs `claude -p` once in its own worktree and branch (lane/<name>), commits there and stops; the main session reads the result and merges. scripts/lane.py starts them; make kickoff starts `kickoff` right after the early import (KICKOFF_LANES overrides it, empty disables). Permission mode dontAsk denies every tool outside allowed_tools without asking: no web access, no remote command, no push (curl is allowed, and tool-guard limits it to localhost in a lane). tool-guard (ISUCON_LANE) also refuses remote nodes, deploy, benchmarks and the operation lock.",
+  "description": "AI lanes: each runs `claude -p` once in its own worktree and branch (lane/<name>), commits there and stops; the main session reads the result and merges. scripts/lane.py starts them; make kickoff starts `kickoff` right after the early import (KICKOFF_LANES overrides it, empty disables). Permission mode dontAsk denies every tool outside allowed_tools without asking: no web access, no remote command, no push (curl is allowed, and tool-guard limits it to localhost in a lane). tool-guard (ISUCON_LANE) also refuses remote nodes, deploy, benchmarks and the operation lock. A lane may add `extra_allowed_tools` to the shared list, and `requires` files the starting commit must hold (lane.py start refuses otherwise).",
   "claude": {
     "command": "claude",
     "model": "claude-opus-5-5",
@@ -43,18 +43,12 @@
     "timeout_minutes": 60
   },
   "kickoff": [
-    "code-map",
     "indexes",
     "obvious-fixes",
     "local-env",
     "state-log"
   ],
   "lanes": {
-    "code-map": {
-      "purpose": "回収したコードからdocs/code-map.mdを書く",
-      "prompt": "config/lanes/code-map.md",
-      "timeout_minutes": 40
-    },
     "indexes": {
       "purpose": "索引不足だけを1索引1commitで先行実装する（baselineまでdeployしない）",
       "prompt": "config/lanes/indexes.md",
@@ -66,7 +60,7 @@
       "timeout_minutes": 90
     },
     "local-env": {
-      "purpose": "ローカル実行環境を構成してmake local-checkを通し、docs/local-verification.mdを書く",
+      "purpose": "ローカル実行環境を構成してmake local-checkを通す（起動・確認の手順はcompose.yamlのコメントに書く）",
       "prompt": "config/lanes/local-env.md",
       "timeout_minutes": 45
     },
@@ -75,9 +69,16 @@
       "prompt": "config/lanes/state-log.md",
       "timeout_minutes": 45
     },
-    "memory": {
-      "purpose": "状態をすべてメモリに置き、書き込みはDBに残す書き換えを作る（mainがkickoffのcommitを済ませてから起動）",
-      "prompt": "config/lanes/memory.md",
+    "full-memory": {
+      "purpose": "全メモリ化: 状態をすべてメモリに置き、読み取りと判定をメモリで行い、書き込みはDBに残す書き換えを作り、最後に最新のmainを取り込む（mainがstate-logとlocal-envを取り込んだら起動）",
+      "prompt": "config/lanes/full-memory.md",
+      "requires": [
+        "docs/state-log.md",
+        "config/local/compose.yaml"
+      ],
+      "extra_allowed_tools": [
+        "Bash(git merge:*)"
+      ],
       "timeout_minutes": 120
     },
     "scenario": {

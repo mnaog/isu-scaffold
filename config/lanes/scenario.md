@@ -5,7 +5,7 @@
 ## 前提
 
 - 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。
-- 読むもの: `docs/official/`（参加者向けの公式資料）、`webapp/`のコードとschema、あれば`docs/code-map.md`。ベンチマーカーの内部コード、運営向けの出力（ISUCON12の`[ADMIN]`行など）、過去の改善結果は使わない。
+- 読むもの: `docs/official/`（参加者向けの公式資料）、`webapp/`のコードとschema。ベンチマーカーの内部コード、運営向けの出力（ISUCON12の`[ADMIN]`行など）、過去の改善結果は使わない。
 - 書くもの: `docs/benchmark-scenario.md`だけ。
 
 ## 書く内容
@@ -14,7 +14,7 @@
 
 1. **得点**: 何をすると何点か。資料の表・式をそのまま引用し、出典（`docs/official/`のfileと見出し）を付ける。
 2. **FAILと減点**: 何が起きるとシナリオが止まるか、失格になるか。整合性チェックの内容。
-3. **シナリオ**: どのシナリオがあり、各シナリオがどのAPIをどの順番で呼ぶか。並列数と繰り返しの条件。
+3. **シナリオ**: どのシナリオがあり、各シナリオがどのAPIをどの順番で呼ぶか。並列数と繰り返しの条件。APIの一覧には、各APIのhandler（`file:line`）と主なSQL・外部処理の列を付ける（コードの地図は別に作らないので、シナリオ → API → handler → SQLのつながりはここだけにある）。
 4. **initialize**: 呼ばれた後に期待される状態と時間制限。
 5. **得点へ直接つながる処理**: 上の各項目を、コードのhandler（`file:line`）と対応付ける。
 

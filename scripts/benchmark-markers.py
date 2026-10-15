@@ -7,6 +7,9 @@ such request in the access log as the start of the load, whatever the benchmark 
 
   benchmark-markers.py suggest-route              initialize routes found in webapp/ code
   benchmark-markers.py set-route METHOD PATH      write [initialize] into .isuscope/routes.toml
+  benchmark-markers.py auto-route                 set it when the code names exactly one candidate
+                                                  (make kickoff runs this after the early import;
+                                                  exit 3 leaves the choice to main)
 
 The benchmark-output markers below remain for benchmarks that print clear lines.
 
@@ -92,12 +95,25 @@ def position(lines, marker):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('action', choices=['suggest-route', 'set-route', 'suggest', 'set', 'check'])
+    parser.add_argument('action', choices=['suggest-route', 'set-route', 'auto-route', 'suggest', 'set', 'check'])
     parser.add_argument('markers', nargs='*')
     args = parser.parse_args()
     if args.action == 'suggest-route':
         for path, where in route_candidates().items():
             print(f'POST {path}    ({where})')
+        return 0
+    if args.action == 'auto-route':
+        if route := initialize_route():
+            print(f"[initialize] already {route.get('method')} {route.get('path')}")
+            return 0
+        candidates = route_candidates()
+        if len(candidates) != 1:
+            # None, or several (/initialize and /api/initialize): main picks with set-route.
+            for path, where in candidates.items():
+                print(f'POST {path}    ({where})')
+            print(f'{len(candidates)} initialize candidates; choose with set-route', file=sys.stderr)
+            return 3
+        set_route('POST', next(iter(candidates)))
         return 0
     if args.action == 'set-route':
         if len(args.markers) != 2:

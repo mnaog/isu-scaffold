@@ -148,6 +148,39 @@ class LaneTests(unittest.TestCase):
         self.assertNotEqual(missing.returncode, 0)
         self.assertIn('lane:code-map\tfailed', (self.repo / '.local/progress.log').read_text())
 
+    def test_a_lane_waits_for_required_files_and_gets_its_extra_tools(self):
+        config = json.loads((self.repo / 'config/lanes.json').read_text())
+        config['lanes']['code-map'].update(requires=['docs/state-log.md'], extra_allowed_tools=['Bash(git merge:*)'])
+        (self.repo / 'config/lanes.json').write_text(json.dumps(config))
+        refused = self.lane('start', 'code-map')
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn('docs/state-log.md', refused.stderr)
+        self.assertFalse((self.repo / '.local/lanes/code-map').exists())
+        (self.repo / 'docs').mkdir()
+        (self.repo / 'docs/state-log.md').write_text('# states\n')
+        for args in (['add', '.'], ['commit', '-qm', 'Take in state-log']):
+            subprocess.run(['git', '-C', str(self.repo), *args], check=True, env=self.env)
+        result = self.lane('run', 'code-map')
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        tools = json.loads(self.record.read_text())['argv']
+        allowed = tools[tools.index('--allowedTools') + 1].split(',')
+        self.assertIn('Bash(git merge:*)', allowed)
+        self.assertIn('Bash(cargo:*)', allowed)
+        self.assertIn('分岐元branch main', json.loads(self.record.read_text())['prompt'])
+
+    def test_main_commits_a_lane_merges_in_are_not_reported_as_the_lane_s(self):
+        merge = (
+            "subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'Main moved on'], cwd=os.environ['MAIN_REPO'], check=True)\n"
+            "subprocess.run(['git', 'merge', '--no-edit', '-q', 'main'], check=True)\n"
+            "if os.environ.get('FAKE_AFTER_COMMIT'):")
+        self.claude.write_text(FAKE_CLAUDE.replace("if os.environ.get('FAKE_AFTER_COMMIT'):", merge, 1))
+        result = self.lane('run', 'code-map', MAIN_REPO=str(self.repo))
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        subjects = [c.split(' ', 1)[1] for c in self.status()['commits']]
+        self.assertNotIn('Main moved on', subjects)
+        self.assertIn('Map the code', subjects)
+        self.assertNotIn('Main moved on', (self.repo / '.local/progress.log').read_text())
+
 
 if __name__ == '__main__':
     unittest.main()

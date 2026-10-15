@@ -6,7 +6,7 @@
 
 また、アプリケーションコードと設定ファイルをすべてローカルリポジトリで管理し、コマンドからサーバーへデプロイできる状態を作る。
 
-SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を5本起動する。`code-map`が`docs/code-map.md`を書き、`indexes`が索引を、`obvious-fixes`が索引以外の自明な修正を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境と`docs/local-verification.md`を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書く。kickoffは調査結果から`docs/environment.md`も自動で書く。mainのセッションはその間に公式資料・ベンチ接続・kickoff build設定・draftの判断を進め、公式資料をcommitしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
+SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を4本起動する。`indexes`が索引を、`obvious-fixes`が索引以外の自明な修正を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書く。kickoffは、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。mainのセッションはその間に公式資料・ベンチ接続・kickoff build設定・draftの判断を進め、公式資料をcommitしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
 
 調査・修正・ローカル検証・deploy・ベンチ・採否判断の責任はmainのセッションが持つ。laneの成果は根拠を照合してからmergeする。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
 
@@ -18,18 +18,20 @@ SSH確立直後に採用言語のコードとDB schemaを先行importし、初�
 make kickoff（backgroundで実行し、.local/progress.logを追う）
   → 回収元1台のSSH確立後、webapp/rustとDDLを先行回収し、その範囲だけ自動commit（code-ready）
   → 並行して1台目のbuild環境を調査。build設定を自動生成できれば即build、できなければ設定待ち
-  → 並行してlane code-map（docs/code-map.md）、indexes（索引を1件1commit）、obvious-fixes（索引以外の自明な修正を1件1commit）、
-    local-env（config/local/compose.yamlとdocs/local-verification.md）、state-log（状態ログの書き手と呼び出し、docs/state-log.md）を起動
-  → 全nodeのSSH確立、Ansible導入、初期収束、初期構成の調査。調査結果からdocs/environment.mdを自動で書く
+  → initializeの経路がコードに1つだけなら.isuscope/routes.tomlの[initialize]へ書いてcommit（initialize-route）。
+    isuscopeがaccess logからinitializeと負荷走行を分けるので、初回runから要約にinitializeが混ざらない
+  → 並行してlane indexes（索引を1件1commit）、obvious-fixes（索引以外の自明な修正を1件1commit）、
+    local-env（config/local/compose.yaml）、state-log（状態ログの書き手と呼び出し、docs/state-log.md）を起動
+  → 全nodeのSSH確立、Ansible導入、初期収束、初期構成の調査
   → node role、同期対象、Ansible変数、log pathの候補を.local/draftへ生成
   → draftを実nodeと照合し、.local/draft/review.mdを出して停止（draft-ready）
 make kickoffの実行中にmainのセッションが並行して進める
   → 公式資料をdocs/official/へ保存してcommitし、すぐlane scenario（docs/benchmark-scenario.md）を起動
   → config/benchmark.envとbenchmark-contractを用意し、.isuscope/benchmark.sh --check、--probe（discoverの後なら実行できる）
   → build設定待ちならconfig/kickoff-build.jsonを作る。自動生成されたら確認してcommit
-  → initializeの経路を.isuscope/routes.tomlの[initialize]へ書いてcommit（scripts/benchmark-markers.py suggest-route → set-route）。
-    isuscopeがaccess logからinitializeと負荷走行を分けるので、初回runから要約にinitializeが混ざらない
-  → laneが終わったものから結果を読んでmergeする（code-map、local-env、scenarioは文書と構成だけ）
+  → progress.logのinitialize-routeがneeds_choice（候補が無い・複数）なら、選んでset-routeしてcommit
+    （scripts/benchmark-markers.py suggest-route → set-route）
+  → laneが終わったものから結果を読んでmergeする（local-env、scenarioは文書と構成だけ）
 review.mdのFAILを直し、WARNをすべて判断してからCONFIRM_DRAFT=true make kickoff-apply
   → draftを再検査して反映し、全配布先のdigest一致を確認して完全import
 完全importを確認して初期状態をcommit
@@ -40,18 +42,18 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
   → そうでなければ、make deploy（kickoff buildの完了を待つ）の後にsurvey-run、続けてscoutを起動
   → 出力の形を確かめる前ならresultはPENDING。python3 scripts/benchmark-sample.py <run>で読み取りを確かめ、
     --apply --score N --pass true|false（自分で読んだ値）でsample・contract・--check・rescoreまで済ませる
-初回runを分析し（スコア・エラー・HTTP・SQL・ホスト負荷。lane code-mapの地図を照合に使う）、観測に基づいて改善を実装・検証
+初回runを分析し（スコア・エラー・HTTP・SQL・ホスト負荷。最大の制約と根拠をisuscope analyzeに書く）、観測に基づいて改善を実装・検証
   → baselineの後の最初のdeployで、lane state-logのcommitを他のlaneより先に取り込む
     （次のrunからbriefのstates欄が埋まり、状態についての問いに計測を足さずに答えられる）
+  → そのdeployをcommitしたら、ベンチの結果を待たずにlane full-memory（全メモリ化。書き込みはDBのまま）を起動する
   → lane indexes・obvious-fixesのcommitをbaselineの観測と照合して選んで取り込む（laneの途中でもcommit単位で取り込める）
-  → kickoffのcommitがmainに揃ったら、lane memory（全メモリ化。書き込みはDBのまま）を起動し、mainの改善と並行して作らせる。
-    終わったらdeployして測る
+  → 改善を続け、lane full-memoryが終わったら（最新のmainを取り込み済み）mainへmergeしてdeployし、直前のrunと比べる
   → deployし、通常のisuscope runでbaselineと比較して、仮説の判定と変更の採否を記録する。障害があれば原因調査から修正・再評価まで続ける
 ```
 
 ### 待ち時間を使う
 
-時間の大半は「`make kickoff`が終わるのを待つ間」と「deployから初回ベンチまで」に出る。mainのセッションは`make kickoff`の終了を待たず、`.local/progress.log`の行（`code-ready`、`kickoff-build configured / needs_configuration / complete / failed`、`lane:<名前> complete / failed`、`draft-ready / draft-failed`、段階の`failed`）を見て次の操作へ移る。`make kickoff`は`run_in_background`で起動し、Monitorで`tail -n +1 -f .local/progress.log`を追う。
+時間の大半は「`make kickoff`が終わるのを待つ間」と「deployから初回ベンチまで」に出る。mainのセッションは`make kickoff`の終了を待たず、`.local/progress.log`の行（`code-ready`、`initialize-route`、`kickoff-build configured / needs_configuration / complete / failed`、`lane:<名前> complete / failed`、`draft-ready / draft-failed`、段階の`failed`）を見て次の操作へ移る。`make kickoff`は`run_in_background`で起動し、Monitorで`tail -n +1 -f .local/progress.log`を追う。
 
 - ベンチ接続の準備は`make kickoff`の結果を使わないので、開始と同時に始める。
 - `make first-bench`は段階の間でAIの手番を待たない。
@@ -70,12 +72,11 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 
 ### laneの起動と取り込み
 
-- `make kickoff`が起動するlaneは`config/lanes.json`の`kickoff`（既定は`code-map`、`indexes`、`obvious-fixes`、`local-env`、`state-log`）。`KICKOFF_LANES=`で止め、`KICKOFF_LANES="code-map"`のように選べる。
+- `make kickoff`が起動するlaneは`config/lanes.json`の`kickoff`（既定は`indexes`、`obvious-fixes`、`local-env`、`state-log`）。`KICKOFF_LANES=`で止め、`KICKOFF_LANES="indexes"`のように選べる。
 - `scenario`は公式資料が要るので、mainが`docs/official/`をcommitした直後に`python3 scripts/lane.py start scenario`で起動する。
-- `memory`（全メモリ化）は、kickoffのcommit（`state-log`・`local-env`と、取り込んだ`indexes`・`obvious-fixes`）がmainに揃ったら`python3 scripts/lane.py start memory`で起動する。
+- `full-memory`（全メモリ化）は、`state-log`と`local-env`をmainへ取り込んだら（baselineの後の最初のdeployのcommit）、そのベンチを待たずに`python3 scripts/lane.py start full-memory`で起動する。`indexes`・`obvious-fixes`の取り込みは待たない。laneは終わる前に最新のmainを自分のbranchへmergeし、メモリ化の形に合わせて確かめ直すので、mainは改善を止めずに続け、終わったら`git merge lane/full-memory`で取り込む。`docs/state-log.md`か`config/local/compose.yaml`がHEADに無いと`lane.py start`が止める。
 - baseline後に並行させたい調査や実装は、promptを書いて`python3 scripts/lane.py start <名前> --prompt-file <path> --purpose "..."`で起動する。進行は`make lanes`で見る。
-- `code-map`・`scenario`は文書だけ、`local-env`はローカル環境の構成と文書だけなので、結果を読んで終わり次第mainへmergeしてよい。
-- `docs/environment.md`は`make kickoff`が調査結果から自動で書くので、確かめてcommitする（手で補足するときは1行目の生成markerを消す。baseline後に`python3 scripts/environment-report.py`で計時を延ばせる）。
+- `scenario`は文書だけ、`local-env`はローカル環境の構成と文書だけなので、結果を読んで終わり次第mainへmergeしてよい。
 - `state-log`は書き手のmoduleと呼び出しを2つのcommitにする。baselineの後の最初のdeployで、他のlaneより先に`git cherry-pick`する。取り込む前に、`docs/state-log.md`と最後の回答で、lockの中に残した呼び出しや`entered`にした箇所を確かめる。
 - `indexes`と`obvious-fixes`は1件1commitで積み、commitのたびに`.local/progress.log`へ`lane:<名前> commit <hash>`が出る。初回baselineの分析の後、観測と照合して効くcommitから`git cherry-pick`で取り込み（laneの完了は待たない）、deployして`isuscope run`で測る。laneの最後の回答にある「実装しなかった候補」も次の変更を選ぶ材料にする。
 
@@ -85,7 +86,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 
 構成をcommitしたら、各worktreeで`make local-up`、`make local-check`、`make local-down`を実行してよい。DB・network・portはworktree単位で分離し、remote変更用lockを取らない。構築はkickoffと並行し、完成を初回baselineのgateにはしない。
 
-ローカルで初期化、代表API、SQLの実行計画、修正前後の挙動を確認する。schemaのみ・縮小データ・フルデータのどれか、欠けているserviceや検証範囲を`docs/local-verification.md`へ記録し、health成功だけをシナリオ検証済みと扱わない。初期データは許可された取得元だけを使い、未回収ならその制限を明示する。性能変更の最終採否は配布サーバーの共有ベンチで決める。
+ローカルで初期化、代表API、SQLの実行計画、修正前後の挙動を確認する。起動・確認の手順と、手元で動かないもの（欠けているservice、初期データの範囲）は`config/local/compose.yaml`の冒頭のコメントにある。health成功だけをシナリオ検証済みと扱わない。初期データは許可された取得元だけを使い、未回収ならその制限を明示する。性能変更の最終採否は配布サーバーの共有ベンチで決める。
 
 ## 公式情報を保存する
 
@@ -116,7 +117,6 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 - 練習でAWS環境を自分で作る場合は、構成定義を`infra/`へ保存し、停止・再開・削除をコマンドで行えるようにする。認証情報はGitへ保存しない
 - `make kickoff`が出す`.local/draft/review.md`のFAILはすべて直し、WARNは内容を読んで判断してから`make kickoff-apply`へ進む。draftのremote path、owner、service、roleは推測にすぎない
 - nodeの分類が誤っている場合はprovider入力やdraftを直して再生成し、生成物を手作業で直し続けない
-- 台数とrole、CPU・メモリ、OS・kernel・nginx・MySQLの版、配布サーバーの言語の版、開始からの計時を`docs/environment.md`へ残す。kickoffが調査結果から`scripts/environment-report.py`で自動で書くので、確かめてcommitし、開始宣言の時刻など足りないものを書き足す
 - importで配布先のdigestが一致しない場合は、sourceを確認するまで進めない
 - 初期状態をcommitし、`make deploy`、`make status`、明示的な`make rollback`で稼働プロセスまで旧構成へ戻ることを確認する
 - 計測と運用の土台（計測tool、LTSV access log、時刻同期、journal、自動更新停止）はkickoffのAnsibleで固定化される。SQLはisuscopeがperformance_schemaから取るので、slow logは既定で無効。レギュレーションで禁止された項目だけ変数で外す
@@ -151,9 +151,9 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 ## 初回ベンチを実行する
 
-初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。initializeと負荷走行の境界は、初回runより前に`.isuscope/routes.toml`の`[initialize]`で決めておく（`scripts/benchmark-markers.py suggest-route`→`set-route`）。完全importのcommit後に`make first-bench`で、人間の確認を待たずに実行する。
+初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。initializeと負荷走行の境界は、初回runより前に`.isuscope/routes.toml`の`[initialize]`で決めておく。コードに候補が1つだけならkickoffが書いてcommitする。`.local/progress.log`の`initialize-route`が`needs_choice`なら、`scripts/benchmark-markers.py suggest-route`の候補から選んで`set-route`する。完全importのcommit後に`make first-bench`で、人間の確認を待たずに実行する。
 
-最初のdeployの前は、サーバーが完全importと同じ内容（配布状態）で動いている。`make first-bench`は、HEADがimportしたdigestのままで（`scripts/imported-state.py`）、アプリのunitが全nodeで動いてlistenしていれば、そのcommitを稼働中として記録し（`.local/current-import-commit`）、ローカルbuildとdeployを待たずにbaselineを取る。その後に同じcommitをdeployし、deploy経路を最初の改善より前に確かめる。baselineの実行ファイルは配布されたbuild、2本目以降は自前のbuild（Rust 1.99.0）になるので、最初の改善runの比較にはその差が混ざり得る。配布サーバーのRust版（`.local/kickoff-build/environment.txt`）が大きく違う場合は`docs/baseline.md`に書き、小さな差の判定に注意する。配布状態で測れないとき（記録がない、importの後に配る対象を変えた、unitが動いていない、既にdeployした）は、deployしてから測る。`FIRST_BENCH_MODE=deploy`なら常にdeployが先になる。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[自動化の仕様](../reference/automation.md)の「ベンチ前gateと初回run」を参照する。
+最初のdeployの前は、サーバーが完全importと同じ内容（配布状態）で動いている。`make first-bench`は、HEADがimportしたdigestのままで（`scripts/imported-state.py`）、アプリのunitが全nodeで動いてlistenしていれば、そのcommitを稼働中として記録し（`.local/current-import-commit`）、ローカルbuildとdeployを待たずにbaselineを取る。その後に同じcommitをdeployし、deploy経路を最初の改善より前に確かめる。baselineの実行ファイルは配布されたbuild、2本目以降は自前のbuild（Rust 1.99.0）になるので、最初の改善runの比較にはその差が混ざり得る。配布サーバーのRust版（`.local/kickoff-build/environment.txt`）が大きく違う場合は初回runの分析に書き、小さな差の判定に注意する。配布状態で測れないとき（記録がない、importの後に配る対象を変えた、unitが動いていない、既にdeployした）は、deployしてから測る。`FIRST_BENCH_MODE=deploy`なら常にdeployが先になる。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[自動化の仕様](../reference/automation.md)の「ベンチ前gateと初回run」を参照する。
 
 確認するもの：
 
@@ -179,16 +179,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - 整合性チェックと失格条件
 - 得点へ直接つながる処理
 
-主要な処理について、次のつながりを`docs/code-map.md`（コードの地図）へ整理する。コードの先行回収の直後にlane `code-map`が書き始め、mainのセッションは`lane/code-map`をmergeしてから、公式資料と初回runの観測で得点・失敗の対応を補う。
-
-```text
-シナリオ
-  → API
-  → handler
-  → SQL・外部処理
-  → 使用するサーバーやサービス
-  → 得点または失敗条件
-```
+APIの一覧には、各APIのhandler（`file:line`）と主なSQL・外部処理を付ける。シナリオ → API → handler → SQL → 得点・失敗のつながりは、この見取り図だけに置く（コードの地図は別に作らない）。
 
 ## 自明なボトルネックを一掃する
 
@@ -202,13 +193,13 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - transaction内の不要な処理とDB往復
 - 明らかに不要なカラム、全件走査、外部呼び出し
 
-インデックスは、対象のSQL、初期化後の行数、効果を確かめたrun IDを`docs/indexes.md`へ残す。読み取りのキャッシュ・メモリ化と、DB・アプリ・nginxを別のnodeへ分ける配置変更は、次節の条件でkickoffのうちに入れてよい。整合性条件を変えるもの、非同期化、write-behindなど永続化の時機を変えるものは、次節で最大の制約がそこにあると示せるまで実装しない。
+インデックスの根拠（対象のSQLと選んだ理由）はcommit messageに、効果と採否は測ったrunのisuscope `analyze --change`に残す。読み取りのキャッシュ・メモリ化と、DB・アプリ・nginxを別のnodeへ分ける配置変更は、次節の条件でkickoffのうちに入れてよい。整合性条件を変えるもの、非同期化、write-behindなど永続化の時機を変えるものは、次節で最大の制約がそこにあると示せるまで実装しない。
 
 この一掃はkickoffの待ち時間と並行して進める作業であり、次の判断を止めるgateではない。先行回収の直後からlane `indexes`が`lane/indexes`へ索引を、lane `obvious-fixes`が`lane/obvious-fixes`へ索引以外の修正を、1件1commitで実装する（deployはしない）。commitのたびに`.local/progress.log`へ`lane:<名前> commit`が出るので、初回runから得た上位SQL・HTTP・エラーと照合し、効くcommitからlaneの完了を待たずに`git cherry-pick`する。根拠が弱い変更は保留する。変更を反映した最初の`isuscope run`で大きく改善することを確認し、その後はボトルネックごとの短いサイクルに切り替える。
 
 ## baselineの後に次の変更を選ぶ
 
-初回baselineの分析では、SQLの候補を消化する前に、観測された最大の制約を特定し、根拠とともに`docs/baseline.md`へ残す。`isuscope brief`のnode別CPU・iowait・disk util・network、`database_io`、`logs`から、少なくとも次を確認する。
+初回baselineの分析では、SQLの候補を消化する前に、観測された最大の制約を特定し、根拠（node別の観測値）とともに初回runの`isuscope analyze`の分析に書く（survey-runがPASSなら、分析を記録するまで次のベンチは始められない）。`isuscope brief`のnode別CPU・iowait・disk util・network、`database_io`、`logs`から、少なくとも次を確認する。
 
 - 負荷が1台に集中し、他のnodeが空いていないか
 - CPUよりI/O待ち（iowait、disk util、COMMITやfile待ち）が支配的でないか
@@ -221,20 +212,14 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - DB・アプリ・nginxを別のnodeへ分ける配置変更
 - 読み取りのキャッシュ・メモリ化
 
-どちらも根拠（run ID、node別の観測値、期待する効果）を残し、1つずつ入れて通常の`isuscope run`で測る。全メモリ化はlane `memory`に任せる。それより前にmainが入れるメモリ化は1つの読み取り経路ずつ進め、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築方法を`docs/cache-design.md`へ書いてから入れる。WALなどでDBを外すのは、書き込みが律速だと測れてからにする。非同期化やwrite-behindなど、整合性条件や永続化の時機を変える変更が必要なら、根拠を`docs/baseline.md`か分析に残し、AGENTS.mdの「判断の原則」に沿って入れる。
+どちらも根拠（run ID、node別の観測値、期待する効果）を残し、1つずつ入れて通常の`isuscope run`で測る。全メモリ化はlane `full-memory`に任せる。それより前にmainが入れるメモリ化は1つの読み取り経路ずつ進め、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築方法を`docs/cache-design.md`へ書いてから入れる。WALなどでDBを外すのは、書き込みが律速だと測れてからにする。非同期化やwrite-behindなど、整合性条件や永続化の時機を変える変更が必要なら、根拠をrunの分析に残し、AGENTS.mdの「判断の原則」に沿って入れる。
 
 ## 残すもの
 
 記録の置き場所は固定で、一覧は`config/records.json`にある。`make board`の「記録」で、人間が一覧と中身を見る。決まった場所以外に書かない。
 
 - `docs/official/`：公式の一次情報
-- `docs/environment.md`：環境
-- `config/benchmark-contract.json`：ベンチの競技条件
 - `docs/benchmark-scenario.md`：ベンチの見取り図
-- `docs/code-map.md`：コードの地図
-- `docs/local-verification.md`：ローカル検証の範囲
-- `docs/baseline.md`：初回baselineの制約
-- `docs/indexes.md`：インデックスの根拠
 - `docs/state-log.md`：状態ログの対象
 - `docs/cache-design.md`：メモリ化の設計（入れた場合）
 - isuscopeによる初回ベンチ結果
@@ -246,14 +231,14 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 - 公式から提供された一次情報が`docs/official/`に揃っている
 - コードと設定ファイルがローカルリポジトリで管理されている
-- ローカル環境で実施した検証と未対応範囲が記録され、改善の検証に利用できる（構築不能なら理由と代替の検証手段を記録）
+- ローカル環境で改善を検証できる（構築できなければ、理由と代わりの検証手段を初回runの分析に書く）
 - ローカルからコマンドでデプロイできる
 - サーバーを直接編集せずに構成を再現できる
 - 初期状態へ戻せる
 - isuscopeでベンチと計測を実行できる
 - 許可された資料・計測で確認できる得点、失敗条件、主要シナリオを説明でき、推測と不明点を記録している
 - 確認できた主要シナリオとアプリ内の処理経路が対応付けられている
-- 初回baselineで観測された最大の制約と、その根拠が記録されている
+- 初回baselineで観測された最大の制約と、その根拠が初回runの分析に記録されている
 - 主要SQLの明らかなインデックス不足が解消されている
 - 高頻度経路の主要なN+1、重複処理、逐次writeが解消されている
 - 自明な修正を統合したrunをbaselineと比較し、採否を記録している

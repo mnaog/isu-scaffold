@@ -12,6 +12,9 @@ Bash call. Heredoc bodies and `bash -n` syntax checks do not count as starting o
   scout reports (.local/scout/reports.md in the main worktree) with their age. Each report goes to
   a session once (.local/scout/delivered.json); a later benchmark gets only the reports posted
   since. It prints nothing while neither the map nor an undelivered report exists.
+  It also hands main the worktree proposals (scripts/proposal.py) it has not seen at their current
+  commit and that merge into main's branch cleanly, so main picks and builds the next candidate
+  while the benchmark runs. While a main is declared (/main) only main gets them.
 
 Internal errors let the call through, like tool-guard.
 """
@@ -42,6 +45,9 @@ SCOUT_HINT = ('これは並列で動かしている調査エージェント（sc
 spec = importlib.util.spec_from_file_location('tool_guard', Path(__file__).with_name('tool-guard.py'))
 tool_guard = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tool_guard)
+spec = importlib.util.spec_from_file_location('proposal', Path(__file__).with_name('proposal.py'))
+proposal = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(proposal)
 
 
 def is_benchmark(program, args):
@@ -143,11 +149,23 @@ def scout_context(root, session='', now=None):
     return SCOUT_HINT + '\n\n' + re.sub(r'投稿: (\S+Z)', age, '\n\n'.join(fresh))
 
 
+def proposal_context(root, session='', now=None):
+    """Worktree proposals for main: none for a session that is not main, or without a session id."""
+    if not session:
+        return None
+    repo = main_worktree(root)
+    if proposal.main_session.is_main(repo, session) is False:
+        return None
+    return proposal.deliver(repo, session, now)
+
+
 def waiting_context(root, session='', now=None):
-    """What to do while a background benchmark runs: review the scenario map, then the new scout reports."""
+    """What to do while a background benchmark runs: the scenario map, new scout reports, new proposals."""
     parts = [SCENARIO_HINT] if (root / SCENARIO).is_file() else []
     if scouts := scout_context(root, session, now):
         parts.append(scouts)
+    if proposals := proposal_context(root, session, now):
+        parts.append(proposals)
     return '\n\n'.join(parts) or None
 
 

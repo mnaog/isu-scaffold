@@ -9,7 +9,8 @@
 - 競技時間内に、最終的なスコアを最大にする。時間が最大の制約である。
 - 公式のレギュレーション・当日マニュアル・整合性条件・失格条件を常に守る。当日マニュアルは事前の資料より優先する。
 - mainのセッション（このrepoで起動したClaude Code）が、調査・実装・検証・deploy・ベンチ・採否判断まで一貫して進める。問題を理解したセッションで修正と評価を続け、人間の確認を待たない。
-- Claude Codeはこのrepoの中で起動する。isuscopeは各ベンチをこのrepoの`docs/agent-history/`にある会話へ結び付けるので、別のdirectoryで起動したセッションでは`make kickoff`が止まる。
+- mainは、このrepoのrootで起動したClaude Codeが最初に`/main`で宣言する。isuscopeは各ベンチをこのrepoの`docs/agent-history/`にある会話へ結び付けるので、別のdirectoryで起動したセッションでは`make kickoff`が止まる。目標は人間が`/main`の後に`/goal`で渡す。
+- 宣言は`.local/main-session.json`に残る。宣言がある間は、deploy・rollback・import・kickoff、ベンチ、isuscopeの記録、laneとscoutの起動・停止、`.local/operation.lock`を、ほかのセッションから`scripts/tool-guard.py`が止める。別のセッションで`/main`を打ち直すとmainが移る。
 
 ## 判断の原則
 - 次の変更は、直近runの計測で見えた最大の制約から選ぶ。負荷の位置は変更のたびに動くので、毎回最新のrunから決める。
@@ -23,7 +24,7 @@
 | 段階 | すること | 手順書 |
 | --- | --- | --- |
 | 準備（開始前） | 問題に依存しない道具・認証・検証を済ませる | [準備](docs/guides/preparation.md) |
-| kickoff | `make kickoff`をbackgroundで始めて`.local/progress.log`を追い、並行して公式資料の保存、lane `scenario`の起動、ベンチ接続、draftの判断を進める。完全importをcommitしたら、人間の確認を待たずに`make first-bench`で初回baselineを取る。laneのcommitを観測と照合して取り込み、lane `memory`で全メモリ化する | [kickoff](docs/guides/kickoff.md) |
+| kickoff | `make kickoff`をbackgroundで始めて`.local/progress.log`を追い、並行して公式資料の保存、lane `scenario`の起動、ベンチ接続、draftの判断を進める。完全importをcommitしたら、人間の確認を待たずに`make first-bench`で初回baselineを取る。laneのcommitを観測と照合して取り込み、`state-log`と`local-env`を取り込んだらlane `full-memory`で全メモリ化を並行させる | [kickoff](docs/guides/kickoff.md) |
 | 改善 | 観測された最大の制約から順に、継続的に構成を含めて変える | このファイルの「判断の原則」 |
 | 終了前 | 開始時に決めた時刻になったら新しい変更を止め、最終構成を固定し、確認のベンチを3回行う。時刻が決まっていなければ開始時に人間に確認する | [終了前](docs/guides/finish.md) |
 
@@ -42,7 +43,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 
 - ベンチ（`isuscope run`・`survey-run`・`make first-bench`）は、Bashの`run_in_background`で起動する。foregroundの起動はhookが止める。`kickoff`・`bootstrap`・`bench-check`・laneからは起動しない。
 - PASSしたrunは、分析を記録するまで次のベンチを始められない。仮説の判定（`supported`・`rejected`・`inconclusive`・`skipped`）と変更の採否（`accepted`・`provisional`・`rejected`・`deferred`）は別に記録する。
-- 待つ間に、hookが渡す見取り図（`docs/benchmark-scenario.md`）とscoutの報告を読み、今回の仮説と次の候補が得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめる。観測と食い違う記述があれば文書を直す。次の候補は`make build`しておく。sleepやpollingで待たない。
+- 待つ間に、hookが渡す見取り図（`docs/benchmark-scenario.md`）、scoutの報告、worktreeからの投稿を読み、今回の仮説と次の候補が得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめる。観測と食い違う記述があれば文書を直す。次に測るものを選んだら、投稿なら`git merge --no-ff <branch>`し、`make build`しておく。1回のベンチで測る変更は1つにする。sleepやpollingで待たない。
 - Monitorで`.local/progress.log`を追う。`benchmark slow`が出たら、アプリ・nginxのerror logとnodeの負荷を確かめ、止まっていれば`scripts/benchmark-stop.sh`で止める。
 - 同じ構成はisuscopeが測り直さない。意図した測り直しだけ`--repeat "理由"`を付ける。同じ変更の比較のためにベンチを重ねない。
 - 最後にdeployしたcommitとHEADがずれていると、ベンチは始まらない。commitして`make deploy`するか、HEADを戻す。
@@ -58,14 +59,15 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 ## 並行作業
 - lane: `claude -p`が自分のworktreeとbranch（`lane/<名前>`）で1回だけ動き、commitして終わる。出力が決まった有限のタスクにだけ使い、常駐させない。mainは`python3 scripts/lane.py status <名前>`で結果を読み、根拠を照合してから取り込む。起動と取り込みの順番は[kickoff](docs/guides/kickoff.md#laneの起動と取り込み)にある。
 - scout（Claude Code・Codex・Kimi Code）: `make first-bench`がbaselineの後に起動し、8分ごとに新しいセッションで探索して`.local/scout/reports.md`へ書く。報告はベンチの起動時にhookが渡す。古い可能性を踏まえ、それぞれの視点を次の改善の参考にする。止めるのは`make scout-stop`。詳細は[scout](docs/roles/scout.md)。
-- 手で並行するなら`make worktree BRANCH=<name> PURPOSE="..."`で作り、変更目的ごとにcommitを分ける。ローカル環境は各worktreeで`make local-up / local-check / local-down`で使える（[ローカル実行環境](docs/local-development.md)）。
-- remote変更・deploy・ベンチ・`.local/operation.lock`を使う操作はmainだけが行う。実行中のlockは手で消さず、別の操作の終了を待つ。status・checkなどの読み取りは並行してよい。作業中の他worktreeを変更・削除しない。
+- 人間や手で動かすClaude Codeは、`make worktree BRANCH=<name> PURPOSE="..."`のworktreeで調査・実装・ローカル検証をし、変更目的ごとにcommitを分ける。ローカル環境は各worktreeで`make local-up / local-check / local-down`で使える（[ローカル実行環境](docs/local-development.md)）。
+- worktreeの変更は`python3 scripts/proposal.py submit --hypothesis ... --expect ... --verified ...`で投稿する。mainのbranchへ衝突なく入る投稿だけが、ベンチの起動時にmainへ渡る。衝突する投稿は`needs-sync`で投稿者へ返るので、mainのbranchをmergeして投稿し直す。mainは測った結果を`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID>`で返す。一覧は`make proposals`。
+- remote変更・deploy・ベンチ・`.local/operation.lock`を使う操作はmainだけが行う（mainの宣言がある間はhookが止める）。実行中のlockは手で消さず、別の操作の終了を待つ。status・checkなどの読み取りは並行してよい。作業中の他worktreeを変更・削除しない。
 
 ## 守ること
 - アプリケーションと設定はローカルリポジトリを正とする。サーバー上のファイルを直接編集しない。サーバーごとにコードを複製せず、役割の違いは設定とdeployで扱う。
 - 秘密情報と環境固有の情報は`.local/`へ置き、Gitへ入れない。再現に必要な定義は`webapp/`・`config/`・`ansible/`・`infra/`・`scripts/`へ残す。
 - 公式情報は要約だけで済ませず、可能な限り原文を`docs/official/`へ保存する。
-- 必ず残す記録（ベンチの見取り図、コードの地図など）は置き場所が固定で、一覧は`config/records.json`にある。各手順書の「残すもの」が指す場所へ書き、別の場所や別名のファイルに分けない。
+- 必ず残す記録（ベンチの見取り図、状態ログの対象など）は置き場所が固定で、一覧は`config/records.json`にある。各手順書の「残すもの」が指す場所へ書き、別の場所や別名のファイルに分けない。
 - ベンチnodeへの直接の接続、ベンチマーカーの閲覧・コピー、練習中の開催回のコードの取得と攻略法の検索は、hook（`scripts/tool-guard.py`）が止める。止められたら別の経路で回避しない。
 
 ## 場所
@@ -78,7 +80,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 | `docs/` | `guides/`（進め方）、`reference/`（仕様）、`official/`（公式の原文）、必ず残す記録 |
 | `docs/agent-history/` | 会話・commit・操作の時系列。hookが自動で書くので、手で編集しない |
 | `.isuscope/`・`isuscope-data/` | isuscopeの設定とrun。軽いrun履歴は通常のcommitに含め、生ログは重要なrunだけ`git add -f isuscope-data/runs/<run-id>`で残す |
-| `.claude/` | rulesのsymlinkと、hook（`tool-guard.py`、`bench-hook.py`）の設定 |
+| `.claude/` | rulesのsymlink、hook（`tool-guard.py`、`bench-hook.py`）の設定、mainを宣言する`/main`（`commands/main.md`）、mainのプロンプトの上に`★ MAIN`の帯を出すmod（`skills/isucon-main/`） |
 | `.local/` | 接続情報・秘密情報・生成物。Git管理しない |
 
 - 過去のベンチは`isuscope list`・`isuscope brief <run>`で読む。

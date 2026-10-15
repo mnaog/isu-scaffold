@@ -15,6 +15,11 @@ Stopped calls:
 - fetching or cloning the current contest's code from GitHub, or fetching a page about it
   outside `allowed_urls`, and web searches about the current contest
 
+While a main session is declared (/main, scripts/main-session.py), every other session is also
+refused what only main does: deploy, rollback, import, kickoff, the benchmark, isuscope records,
+starting or stopping lanes and scouts, and the operation lock. Calls without a session id, and
+every call while no main is declared, are not checked for this.
+
 Contest keywords and paths come from config/tool-guard.json. Empty lists turn those rules
 off; the benchmark node rule always applies. Internal errors let the call through, so a
 broken guard never stops all work.
@@ -23,6 +28,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -62,6 +68,16 @@ LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'kickoff', 'kickoff-apply',
 # Read-only isuscope commands; everything else records, benchmarks or reaches nodes.
 LANE_ISUSCOPE = {'list', 'brief', 'query', 'sql', 'help', '--help', '-h', '--version', 'version'}
 LANE_PROGRAMS = {'ansible', 'ansible-playbook', 'aws', 'gh', 'claude', 'codex', 'opencode'}
+MAIN_HINT = ('この操作はmainのセッション（/mainで宣言したセッション）だけが行う。'
+             'worktreeの変更はcommitして`python3 scripts/proposal.py submit --hypothesis ... --expect ... --verified ...`'
+             'で投稿すると、mainがベンチを起動したときに渡る。mainを引き継ぐならrepoのrootで/mainを打つ。')
+# What only main does while a main is declared: changes to remote nodes, the benchmark and its records.
+MAIN_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-apply.sh', 'bootstrap.sh',
+                'bootstrap-ssh.sh', 'configure-apply.sh', 'bench-check.sh', 'quick-import-code.sh',
+                'run-ansible-playbook.sh', 'switch-language-service.sh', 'benchmark.sh', 'benchmark-prepare.sh',
+                'benchmark-stop.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'first-bench.sh'}
+MAIN_MAKE_TARGETS = {'deploy', 'rollback', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap', 'bench-check',
+                     'first-bench', 'tare', 'scout-start', 'scout-stop', 'practice-create', 'practice-delete'}
 LOCAL_URL = re.compile(r'^(?:https?://)?(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:/|$)')
 
 
@@ -152,6 +168,8 @@ class Guard:
         self.allowed_urls = [u for u in config.get('allowed_urls', []) if u]
         self.bench_ids = benchmark_ids(root)
         self.lane = os.environ.get('ISUCON_LANE')
+        self.root = root
+        self.not_main = False  # set per call: a main is declared and this session is not it
         self.drop_heredocs = False  # bench-hook.py reads only the command lines, not heredoc bodies
         patterns = [re.escape(p.rstrip('/')) + r'(?![\w.-])' for p in config.get('benchmarker_paths', []) if p]
         patterns += [r'(?<![\w.-])' + re.escape(k) + r'[\w.-]*/bench(?![\w.-])' for k in self.keywords]
@@ -249,6 +267,8 @@ class Guard:
             elif head == 'isuscope' and len(words) > 1 and words[1] == 'lock':
                 if self.lane:
                     raise Denied(LANE_HINT)
+                if self.not_main:
+                    raise Denied(MAIN_HINT)
                 words = words[words.index('--') + 1:] if '--' in words else []
             elif head in SHELLS and len(words) > 2 and re.match(r'^-[a-z]*c[a-z]*$', words[1]):
                 self.check_shell(words[2], depth + 1)
@@ -265,6 +285,8 @@ class Guard:
             self.check_arguments(words)
         if self.lane:
             self.check_lane(program, args)
+        if self.not_main:
+            self.check_main_only(program, args)
         self.seen(program, args)
         if program == 'ssh-node.sh':
             if args:
@@ -318,6 +340,25 @@ class Guard:
                                                   and ('.' in a or ':' in a or '/' in a)):
             raise Denied(LANE_HINT)
 
+    def check_main_only(self, program, args):
+        """While a main is declared, other sessions leave remote changes and the benchmark to it."""
+        script = program
+        operands = [a for a in args if not a.startswith('-')]
+        if program in SHELLS | {'python', 'python3'}:
+            script = os.path.basename(operands[0]) if operands else ''
+            operands = operands[1:]
+        if script in MAIN_SCRIPTS or program in {'ansible', 'ansible-playbook'} or any('operation.lock' in a for a in args):
+            raise Denied(MAIN_HINT)
+        if script == 'lane.py' and operands[:1] and operands[0] in {'start', 'kickoff', 'stop'}:
+            raise Denied(MAIN_HINT)
+        if script == 'main.py' and operands[:1] and operands[0] in {'start', 'stop', 'daemon'}:
+            raise Denied(MAIN_HINT)  # scripts/scout/main.py
+        if program == 'make' and any(a in MAIN_MAKE_TARGETS for a in operands):
+            raise Denied(MAIN_HINT)
+        # Reading runs (states, route suggestions included) helps a worktree; recording them is main's.
+        if program == 'isuscope' and args and args[0] not in LANE_ISUSCOPE | {'states', 'routes'}:
+            raise Denied(MAIN_HINT)
+
     def seen(self, program, args):
         """Every simple command, after wrappers are removed. bench-hook.py watches for benchmarks here."""
 
@@ -328,9 +369,12 @@ class Guard:
         if not isinstance(tool_input, dict):
             tool_input = {'value': tool_input}
         command = command_of(tool_input)
+        self.not_main = not_main(self.root, payload.get('session_id'))
         if isinstance(command, str):
             if self.lane and 'operation.lock' in command:
                 raise Denied(LANE_HINT)
+            if self.not_main and 'operation.lock' in command:
+                raise Denied(MAIN_HINT)
             self.check_shell(command)
         searching = 'search' in tool.lower()
         for key, value in tool_input.items():
@@ -346,6 +390,27 @@ class Guard:
                     lowered = item.lower()
                     if any(k in lowered for k in self.keywords):
                         raise Denied(f'現在練習中の開催回の攻略法は検索しない（{item}）。')
+
+
+def not_main(root, session):
+    """True when a main session is declared (in the root repository) and this call's session is another.
+
+    The session is the hook payload's id, or the agent's own variables (Codex's thread id, which
+    `main-session.py claim --agent codex` records, need not be the id its hooks are given).
+    """
+    ids = {str(session or '')} | {os.environ.get(name, '') for name in
+                                  ('CLAUDE_CODE_SESSION_ID', 'CODEX_SESSION_ID', 'CODEX_THREAD_ID')}
+    ids.discard('')
+    if not ids:
+        return False
+    try:
+        common = subprocess.run(['git', '-C', str(root), 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+                                capture_output=True, text=True, timeout=5).stdout.strip()
+        declared = load_json(Path(common).parent / '.local/main-session.json' if common
+                             else Path(root) / '.local/main-session.json', {})
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return bool(isinstance(declared, dict) and declared.get('session')) and declared['session'] not in ids
 
 
 def command_of(tool_input):
