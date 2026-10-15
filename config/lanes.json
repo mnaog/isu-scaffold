@@ -66,7 +66,7 @@
       "timeout_minutes": 90
     },
     "local-env": {
-      "purpose": "ローカル実行環境を構成してmake local-checkを通し、docs/local-verification.mdを書く",
+      "purpose": "ローカル実行環境を構成してmake local-checkを通す（起動・確認の手順はcompose.yamlのコメントに書く）",
       "prompt": "config/lanes/local-env.md",
       "timeout_minutes": 45
     },
@@ -75,9 +75,9 @@
       "prompt": "config/lanes/state-log.md",
       "timeout_minutes": 45
     },
-    "memory": {
-      "purpose": "状態をすべてメモリに置き、書き込みはDBに残す書き換えを作り、最後に最新のmainを取り込む（mainがstate-logとlocal-envを取り込んだら起動）",
-      "prompt": "config/lanes/memory.md",
+    "full-memory": {
+      "purpose": "全メモリ化: 状態をすべてメモリに置き、読み取りと判定をメモリで行い、書き込みはDBに残す書き換えを作り、最後に最新のmainを取り込む（mainがstate-logとlocal-envを取り込んだら起動）",
+      "prompt": "config/lanes/full-memory.md",
       "requires": [
         "docs/state-log.md",
         "config/local/compose.yaml"

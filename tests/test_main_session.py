@@ -95,7 +95,7 @@ class MainSessionTest(unittest.TestCase):
 
     def test_only_main_deploys_and_benchmarks_while_a_main_is_declared(self):
         main_only = ['make deploy', 'make first-bench', 'isuscope run --hypothesis x', 'isuscope analyze abc supported',
-                     'python3 scripts/lane.py start memory', 'bash scripts/deploy.sh', 'isuscope lock -- make build',
+                     'python3 scripts/lane.py start full-memory', 'bash scripts/deploy.sh', 'isuscope lock -- make build',
                      'cat .local/operation.lock', 'make scout-start', 'python3 scripts/tare.py']
         free = ['make build', 'isuscope brief latest', 'isuscope states timeline latest', 'git status',
                 'python3 scripts/lane.py status', 'make local-up', 'python3 scripts/proposal.py list']

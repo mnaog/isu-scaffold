@@ -6,7 +6,7 @@
 
 また、アプリケーションコードと設定ファイルをすべてローカルリポジトリで管理し、コマンドからサーバーへデプロイできる状態を作る。
 
-SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を5本起動する。`code-map`が`docs/code-map.md`を書き、`indexes`が索引を、`obvious-fixes`が索引以外の自明な修正を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境と`docs/local-verification.md`を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書く。kickoffは調査結果から`docs/environment.md`も自動で書く。mainのセッションはその間に公式資料・ベンチ接続・初期build設定・draftの判断を進め、公式資料をcommitしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
+SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を5本起動する。`code-map`が`docs/code-map.md`を書き、`indexes`が索引を、`obvious-fixes`が索引以外の自明な修正を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書く。kickoffは調査結果から`docs/environment.md`も自動で書く。mainのセッションはその間に公式資料・ベンチ接続・初期build設定・draftの判断を進め、公式資料をcommitしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
 
 調査・修正・ローカル検証・deploy・ベンチ・採否判断の責任はmainのセッションが持つ。laneの成果は根拠を照合してからmergeする。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
 
@@ -16,7 +16,7 @@ SSH確立直後に採用言語のコードとDB schemaを先行importし、初�
 2. kickoffと並行して、公式資料を保存・commitしてlane `scenario`を起動し、`config/benchmark.env`・`benchmark-contract`の用意、`--check`・`--probe`を済ませる。build設定が自動生成されたら確認してcommitし、設定待ちなら`config/initial-build.json`を作る。
 3. draftを判断して`kickoff-apply`し、完全importをcommitする。
 4. 人間の確認を待たずに`make first-bench`を実行する。`bench-check`の後、配布状態のままの初期状態で`survey-run`を取り、その後に同じcommitをdeployする（配布状態で測れない場合はdeployを先にする）。`baseline-ready`が出たらスコア・エラー・HTTP・SQL・ホスト負荷を分析し、lane `code-map`の地図を照合に使う。
-5. 観測とコードから改善を選ぶ。baselineの後の最初のdeployで、lane `state-log`のcommitを他のlaneより先に取り込む（以後のrunで、状態についての問いに計測を足さずに答えられる）。lane `indexes`・`obvious-fixes`のcommitは観測と照合して効くものから`git cherry-pick`し（laneの完了を待たない）、残りは実装・ローカル検証・commit・deployを進める。state-logを取り込んだdeployをcommitしたら、そのベンチを待たずにlane `memory`を起動する（`local-env`もmerge済みであること。`indexes`・`obvious-fixes`は待たない）。状態をすべてメモリに置き、書き込みはDBに残す書き換えを、mainの改善と並行して作らせる。laneは終わる前に最新のmainを取り込んで確かめ直すので、終わったら`git merge lane/memory`でmainへ入れ、deployして直前のrunと比べる。
+5. 観測とコードから改善を選ぶ。baselineの後の最初のdeployで、lane `state-log`のcommitを他のlaneより先に取り込む（以後のrunで、状態についての問いに計測を足さずに答えられる）。lane `indexes`・`obvious-fixes`のcommitは観測と照合して効くものから`git cherry-pick`し（laneの完了を待たない）、残りは実装・ローカル検証・commit・deployを進める。state-logを取り込んだdeployをcommitしたら、そのベンチを待たずにlane `full-memory`（全メモリ化）を起動する（`local-env`もmerge済みであること。`indexes`・`obvious-fixes`は待たない）。状態をすべてメモリに置き、書き込みはDBに残す書き換えを、mainの改善と並行して作らせる。laneは終わる前に最新のmainを取り込んで確かめ直すので、終わったら`git merge lane/full-memory`でmainへ入れ、deployして直前のrunと比べる。
 6. 通常の`isuscope run`で比較し、仮説の判定と変更の採否を記録する。障害があれば原因調査から修正・再評価まで続ける。
 
 先行importは読解用の暫定snapshotであり、全配布先のdigest一致と設定の正本化は完全importで確認する。並行作業はlane（`scripts/lane.py`）か`make worktree`で行う。remote操作はmain側で共通lockを使う。
@@ -27,7 +27,7 @@ SSH確立直後に採用言語のコードとDB schemaを先行importし、初�
 
 構成をcommitしたら、各worktreeで`make local-up`、`make local-check`、`make local-down`を実行してよい。DB・network・portはworktree単位で分離し、remote変更用lockを取らない。構築は初動と並行し、完成を初回baselineのgateにはしない。
 
-ローカルで初期化、代表API、SQLの実行計画、修正前後の挙動を確認する。schemaのみ・縮小データ・フルデータのどれか、欠けているserviceや検証範囲を`docs/local-verification.md`へ記録し、health成功だけをシナリオ検証済みと扱わない。初期データは許可された取得元だけを使い、未回収ならその制限を明示する。性能変更の最終採否は配布サーバーの共有ベンチで決める。
+ローカルで初期化、代表API、SQLの実行計画、修正前後の挙動を確認する。起動・確認の手順と、手元で動かないもの（欠けているservice、初期データの範囲）は`config/local/compose.yaml`の冒頭のコメントにある。health成功だけをシナリオ検証済みと扱わない。初期データは許可された取得元だけを使い、未回収ならその制限を明示する。性能変更の最終採否は配布サーバーの共有ベンチで決める。
 
 ## 公式情報を保存する
 
@@ -143,7 +143,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - transaction内の不要な処理とDB往復
 - 明らかに不要なカラム、全件走査、外部呼び出し
 
-インデックスは、対象のSQL、初期化後の行数、効果を確かめたrun IDを`docs/indexes.md`へ残す。読み取りのキャッシュ・メモリ化と、DB・アプリ・nginxを別のnodeへ分ける配置変更は、次節の条件で初動のうちに入れてよい。整合性条件を変えるもの、非同期化、write-behindなど永続化の時機を変えるものは、次節で最大の制約がそこにあると示せるまで実装しない。
+インデックスの根拠（対象のSQLと選んだ理由）はcommit messageに、効果と採否は測ったrunのisuscope `analyze --change`に残す。読み取りのキャッシュ・メモリ化と、DB・アプリ・nginxを別のnodeへ分ける配置変更は、次節の条件で初動のうちに入れてよい。整合性条件を変えるもの、非同期化、write-behindなど永続化の時機を変えるものは、次節で最大の制約がそこにあると示せるまで実装しない。
 
 この一掃は初動の待ち時間と並行して進める作業であり、次の判断を止めるgateではない。先行回収の直後からlane `indexes`が`lane/indexes`へ索引を、lane `obvious-fixes`が`lane/obvious-fixes`へ索引以外の修正を、1件1commitで実装する（deployはしない）。commitのたびに`.local/progress.log`へ`lane:<名前> commit`が出るので、初回runから得た上位SQL・HTTP・エラーと照合し、効くcommitからlaneの完了を待たずに`git cherry-pick`する。根拠が弱い変更は保留する。変更を反映した最初の`isuscope run`で大きく改善することを確認し、その後はボトルネックごとの短いサイクルに切り替える。
 
@@ -162,7 +162,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - DB・アプリ・nginxを別のnodeへ分ける配置変更
 - 読み取りのキャッシュ・メモリ化
 
-どちらも根拠（run ID、node別の観測値、期待する効果）を残し、1つずつ入れて通常の`isuscope run`で測る。全メモリ化はlane `memory`に任せる。それより前にmainが入れるメモリ化は1つの読み取り経路ずつ進め、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築方法を`docs/cache-design.md`へ書いてから入れる。WALなどでDBを外すのは、書き込みが律速だと測れてからにする。非同期化やwrite-behindなど、整合性条件や永続化の時機を変える変更が必要なら、根拠を`docs/baseline.md`か分析に残し、[改善](improvement.md)の方針で入れる。
+どちらも根拠（run ID、node別の観測値、期待する効果）を残し、1つずつ入れて通常の`isuscope run`で測る。全メモリ化はlane `full-memory`に任せる。それより前にmainが入れるメモリ化は1つの読み取り経路ずつ進め、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築方法を`docs/cache-design.md`へ書いてから入れる。WALなどでDBを外すのは、書き込みが律速だと測れてからにする。非同期化やwrite-behindなど、整合性条件や永続化の時機を変える変更が必要なら、根拠を`docs/baseline.md`か分析に残し、[改善](improvement.md)の方針で入れる。
 
 ## 残すもの
 
@@ -170,12 +170,9 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 - `docs/official/`：公式の一次情報
 - `docs/environment.md`：環境
-- `config/benchmark-contract.json`：ベンチの競技条件
 - `docs/benchmark-scenario.md`：ベンチの見取り図
 - `docs/code-map.md`：コードの地図
-- `docs/local-verification.md`：ローカル検証の範囲
 - `docs/baseline.md`：初回baselineの制約
-- `docs/indexes.md`：インデックスの根拠
 - `docs/state-log.md`：状態ログの対象
 - `docs/cache-design.md`：メモリ化の設計（入れた場合）
 - isuscopeによる初回ベンチ結果
@@ -187,7 +184,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 - 公式から提供された一次情報が`docs/official/`に揃っている
 - コードと設定ファイルがローカルリポジトリで管理されている
-- ローカル環境で実施した検証と未対応範囲が記録され、改善の検証に利用できる（構築不能なら理由と代替の検証手段を記録）
+- ローカル環境で改善を検証できる（構築できなければ、理由と代わりの検証手段を`docs/baseline.md`に書く）
 - ローカルからコマンドでデプロイできる
 - サーバーを直接編集せずに構成を再現できる
 - 初期状態へ戻せる

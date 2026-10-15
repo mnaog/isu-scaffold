@@ -136,7 +136,7 @@
     "config/lanes/state-log.md",
     "config/state-log/state_log.rs",
     "tests/test_state_log_writer.py",
-    "config/lanes/memory.md",
+    "config/lanes/full-memory.md",
     "scripts/local-runtime.py",
     "scripts/local-flow.py",
     "scripts/state-log-compare.py",
@@ -162,7 +162,16 @@
     "docs/roles/scout-prompt.txt",
     "scripts/board/scout.py",
     "scripts/bench-hook.py",
-    "tests/test_bench_hook.py"
+    "tests/test_bench_hook.py",
+    "scripts/main-session.py",
+    "scripts/proposal.py",
+    "tests/test_main_session.py",
+    ".claude/commands/main.md",
+    ".claude/skills/isucon-main/.claude-plugin/plugin.json",
+    ".claude/skills/isucon-main/hooks/hooks.json",
+    ".claude/skills/isucon-main/hooks/register.tsx",
+    ".claude/skills/isucon-main/tests/badge.test.tsx",
+    ".claude/skills/isucon-main/types/index.d.ts"
   ],
   "remove_files": [
     "docs/roles/operator.md",
@@ -206,6 +215,7 @@
     "scripts/initial-phase-report.py",
     "tests/test_initial_phase_report.py",
     "docs/initial-automation.md",
-    "docs/scout-board.md"
+    "docs/scout-board.md",
+    "config/lanes/memory.md"
   ]
 }

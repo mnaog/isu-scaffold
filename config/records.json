@@ -20,12 +20,6 @@
       "contents": "台数とrole、CPU・メモリ、OS・kernel・nginx・MySQLの版、配布サーバーの言語の版、開始からの計時。"
     },
     {
-      "path": "config/benchmark-contract.json",
-      "title": "ベンチの競技条件",
-      "timing": "初動",
-      "contents": "mode、通常と初期化のtimeout、負荷時間、接続先と、照合した公式資料のhash。"
-    },
-    {
       "path": "docs/benchmark-scenario.md",
       "title": "ベンチの見取り図",
       "timing": "初動",
@@ -38,22 +32,10 @@
       "contents": "主要な処理ごとに、シナリオ → API → handler → SQL・外部処理 → サーバー → 得点・失敗のつながり。"
     },
     {
-      "path": "docs/local-verification.md",
-      "title": "ローカル検証の範囲",
-      "timing": "初動",
-      "contents": "データの範囲（schemaだけ・縮小・全量）、欠けているservice、確かめたことと確かめていないこと。"
-    },
-    {
       "path": "docs/baseline.md",
       "title": "初回baselineの制約",
       "timing": "初動",
       "contents": "初回baselineで観測された最大の制約と、その根拠（run ID、node別の観測値）。"
-    },
-    {
-      "path": "docs/indexes.md",
-      "title": "インデックスの根拠",
-      "timing": "初動",
-      "contents": "足した索引ごとに、対象のSQL、初期化後の行数、効果を確かめたrun ID。"
     },
     {
       "path": "docs/state-log.md",
