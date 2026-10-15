@@ -104,7 +104,3 @@ local-flow:
 .PHONY: preparation-check
 preparation-check:
 	@python3 scripts/preparation-check.py
-
-.PHONY: practice-check practice-create practice-status practice-delete
-practice-check practice-create practice-status practice-delete:
-	@bash scripts/practice-stack.sh $(patsubst practice-%,%,$@)
