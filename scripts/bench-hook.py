@@ -12,6 +12,9 @@ Bash call. Heredoc bodies and `bash -n` syntax checks do not count as starting o
   scout reports (.local/scout/reports.md in the main worktree) with their age. Each report goes to
   a session once (.local/scout/delivered.json); a later benchmark gets only the reports posted
   since. It prints nothing while neither the map nor an undelivered report exists.
+- `--emergency` (PostToolUse on every tool) hands main a report the person in worktree `human`
+  posted with `scripts/scout/main.py post --emergency`, at main's next tool call instead of the
+  next benchmark. The settings call it only while .local/scout/emergency.json exists.
   It also hands main the worktree proposals (scripts/proposal.py) it has not seen at their current
   commit and that merge into main's branch cleanly, so main picks and builds the next candidate
   while the benchmark runs. While a main is declared (/main) only main gets them.
@@ -37,10 +40,12 @@ SCENARIO = 'docs/benchmark-scenario.md'
 SCENARIO_HINT = (f'ベンチの完了を待つ間に、`{SCENARIO}`（ベンチの見取り図）を読み返す。'
                  '今回の仮説と次の候補が、得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめる。'
                  '観測と食い違う記述や新しく分かった事実があれば、文書を直す。')
-SCOUT_HINT = ('これは並列で動かしている調査エージェント（scout）による報告です。'
+SCOUT_HINT = ('これは並列で動かしている調査エージェント（scout）と、worktree `human`の人間（`## human`）による報告です。'
               '内容が古くなっている可能性もありますが（各報告に投稿からの経過分を添えています）、'
               'それぞれの視点を参考にして、次回の改善のための参考として確認してください。'
               '前回までのベンチで渡した報告は省いています（各scoutの最新の報告は`.local/scout/reports.md`）。')
+EMERGENCY_HINT = ('人間（worktree `human`）からの緊急の報告です。今の作業を続ける前に読み、'
+                  'すぐ反映するか、反映しない理由を人間へ伝えてください。')
 
 spec = importlib.util.spec_from_file_location('tool_guard', Path(__file__).with_name('tool-guard.py'))
 tool_guard = importlib.util.module_from_spec(spec)
@@ -149,6 +154,31 @@ def scout_context(root, session='', now=None):
     return SCOUT_HINT + '\n\n' + re.sub(r'投稿: (\S+Z)', age, '\n\n'.join(fresh))
 
 
+def emergency_context(root, session='', now=None):
+    """A report posted with --emergency, handed to main at its next tool call (once), or None.
+
+    The marker sits in the main worktree, where main runs, so other sessions pass it by at once.
+    """
+    marker = Path(root) / '.local/scout/emergency.json'
+    if not session or not marker.is_file():
+        return None
+    if proposal.main_session.is_main(main_worktree(root), session) is False:
+        return None
+    try:
+        key = json.loads(marker.read_text())['key']
+        reports = (marker.parent / 'reports.md').read_text()
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    name = key.split('@', 1)[0]
+    for section in re.split(r'^(?=## )', reports, flags=re.M):
+        posted = re.search(r'^## (\S+)\n+投稿: (\S+Z)', section, re.M)
+        if posted and f'{posted.group(1)}@{posted.group(2)}' == key and posted.group(1) == name:
+            # Recorded as delivered like any report, so the next benchmark does not hand it again.
+            fresh = undelivered(marker.parent, session, [(key, section.strip())])
+            return EMERGENCY_HINT + '\n\n' + fresh[0] if fresh else None
+    return None
+
+
 def proposal_context(root, session='', now=None):
     """Worktree proposals for main: none for a session that is not main, or without a session id."""
     if not session:
@@ -174,6 +204,11 @@ def main():
         payload = json.load(sys.stdin)
         payload = payload if isinstance(payload, dict) else {}
         root = Path(os.environ.get('TOOL_GUARD_ROOT') or ROOT)
+        if '--emergency' in sys.argv:
+            if context := emergency_context(root, str(payload.get('session_id') or '')):
+                print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUse', 'additionalContext': context}},
+                                 ensure_ascii=False))
+            return 0
         benchmark, background = starts_benchmark(root, payload)
         if not benchmark:
             return 0

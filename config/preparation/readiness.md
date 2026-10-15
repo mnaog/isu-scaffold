@@ -47,3 +47,18 @@
 | GitHub・AI CLIの利用とSSH鍵 | 未完了 | | |
 | 公式レギュレーションの再確認（`docs/official/`） | 未完了 | | |
 | 参加登録・連絡手段・ポータル・当日前の設定期限 | 未完了 | | 本人しか確認できない項目は本人の確認を記録する |
+
+## ポータル
+
+| 項目 | 状態 | 確認日 | 使用版・根拠 |
+| --- | --- | --- | --- |
+| chrome-debug（port 9222）の起動とPlaywright MCPからの接続 | 未完了 | | |
+| ポータルのURLとchrome-debugでのログイン（開始時のログインし直しの要否） | 未完了 | | |
+| `scripts/portal-cookie.py --check` | 未完了 | | |
+| worktree `portal`（`make worktree BRANCH=portal`） | 未完了 | | |
+
+## 人間の作業場所
+
+| 項目 | 状態 | 確認日 | 使用版・根拠 |
+| --- | --- | --- | --- |
+| worktree `human`（`make worktree BRANCH=human`）と`scripts/scout/main.py post human`の確認 | 未完了 | | |

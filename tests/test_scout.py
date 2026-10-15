@@ -70,7 +70,8 @@ class ScoutTests(unittest.TestCase):
 
     def test_configured_scouts_wait_eight_minutes_after_their_report(self):
         cfg = json.loads((SOURCE / 'config/scout.json').read_text())
-        self.assertEqual(sorted(cfg['scouts']), ['claude', 'codex', 'kimi'])
+        self.assertEqual(list(cfg['scouts']), ['human', 'claude', 'codex', 'kimi'])
+        self.assertTrue(cfg['scouts']['human']['manual'])
         self.assertEqual(cfg['wait_after_report_seconds'], 480)
 
     def test_worktrees_share_database(self):
@@ -90,10 +91,39 @@ class ScoutTests(unittest.TestCase):
         text = reports.read_text()
         self.assertIn('順調そう', text)
         self.assertNotIn('あ'*2000, text)
-        self.assertEqual(text.count('## '), 3)
+        self.assertEqual(text.count('## '), 4)
+        # The person's section comes first, in the configuration's order.
+        self.assertLess(text.index('## human'), text.index('## codex'))
         self.assertNotIn('local-ref', text)
         # The reports stay out of Git while the scouts run; only make scout-stop leaves a snapshot.
         self.assertNotIn('docs/', self.git('status', '--porcelain', '--untracked-files=all'))
+
+    def test_a_person_posts_as_the_human_scout_from_a_worktree(self):
+        worktree = self.repo.parent / 'repo-human'
+        self.git('worktree', 'add', '-b', 'human', str(worktree))
+        cli = [sys.executable, str(self.repo / 'scripts/scout/main.py')]
+        env = {k: v for k, v in os.environ.items() if not k.startswith(('CLAUDE_CODE_SESSION', 'CODEX_'))}
+        posted = subprocess.run([*cli, 'post', 'human', 'DBより先に/api/xxxのN+1を見て'], cwd=worktree, env=env,
+                                text=True, capture_output=True)
+        self.assertEqual(posted.returncode, 0, posted.stderr)
+        reports = (self.repo / '.local/scout/reports.md').read_text()
+        self.assertIn('> DBより先に/api/xxxのN+1を見て', reports)
+        self.assertFalse((self.repo / '.local/scout/emergency.json').exists())
+        # A new post replaces the previous one, like a scout's latest report; stdin works too.
+        subprocess.run([*cli, 'post', 'human', '--emergency'], cwd=worktree, env=env, input='止めて\n', text=True,
+                       capture_output=True, check=True)
+        reports = (self.repo / '.local/scout/reports.md').read_text()
+        self.assertIn('> 止めて', reports)
+        self.assertNotIn('N+1', reports)
+        key = json.loads((self.repo / '.local/scout/emergency.json').read_text())['key']
+        self.assertRegex(key, r'^human@\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
+        self.assertIn('投稿: ' + key.split('@')[1], reports)
+        # The agents' scouts are not posted to by hand, and the daemon never runs the person.
+        refused = subprocess.run([*cli, 'post', 'codex', 'x'], cwd=worktree, env=env, text=True, capture_output=True)
+        self.assertNotEqual(refused.returncode, 0)
+        once = subprocess.run([*cli, 'once', 'human'], cwd=self.repo, env=env, text=True, capture_output=True)
+        self.assertNotEqual(once.returncode, 0)
+        self.assertIn('post human', once.stderr)
 
     def test_stop_leaves_a_snapshot_of_the_reports_to_commit(self):
         cli = [sys.executable, str(self.repo / 'scripts/scout/main.py'), 'stop']
@@ -247,7 +277,9 @@ class ScoutTests(unittest.TestCase):
 
     def test_daemon_restart_preserves_deadline_and_multiple_start_stops(self):
         runner.start(self.repo)
-        self.wait_for(lambda: all(r['state']=='waiting' for r in self.query('SELECT state FROM scouts')))
+        # The daemon runs the agents; the person (human, manual) only posts by hand.
+        self.wait_for(lambda: all(r['state']=='waiting' for r in self.query("SELECT state FROM scouts WHERE name!='human'")))
+        self.assertEqual(self.query("SELECT state,report FROM scouts WHERE name='human'"), [{'state': 'stopped', 'report': None}])
         with self.assertRaisesRegex(RuntimeError,'already running'):
             runner.start(self.repo)
         runner.stop_daemon(self.repo)

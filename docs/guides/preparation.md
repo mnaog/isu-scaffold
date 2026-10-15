@@ -44,6 +44,20 @@
 - GitHub・AI CLIが使えることと必要なSSH鍵を確認する。
 - 事前公開の公式レギュレーション、当日前の設定期限、参加登録・連絡手段・ポータル等の準備を確認する。参加者本人しか確認できない項目は本人の確認を記録する。適用しない項目は対象外として理由を記す。
 
+## ポータル（portalのセッションの前提）
+
+開始後にportalのセッション（`/portal`）がすぐベンチ接続へ入れるよう、ブラウザとログインは開始前に済ませる。
+
+- `chrome-debug`（`--remote-debugging-port=9222`のChrome）を起動し、Playwright MCPからページを開けることを確かめる。
+- ポータルにログインできるようになったら（参加登録、事前ログイン）、chrome-debugでログインしておく。開始時にログインし直しが要るか（セッションの期限、開始時の切り替え）を確かめて記録する。開始までログインできないポータルなら「公開待ち」にし、開始時に人間がログインする。
+- ログインした状態で`python3 scripts/portal-cookie.py --portal <URL> --check`を流し、cookieが取れることを確かめる（値は出ない）。ポータルのURLを`docs/preparation/readiness.md`に記録する。
+- 開始用repoで`make worktree BRANCH=portal PURPOSE="ポータルの情報とベンチ接続"`を作っておく（問題の情報は入らない）。
+
+## 人間の作業場所
+
+- 開始用repoで`make worktree BRANCH=human PURPOSE="人間の作業場所"`を作っておく。人間は競技中ずっとここを触り、mainの作業ツリーには触れない。
+- 意見は`python3 scripts/scout/main.py post human "<本文>"`（急ぎは`--emergency`）、コードの変更は投稿（`scripts/proposal.py submit`）でmainへ渡す（[scout](../roles/scout.md)の「人間（human）」）。開始前にworktree `human`から`post human "接続確認（意見はまだない）"`を1回流し、`.local/scout/reports.md`に`## human`が出ることを確かめる。この報告は最初のベンチでmainに渡るので、渡っても困らない文面にしておく。
+
 ## 開始後へ残すもの
 
 開始後に公開されるAMI・サーバー情報・正式手順を受け取り、サーバー起動、SSH確立、コード/schema先行回収、remoteのtoolchain・計測導入、実設定照合、完全import、deploy、初回baselineへ進む。実アプリ固有の依存解決・シナリオ読解・route設定・collectorの実データ検証も開始後に行う（[kickoff](kickoff.md)）。開始前に利用できない問題情報を使って先に済ませない。

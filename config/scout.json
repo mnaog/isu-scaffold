@@ -1,5 +1,5 @@
 {
-  "description": "Scouts (scripts/scout): each starts again wait_after_report_seconds after its last report was saved. timeout_seconds null lets a scout run until it reports. Copy the whole file to .local/scout.json to override it on one machine.",
+  "description": "Scouts (scripts/scout): each starts again wait_after_report_seconds after its last report was saved. timeout_seconds null lets a scout run until it reports. Copy the whole file to .local/scout.json to override it on one machine. A scout with manual: true is a person who posts with scripts/scout/main.py post (the daemon never runs it).",
   "wait_after_report_seconds": 480,
   "timeout_seconds": null,
   "retry_max_seconds": 3600,
@@ -9,6 +9,10 @@
     "isuscope"
   ],
   "scouts": {
+    "human": {
+      "label": "人間",
+      "manual": true
+    },
     "claude": {
       "label": "Claude Code",
       "model": "claude-opus-5-5",

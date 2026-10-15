@@ -12,13 +12,13 @@ SSH確立直後に採用言語のコードとDB schemaを先行importし、初�
 
 ## 流れ
 
-開始と同時に、人間が`--remote-debugging-port=9222`のChrome（Playwright MCPがつながるもの）でポータルにログインし、2つのセッションを起動する。rootでmain（`/main`の後に`/goal`）、`make worktree BRANCH=portal PURPOSE="ポータルの情報とベンチ接続"`のworktreeでportal（`/portal`）。portalは結果を`.local/progress.log`へ`portal <official|environment|bench|notice>`の行で書き、mainはkickoffの他の行と一緒に追う。
+chrome-debugでのポータルのログインと、worktree `portal`は準備で済ませてある（[準備](preparation.md)の「ポータル」）。開始と同時に、人間が2つのセッションを起動する。rootでmain（`/main`の後に`/goal`）、worktree `portal`でportal（`/portal`）。ログインが切れていたら、そのときに人間が入り直す。portalは結果を`.local/progress.log`へ`portal <official|environment|bench|notice>`の行で書き、mainはkickoffの他の行と一緒に追う。
 
 ```text
 portal（mainと並行。手順は.claude/commands/portal.md）
-  → ポータルと当日マニュアルをdocs/official/へ保存してcommit（portal official）
   → サーバーの起動に要る情報を.local/environment.envへ（portal environment）
-  → 自動操作が許されていれば、ベンチ接続（benchmark.env、contract、cookie）を作り、--check・--probeを通してcommit（portal bench）
+  → ベンチ接続を作り、実際に1回回して、--check・--probeを通してcommit（portal bench）
+  → 当日マニュアルなどの原文をdocs/official/へ保存してcommit（portal official）
   → その後はポータルの告知と質問への回答を見張る（portal notice）
 main: portal environmentを見たらサーバーを起動し、.local/environment.env（形はconfig/environment.example.env）の
   provider、SSH、node分類を確かめてから

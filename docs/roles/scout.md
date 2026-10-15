@@ -5,6 +5,18 @@
 
 報告の読み手はmainのセッションで、人間の中継を待たない。mainがベンチ（`isuscope run`・`survey-run`・`make first-bench`）を`run_in_background`で起動すると、PostToolUseのhook（`scripts/bench-hook.py --post`）が、ベンチの見取り図（`docs/benchmark-scenario.md`）を読み返す指示に続けて最新報告（`.local/scout/reports.md`）を投稿からの経過分つきで会話へ渡す。各報告は同じセッションへ1回だけ渡す（渡した報告は`.local/scout/delivered.json`に記録する）。以後のベンチでは前回から新しく出た報告だけを渡し、なければscoutの内容は付けない。同じ報告を毎回渡すと読み流されるため。報告は「並列で動かしている調査エージェントによる報告。内容が古くなっている可能性もあるが、それぞれの視点を参考にして、次回の改善のための参考として確認する」という位置づけで渡し、mainはベンチの完了を待つ間に確認する。foregroundのベンチは同じhookがPreToolUse（`--pre`）で止める。
 
+## 人間（human）
+
+`config/scout.json`の`human`（`manual: true`）は、人が手で書くscoutである。常駐処理は起動せず、worktree `human`（準備で作る）にいる人が書く。報告の置き場所、ベンチを起動したときにmainへ渡す流れ、ボードの表示は他のscoutと同じで、mainには他のscoutより先に渡す。前の報告は置き換わる。
+
+```bash
+python3 scripts/scout/main.py post human "DBのindexより先に、/api/xxxのN+1を見てほしい"
+python3 scripts/scout/main.py post human --file notes.md        # 標準入力からも読む
+python3 scripts/scout/main.py post human --emergency "今のベンチの後、deployを止めて"
+```
+
+`--emergency`は次のベンチを待たず、mainが次にツールを使ったとき（PostToolUseのhook `scripts/bench-hook.py --emergency`）に1回だけ渡す。渡した報告は、次のベンチでもう一度は渡さない。コードの変更は、今までどおり投稿（`scripts/proposal.py submit`）で渡す。
+
 ## 起動と停止
 
 Python 3.9以上とSQLite（Python標準ライブラリ）を使用する。main worktreeのrootから操作する。

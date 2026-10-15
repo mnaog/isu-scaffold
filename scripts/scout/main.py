@@ -12,10 +12,12 @@ import os
 from pathlib import Path
 import shutil
 import sqlite3
+import subprocess
 import sys
 import threading
+import time
 from inputs import current, generate
-from runner import active, attempt, daemon, export_reports, initialize, start, stop_daemon
+from runner import active, attempt, daemon, export_reports, initialize, post_report, start, stop_daemon
 
 # The connection check stays bounded even when the scouts themselves run without a time limit.
 SMOKE_TIMEOUT_SECONDS = 600
@@ -52,6 +54,12 @@ def main():
     p = sub.add_parser('conversation')
     p.add_argument('agent', choices=['claude', 'codex'])
     p.add_argument('session_id')
+    p = sub.add_parser('post', help='人間（manualのscout）の報告を書く。前の報告を置き換える')
+    p.add_argument('name', nargs='?', default='human')
+    p.add_argument('text', nargs='?', help='報告の本文。省略すると--fileか標準入力から読む')
+    p.add_argument('--file', type=Path)
+    p.add_argument('--emergency', action='store_true',
+                   help='次のベンチを待たず、mainが次にツールを使ったときに渡す')
     p = sub.add_parser('once')
     p.add_argument('name')
     p.add_argument('--smoke', action='store_true', help='接続のみ検証し、実行ログだけを保存。運用boardへ投稿しない')
@@ -98,10 +106,31 @@ def main():
         print(path)
     elif args.command == 'check':
         for name, spec in cfg['scouts'].items():
+            if spec.get('manual'):
+                continue
             print(json.dumps({'scout': name, 'executable': shutil.which(spec['argv'][0]), 'model': spec['model'], 'unavailable': spec.get('unavailable'), 'authentication': 'once --smokeで確認'}, ensure_ascii=False))
+    elif args.command == 'post':
+        spec = cfg['scouts'].get(args.name)
+        if not spec or not spec.get('manual'):
+            raise ValueError(f'{args.name}は人が書くscout（manual）ではない')
+        text = args.text if args.text is not None else (args.file.read_text() if args.file else sys.stdin.read())
+        commit = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], capture_output=True, text=True).stdout.strip()
+        session = next((s for _, s in current_sessions()), '')
+        post_report(repo, args.name, text, commit or None, session)
+        if args.emergency:
+            # Read by scripts/bench-hook.py --emergency after every tool call of main.
+            stamp = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(
+                next(r['posted_at'] for r in status(repo)['scouts'] if r['name'] == args.name)))
+            path = local(repo) / 'emergency.json'
+            path.write_text(json.dumps({'key': f'{args.name}@{stamp}'}))
+            print(f'{args.name}の報告を緊急で投稿した。mainが次にツールを使ったときに渡る。')
+        else:
+            print(f'{args.name}の報告を投稿した。mainが次にベンチを起動したときに渡る（前の報告は置き換えた）。')
     elif args.command == 'once':
         if args.name not in cfg['scouts']:
             raise ValueError('unknown scout')
+        if cfg['scouts'][args.name].get('manual'):
+            raise ValueError(f'{args.name}は人が書くscout。scripts/scout/main.py post {args.name} で報告する')
         if args.smoke:
             from runner import invoke
             from store import lock

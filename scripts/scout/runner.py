@@ -30,6 +30,8 @@ def export_reports(repo, target=None):
         with connect(repo) as db:
             # A scout removed from the configuration keeps its row but leaves the board.
             reports = [r for r in rows(db, 'SELECT * FROM scouts ORDER BY name') if r['name'] in names]
+        # The configuration's order (human first), so main reads the person before the agents.
+        reports.sort(key=lambda r: list(names).index(r['name']))
         parts = ['# Scout reports\n\n各scoutの最新報告。自動生成。ベンチの待ち時間にmainのセッションが読む。\n']
         for r in reports:
             parts.append(f"\n## {r['name']}\n\n")
@@ -44,6 +46,18 @@ def export_reports(repo, target=None):
         tmp = target.with_suffix('.md.tmp')
         tmp.write_text(''.join(parts))
         tmp.replace(target)
+
+
+def post_report(repo, name, report, commit, session='', now=None):
+    """A report a person writes (a manual scout): it replaces their previous one, like a scout's."""
+    report = report.strip()
+    if not report:
+        raise ValueError('報告が空です')
+    with connect(repo) as db:
+        db.execute('''UPDATE scouts SET report=?,posted_at=?,input_ref=NULL,code_commit=?,run_id=NULL,base_run_id=NULL,
+                      session_id=?,failures=0,error=NULL,state='waiting',next_at=NULL WHERE name=?''',
+                   (report, time.time() if now is None else now, commit, session, name))
+    export_reports(repo)
 
 
 def save_report(repo, name, report, bundle, ref, session, now=None):
@@ -225,7 +239,8 @@ def daemon(repo):
                     states = rows(db, 'SELECT name,next_at FROM scouts')
                 for r in states:
                     name = r['name']
-                    if name not in cfg['scouts'] or (name in futures and not futures[name].done()):
+                    if name not in cfg['scouts'] or cfg['scouts'][name].get('manual') \
+                            or (name in futures and not futures[name].done()):
                         continue
                     if name in futures:
                         try:

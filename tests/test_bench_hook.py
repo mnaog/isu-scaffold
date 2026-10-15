@@ -116,6 +116,23 @@ class BenchHookTest(unittest.TestCase):
         self.assertIn('> 遅い', context)
         self.assertIsNone(self.hook({'command': 'isuscope run --hypothesis x'}, '--post'))
 
+    def test_an_emergency_report_reaches_main_at_its_next_tool_call_once(self):
+        report = ('# Scout reports\n\n## human\n\n'
+                  '投稿: 2026-10-15T12:00:00Z / commit: `abc` / run: `なし` / base: `なし`\n\n> deployを止めて\n')
+        write(self.root / '.local/scout/reports.md', report)
+        self.assertIsNone(self.hook({'command': 'ls'}, '--emergency'))  # no marker: nothing to hand over
+        write(self.root / '.local/scout/emergency.json', json.dumps({'key': 'human@2026-10-15T12:00:00Z'}))
+        # While another session is main, this one does not get it.
+        write(self.root / '.local/main-session.json', json.dumps({'agent': 'claude', 'session': 'main'}))
+        self.assertIsNone(self.hook({'command': 'ls'}, '--emergency', session='other'))
+        output = self.hook({'file_path': 'x'}, '--emergency', tool='Read')
+        self.assertIn('緊急', output['additionalContext'])
+        self.assertIn('> deployを止めて', output['additionalContext'])
+        self.assertIsNone(self.hook({'command': 'ls'}, '--emergency'))
+        # The next benchmark does not hand the same report again.
+        started = {'command': 'isuscope run --hypothesis x', 'run_in_background': True}
+        self.assertIsNone(self.hook(started, '--post'))
+
     def test_claude_settings_run_both_hooks(self):
         claude = json.loads((ROOT / '.claude/settings.json').read_text())
         pre = [hook['command'] for group in claude['hooks']['PreToolUse'] for hook in group['hooks']]
@@ -123,6 +140,12 @@ class BenchHookTest(unittest.TestCase):
         self.assertTrue(any('scripts/tool-guard.py' in command for command in pre))
         self.assertTrue(any('scripts/bench-hook.py' in command and '--pre' in command for command in pre))
         self.assertTrue(any('scripts/bench-hook.py' in command and '--post' in command for command in post))
+        # The emergency check runs after every tool, and only starts Python while a report waits.
+        emergency = [group for group in claude['hooks']['PostToolUse']
+                     if any('--emergency' in hook['command'] for hook in group['hooks'])]
+        self.assertEqual(len(emergency), 1)
+        self.assertNotIn('matcher', emergency[0])
+        self.assertIn('.local/scout/emergency.json', emergency[0]['hooks'][0]['command'])
 
 
 if __name__ == '__main__':
