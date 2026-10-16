@@ -1,6 +1,6 @@
 {
   "description": "Scouts (scripts/scout): each starts again wait_after_report_seconds after its last report was saved. timeout_seconds null lets a scout run until it reports. Copy the whole file to .local/scout.json to override it on one machine. A scout with manual: true is a person who posts with scripts/scout/main.py post (the daemon never runs it).",
-  "wait_after_report_seconds": 480,
+  "wait_after_report_seconds": 240,
   "timeout_seconds": null,
   "retry_max_seconds": 3600,
   "scenario": "docs/benchmark-scenario.md",
@@ -13,26 +13,9 @@
       "label": "人間",
       "manual": true
     },
-    "claude": {
-      "label": "Claude Code",
-      "model": "claude-opus-5-5",
-      "argv": [
-        "claude",
-        "-p",
-        "--model",
-        "{model}",
-        "--output-format",
-        "json",
-        "--session-id",
-        "{session}",
-        "--permission-prompts",
-        "none"
-      ],
-      "output": "claude-json"
-    },
     "codex": {
-      "label": "Codex",
-      "model": "gpt-6-astra",
+      "label": "Codex (GPT-6.1-Sol high, Fast)",
+      "model": "gpt-6.1-sol",
       "argv": [
         "codex",
         "exec",
@@ -41,6 +24,10 @@
         "workspace-write",
         "--model",
         "{model}",
+        "-c",
+        "model_reasoning_effort=\"high\"",
+        "-c",
+        "service_tier=\"priority\"",
         "--color",
         "never",
         "--output-last-message",
@@ -49,20 +36,28 @@
       ],
       "output": "codex-json"
     },
-    "kimi": {
-      "label": "Kimi Code + Kimi K3",
-      "model": "kimi-code/k3",
+    "codex-2": {
+      "label": "Codex 2 (GPT-6.1-Sol high, Fast)",
+      "model": "gpt-6.1-sol",
       "argv": [
-        "python3",
-        "scripts/scout/stdin_as_arg.py",
-        "kimi",
+        "codex",
+        "exec",
+        "--json",
+        "--sandbox",
+        "workspace-write",
         "--model",
         "{model}",
-        "--output-format",
-        "stream-json",
-        "--prompt"
+        "-c",
+        "model_reasoning_effort=\"high\"",
+        "-c",
+        "service_tier=\"priority\"",
+        "--color",
+        "never",
+        "--output-last-message",
+        "{output}",
+        "-"
       ],
-      "output": "kimi-json"
+      "output": "codex-json"
     }
   }
 }

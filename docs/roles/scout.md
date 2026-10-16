@@ -1,6 +1,6 @@
 # scout
 
-役割はscout。現状を把握して自由に探索し、見落とし・疑問・仮説を報告する。報告の長さは制限しない。3体（Claude Code、Codex、Kimi Code）の指示と入力形式は同じで、探索角度や専門分野は割り当てない。「発見なし」「順調そう」も最新報告として保存する。
+役割はscout。現状を把握して自由に探索し、見落とし・疑問・仮説を報告する。報告の長さは制限しない。既定は同じ設定のCodex（`gpt-6.1-sol`、推論high、Fastの`service_tier="priority"`）2体（`codex`・`codex-2`）で、指示と入力形式は同じ。探索角度や専門分野は割り当てない（同じモデルでも各回が新しいセッションなので、見る順や着眼は回ごとに変わる）。seventhで実装・得点に結び付いた指摘はCodexのものだったので、Claude Code・Kimi Codeは既定から外した（adapterは残してあり、`config/scout.json`に足せば戻せる）。「発見なし」「順調そう」も最新報告として保存する。
 共通指示は[scout-prompt.txt](scout-prompt.txt)。読み取り専用はプロンプトで指示する。CLI権限制御は必須条件ではなく、OSレベルで保証するものではない。Codexは`--sandbox workspace-write`で動かす。既定の読み取り専用のsandboxでは、isuscopeとscoutのSQLite（WAL）を読むときに要る`-shm`を書けず、`isuscope`の読み取りと`current`がすべて失敗する（seventhのCodexは入力以外の計測を一度も読めなかった）。
 
 報告の読み手はmainのセッションで、人間の中継を待たない。mainがベンチ（`isuscope run`・`survey-run`・`make first-bench`）を`run_in_background`で起動すると、PostToolUseのhook（`scripts/bench-hook.py --post`）が、ベンチの見取り図（`docs/benchmark-scenario.md`）を読み返す指示に続けて最新報告（`.local/scout/reports.md`）を投稿からの経過分つきで会話へ渡す。各報告は同じセッションへ1回だけ渡す（渡した報告は`.local/scout/delivered.json`に記録する）。以後のベンチでは前回から新しく出た報告だけを渡し、なければscoutの内容は付けない。同じ報告を毎回渡すと読み流されるため。報告は「並列で動かしている調査エージェントによる報告。内容が古くなっている可能性もあるが、それぞれの視点を参考にして、次回の改善のための参考として確認する」という位置づけで渡し、mainはベンチの完了を待つ間に確認する。foregroundのベンチは同じhookがPreToolUse（`--pre`）で止める。
@@ -32,8 +32,8 @@ make scout-status
 make scout-stop     # 最新の報告をdocs/scout-reports.mdへ残す
 ```
 
-`make first-bench`は、初回baseline（survey-run）がPASSまたはPENDINGで残った直後に`make scout-start`と同じ処理でscoutを起動し、続けてdeployする。scoutの1回目の探索はbaselineを読む。起動できなかった場合（実行中、設定不備など）は`.local/progress.log`へ`scout-not-started`を出し、ベンチとdeployは止めない。それ以外の自動起動はしない。起動したセッション（`CLAUDE_CODE_SESSION_ID`、`CODEX_SESSION_ID`・`CODEX_THREAD_ID`。isuscopeが会話を紐付けるのと同じ環境変数）を、scoutが読む会話として登録する。常駐処理は作業セッションの終了から独立して動く。各scoutは新しいCLIセッションで入力生成→探索→最新状況の再確認→報告保存を行い、報告を保存し`.local/scout/reports.md`へ書き出した時刻から`wait_after_report_seconds`（480秒＝8分）後に次回実行する。開始時刻からの固定間隔ではないので、探索に時間がかかった回はその分だけ次回も後ろへずれる。3体の時刻は独立している。探索の時間上限は既定で設けない（`timeout_seconds`が`null`）。遅いモデルでも報告まで走らせ、途中で打ち切って何も残らない回をなくすため。上限を付けるときは`timeout_seconds`へ秒数を書く。接続確認（`--smoke`）だけは600秒で打ち切る。
-停止時は待機と実行中CLIを終了する。再開時は保存済みの次回予定を尊重する。失敗時は480秒から倍に延ばし（960、1920秒）、最大3600秒とする。空回答も失敗とし、最後の成功報告は残す。CLIが失敗したときは、標準エラーの`error`を含む最後の行（無ければ最後の行）をエラーに残す（利用上限・認証切れが`CLI exit 1`だけにならないように）。
+`make first-bench`は、初回baseline（survey-run）がPASSまたはPENDINGで残った直後に`make scout-start`と同じ処理でscoutを起動し、続けてdeployする。scoutの1回目の探索はbaselineを読む。起動できなかった場合（実行中、設定不備など）は`.local/progress.log`へ`scout-not-started`を出し、ベンチとdeployは止めない。それ以外の自動起動はしない。起動したセッション（`CLAUDE_CODE_SESSION_ID`、`CODEX_SESSION_ID`・`CODEX_THREAD_ID`。isuscopeが会話を紐付けるのと同じ環境変数）を、scoutが読む会話として登録する。常駐処理は作業セッションの終了から独立して動く。各scoutは新しいCLIセッションで入力生成→探索→最新状況の再確認→報告保存を行い、報告を保存し`.local/scout/reports.md`へ書き出した時刻から`wait_after_report_seconds`（240秒＝4分。体数を減らした分を頻度で補う）後に次回実行する。開始時刻からの固定間隔ではないので、探索に時間がかかった回はその分だけ次回も後ろへずれる。各scoutの時刻は独立している。探索の時間上限は既定で設けない（`timeout_seconds`が`null`）。遅いモデルでも報告まで走らせ、途中で打ち切って何も残らない回をなくすため。上限を付けるときは`timeout_seconds`へ秒数を書く。接続確認（`--smoke`）だけは600秒で打ち切る。
+停止時は待機と実行中CLIを終了する。再開時は保存済みの次回予定を尊重する。失敗時は`wait_after_report_seconds`から倍に延ばし（240秒なら480、960、1920秒）、最大3600秒とする。空回答も失敗とし、最後の成功報告は残す。CLIが失敗したときは、標準エラーの`error`を含む最後の行（無ければ最後の行）をエラーに残す（利用上限・認証切れが`CLI exit 1`だけにならないように）。
 
 scoutが2回続けて失敗しているとき、または1回の探索が40分を超えて続いているときは、mainがベンチを起動したときにhook（`scripts/bench-hook.py --post`）がその状態を1行で渡す。同じ不調は、次に報告が出るか新しい探索が始まるまで同じセッションへもう一度は渡さない。直すのは人間（利用上限・認証）なので、mainは作業を続け、人間への返答でその状態を伝える。
 
@@ -48,9 +48,8 @@ argvはshell文字列でなく配列。`{model}`、`{session}`（各回のUUID�
 未導入CLI・認証不足・model ID未確認は利用不可として表示し、代替モデルへ切り替えない。Kimi Code（2.1.1で確認）はK3をmodel alias `kimi-code/k3`で使う。promptを`--prompt`の引数でしか受け取らないので、`scripts/scout/stdin_as_arg.py`がstdinを最後の引数へ渡し、`--output-format stream-json`の最後のassistantの回答を報告にする（adapter `kimi-json`）。認証は`kimi login`。1体が使えなくても（未導入・認証切れ・利用上限）他のscoutは動く。採用・除外の判断待ちや準備の完了待ちは設けない。
 
 ```bash
-python3 scripts/scout/main.py once claude --smoke
 python3 scripts/scout/main.py once codex --smoke
-python3 scripts/scout/main.py once kimi --smoke
+python3 scripts/scout/main.py once codex-2 --smoke
 ```
 
 smokeは共通指示に接続確認指示を加えて各CLIを新規起動する。探索や報告の投稿はせず、ローカルに応答と実行ログを保存する。通常の単発運用は`python3 scripts/scout/main.py once <name>`。
@@ -66,7 +65,7 @@ smokeは共通指示に接続確認指示を加えて各CLIを新規起動する
 
 DBはmain worktreeの`.local/scout/state.sqlite3`。全worktreeが同じ場所を参照する（通常の非bareリポジトリが対象）。入力・CLI出力・詳細実行ログは`.local/scout/`に保存する。別worktreeの`.local/`へ複製しない。
 
-最新成功報告を`.local/scout/reports.md`へ自動上書き出力し、ボード（`make board`）にも表示する。8分ごとに変わるのでGitには入れない（作業ツリーとrunのdirtyを汚さない）。`make scout-stop`がその時点の報告を`docs/scout-reports.md`へ書くので、それを通常のコミットに含める。過去投稿・他scout報告は入力へ入れない。変化の多い実行状態はSQLiteに置く。
+最新成功報告を`.local/scout/reports.md`へ自動上書き出力し、ボード（`make board`）にも表示する。数分ごとに変わるのでGitには入れない（作業ツリーとrunのdirtyを汚さない）。`make scout-stop`がその時点の報告を`docs/scout-reports.md`へ書くので、それを通常のコミットに含める。過去投稿・他scout報告は入力へ入れない。変化の多い実行状態はSQLiteに置く。
 
 scoutのCLIもmain worktreeで動くので、会話履歴のhookがそのセッションを`docs/agent-history/`へ記録する。scoutは`SCAFFOLD_ROLE=scout`で起動し、各回の終了後に、その回に書かれた`role`がscoutの履歴（またはscoutのセッションIDの履歴）を消す。作業の会話だけが残る。
 

@@ -59,7 +59,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 ## 並行作業
 - lane: `claude -p`が自分のworktreeとbranch（`lane/<名前>`）で1回だけ動き、commitして終わる。出力が決まった有限のタスクにだけ使い、常駐させない。mainは`python3 scripts/lane.py status <名前>`で結果を読み、根拠を照合してから取り込む。起動と取り込みの順番は[kickoff](docs/guides/kickoff.md#laneの起動と取り込み)にある。
 - portal: kickoffの間、準備で作ったworktree `portal`で起動したセッションが`/portal`で、サーバーの起動に要る情報、ベンチ接続、当日マニュアルの保存の順に進め、`.local/progress.log`へ`portal environment / bench / official / notice`を書く。mainはその行を見て`git merge --no-ff portal`する（[kickoff](docs/guides/kickoff.md)）。
-- scout（Claude Code・Codex・Kimi Code）: `make first-bench`がbaselineの後に起動し、8分ごとに新しいセッションで探索して`.local/scout/reports.md`へ書く。報告はベンチの起動時にhookが渡す。古い可能性を踏まえ、それぞれの視点を次の改善の参考にする。止めるのは`make scout-stop`。詳細は[scout](docs/roles/scout.md)。
+- scout（Codex 2体）: `make first-bench`がbaselineの後に起動し、報告の4分後ごとに新しいセッションで探索して`.local/scout/reports.md`へ書く。報告はベンチの起動時にhookが渡す。古い可能性を踏まえ、それぞれの視点を次の改善の参考にする。止めるのは`make scout-stop`。詳細は[scout](docs/roles/scout.md)。
 - 人間（scoutの`human`）: 準備で作ったworktree `human`で作業し、意見を`python3 scripts/scout/main.py post human "..."`で書く。報告は他のscoutより先に、ベンチの起動時に渡る。`--emergency`の報告は次のツールの直後に渡るので、今の作業を続ける前に読み、反映するか理由を人間へ伝える。コードは投稿で届く。
 - 人間や手で動かすClaude Codeは、`make worktree BRANCH=<name> PURPOSE="..."`のworktreeで調査・実装・ローカル検証をし、変更目的ごとにcommitを分ける。ローカル環境は各worktreeで`make local-up / local-check / local-down`で使える（[ローカル実行環境](docs/local-development.md)）。
 - worktreeの変更は`python3 scripts/proposal.py submit --hypothesis ... --expect ... --verified ...`で投稿する。mainのbranchへ衝突なく入る投稿だけが、ベンチの起動時にmainへ渡る。衝突する投稿は`needs-sync`で投稿者へ返るので、mainのbranchをmergeして投稿し直す。mainは測った結果を`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID>`で返す。一覧は`make proposals`。

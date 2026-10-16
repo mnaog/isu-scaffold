@@ -68,11 +68,16 @@ class ScoutTests(unittest.TestCase):
             time.sleep(.05)
         self.fail('condition timeout')
 
-    def test_configured_scouts_wait_eight_minutes_after_their_report(self):
+    def test_two_fast_codex_scouts_wait_four_minutes_after_their_report(self):
         cfg = json.loads((SOURCE / 'config/scout.json').read_text())
-        self.assertEqual(list(cfg['scouts']), ['human', 'claude', 'codex', 'kimi'])
+        self.assertEqual(list(cfg['scouts']), ['human', 'codex', 'codex-2'])
         self.assertTrue(cfg['scouts']['human']['manual'])
-        self.assertEqual(cfg['wait_after_report_seconds'], 480)
+        self.assertEqual(cfg['wait_after_report_seconds'], 240)
+        for name in ('codex', 'codex-2'):
+            spec = cfg['scouts'][name]
+            self.assertEqual(spec['model'], 'gpt-6.1-sol')
+            for value in ('model_reasoning_effort="high"', 'service_tier="priority"'):
+                self.assertEqual(spec['argv'][spec['argv'].index(value) - 1], '-c')
 
     def test_worktrees_share_database(self):
         branch = self.repo.parent / 'parallel'
@@ -91,7 +96,7 @@ class ScoutTests(unittest.TestCase):
         text = reports.read_text()
         self.assertIn('順調そう', text)
         self.assertNotIn('あ'*2000, text)
-        self.assertEqual(text.count('## '), 4)
+        self.assertEqual(text.count('## '), len(self.cfg['scouts']))
         # The person's section comes first, in the configuration's order.
         self.assertLess(text.index('## human'), text.index('## codex'))
         self.assertNotIn('local-ref', text)
@@ -157,13 +162,13 @@ class ScoutTests(unittest.TestCase):
         self.assertTrue(runner.attempt(self.repo, self.cfg, 'codex', bundle=self.bundle))
         self.assertEqual(sorted(p.name for p in folder.iterdir()), ['main.events.jsonl', 'main.md'])
 
-    def test_fake_cli_posts_then_waits_480_seconds_after_the_report(self):
-        # The wait counts from the saved report, not from the start; no 8-minute wall wait.
+    def test_fake_cli_posts_then_waits_after_the_report(self):
+        # The wait counts from the saved report, not from the start; no wall-clock wait.
         times = iter([100.0, 140.0, 145.0])
         self.assertTrue(runner.attempt(self.repo, self.cfg, 'codex', bundle=self.bundle, clock=lambda: next(times)))
         row = self.query("SELECT * FROM scouts WHERE name='codex'")[0]
         self.assertEqual(row['posted_at'], 140)
-        self.assertEqual(row['next_at'], 145 + 480)
+        self.assertEqual(row['next_at'], 145 + self.cfg['wait_after_report_seconds'])
         self.assertEqual(row['report'], '発見なし')
         self.assertEqual(row['state'], 'waiting')
 
@@ -178,11 +183,13 @@ class ScoutTests(unittest.TestCase):
                         '              {"role": "assistant", "content": "索引がない"},\n'
                         '              {"role": "meta", "type": "session.resume_hint", "session_id": "session_k"}]:\n'
                         '    print(json.dumps(event, ensure_ascii=False))\n')
-        kimi = json.loads((SOURCE / 'config/scout.json').read_text())['scouts']['kimi']
-        self.assertNotIn('unavailable', kimi)
-        self.assertEqual(kimi['argv'][:3], ['python3', 'scripts/scout/stdin_as_arg.py', 'kimi'])
+        # Kimi is out of the default scouts; its adapter stays for a configuration that adds it back.
+        kimi = {'label': 'Kimi Code + Kimi K3', 'model': 'kimi-code/k3', 'output': 'kimi-json',
+                'argv': ['python3', 'scripts/scout/stdin_as_arg.py', 'kimi', '--model', '{model}',
+                         '--output-format', 'stream-json', '--prompt']}
         self.cfg['scouts']['kimi'] = dict(kimi, argv=[sys.executable, str(SOURCE / 'scripts/scout/stdin_as_arg.py'),
                                                       sys.executable, str(fake), *kimi['argv'][3:]])
+        runner.initialize(self.repo, self.cfg)
         with patch.object(runner, 'prompt', return_value='禁止資料は読まない'):
             self.assertTrue(runner.attempt(self.repo, self.cfg, 'kimi', bundle=self.bundle))
         row = self.query("SELECT * FROM scouts WHERE name='kimi'")[0]
@@ -192,7 +199,9 @@ class ScoutTests(unittest.TestCase):
     def test_failure_backoff_keeps_previous_report(self):
         runner.save_report(self.repo, 'codex', '順調そう', 'ref', 'session')
         self.cli.write_text('import sys\nsys.stdin.read()\nprint("  ")\n')
-        for attempt, delay in enumerate([480, 960, 1920, 3600], 1):
+        wait = self.cfg['wait_after_report_seconds']
+        delays = [min(self.cfg['retry_max_seconds'], wait * 2 ** n) for n in range(5)]
+        for attempt, delay in enumerate(delays, 1):
             self.assertFalse(runner.attempt(self.repo, self.cfg, 'codex', bundle=self.bundle, clock=lambda: 100))
             row = self.query("SELECT * FROM scouts WHERE name='codex'")[0]
             self.assertEqual(row['next_at'], 100+delay)
@@ -344,7 +353,7 @@ class ScoutTests(unittest.TestCase):
     def test_daemon_crash_terminates_cli_group(self):
         self.cli.write_text('import os,time\nfrom pathlib import Path\nPath(".local/child-"+str(os.getpid())).write_text(str(os.getpid()))\ntime.sleep(60)\n')
         pid=runner.start(self.repo)
-        self.wait_for(lambda: len(list((self.repo/'.local').glob('child-*')))==3)
+        self.wait_for(lambda: len(list((self.repo/'.local').glob('child-*')))==len([s for s in self.cfg['scouts'].values() if not s.get('manual')]))
         children=[int(p.read_text()) for p in (self.repo/'.local').glob('child-*')]
         os.kill(pid,signal.SIGKILL)
         def all_exited():
