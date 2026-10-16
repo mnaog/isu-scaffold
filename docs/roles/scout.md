@@ -1,7 +1,7 @@
 # scout
 
 役割はscout。現状を把握して自由に探索し、見落とし・疑問・仮説を報告する。報告の長さは制限しない。3体（Claude Code、Codex、Kimi Code）の指示と入力形式は同じで、探索角度や専門分野は割り当てない。「発見なし」「順調そう」も最新報告として保存する。
-共通指示は[scout-prompt.txt](scout-prompt.txt)。読み取り専用はプロンプトで指示する。CLI権限制御は必須条件ではなく、OSレベルで保証するものではない。
+共通指示は[scout-prompt.txt](scout-prompt.txt)。読み取り専用はプロンプトで指示する。CLI権限制御は必須条件ではなく、OSレベルで保証するものではない。Codexは`--sandbox workspace-write`で動かす。既定の読み取り専用のsandboxでは、isuscopeとscoutのSQLite（WAL）を読むときに要る`-shm`を書けず、`isuscope`の読み取りと`current`がすべて失敗する（seventhのCodexは入力以外の計測を一度も読めなかった）。
 
 報告の読み手はmainのセッションで、人間の中継を待たない。mainがベンチ（`isuscope run`・`survey-run`・`make first-bench`）を`run_in_background`で起動すると、PostToolUseのhook（`scripts/bench-hook.py --post`）が、ベンチの見取り図（`docs/benchmark-scenario.md`）を読み返す指示に続けて最新報告（`.local/scout/reports.md`）を投稿からの経過分つきで会話へ渡す。各報告は同じセッションへ1回だけ渡す（渡した報告は`.local/scout/delivered.json`に記録する）。以後のベンチでは前回から新しく出た報告だけを渡し、なければscoutの内容は付けない。同じ報告を毎回渡すと読み流されるため。報告は「並列で動かしている調査エージェントによる報告。内容が古くなっている可能性もあるが、それぞれの視点を参考にして、次回の改善のための参考として確認する」という位置づけで渡し、mainはベンチの完了を待つ間に確認する。foregroundのベンチは同じhookがPreToolUse（`--pre`）で止める。
 
@@ -33,7 +33,9 @@ make scout-stop     # 最新の報告をdocs/scout-reports.mdへ残す
 ```
 
 `make first-bench`は、初回baseline（survey-run）がPASSまたはPENDINGで残った直後に`make scout-start`と同じ処理でscoutを起動し、続けてdeployする。scoutの1回目の探索はbaselineを読む。起動できなかった場合（実行中、設定不備など）は`.local/progress.log`へ`scout-not-started`を出し、ベンチとdeployは止めない。それ以外の自動起動はしない。起動したセッション（`CLAUDE_CODE_SESSION_ID`、`CODEX_SESSION_ID`・`CODEX_THREAD_ID`。isuscopeが会話を紐付けるのと同じ環境変数）を、scoutが読む会話として登録する。常駐処理は作業セッションの終了から独立して動く。各scoutは新しいCLIセッションで入力生成→探索→最新状況の再確認→報告保存を行い、報告を保存し`.local/scout/reports.md`へ書き出した時刻から`wait_after_report_seconds`（480秒＝8分）後に次回実行する。開始時刻からの固定間隔ではないので、探索に時間がかかった回はその分だけ次回も後ろへずれる。3体の時刻は独立している。探索の時間上限は既定で設けない（`timeout_seconds`が`null`）。遅いモデルでも報告まで走らせ、途中で打ち切って何も残らない回をなくすため。上限を付けるときは`timeout_seconds`へ秒数を書く。接続確認（`--smoke`）だけは600秒で打ち切る。
-停止時は待機と実行中CLIを終了する。再開時は保存済みの次回予定を尊重する。失敗時は480秒から倍に延ばし（960、1920秒）、最大3600秒とする。空回答も失敗とし、最後の成功報告は残す。
+停止時は待機と実行中CLIを終了する。再開時は保存済みの次回予定を尊重する。失敗時は480秒から倍に延ばし（960、1920秒）、最大3600秒とする。空回答も失敗とし、最後の成功報告は残す。CLIが失敗したときは、標準エラーの`error`を含む最後の行（無ければ最後の行）をエラーに残す（利用上限・認証切れが`CLI exit 1`だけにならないように）。
+
+scoutが2回続けて失敗しているとき、または1回の探索が40分を超えて続いているときは、mainがベンチを起動したときにhook（`scripts/bench-hook.py --post`）がその状態を1行で渡す。同じ不調は、次に報告が出るか新しい探索が始まるまで同じセッションへもう一度は渡さない。直すのは人間（利用上限・認証）なので、mainは作業を続け、人間への返答でその状態を伝える。
 
 同じscoutの手動実行と常駐実行にも共通のOSファイルlockを使う。これはローカル実行の多重起動防止のみであり、作業担当の調整や実験leaseではない。lockファイルは削除しない。
 
@@ -75,3 +77,5 @@ scoutのCLIもmain worktreeで動くので、会話履歴のhookがそのセッ�
 scoutは最終回答の直前に`python3 scripts/scout/main.py current`を実行する。このコマンドは最新の終了runと`brief --limit 5`、現在のcommit・working tree・diff統計、明示登録した会話の末尾を標準出力へ返す。DB初期化・入力ファイル保存・他scout報告の取得は行わない。探索中に状況が変わった場合は同じセッション内で指摘に関係する根拠を再確認し、解消済みの指摘を取り下げる。再確認に失敗したら報告本文に明示する。CLIの再起動や探索全体のやり直しは増やさない。
 
 これはscoutへの実行指示であり、投稿時点との完全な同時性を保証する仕組みではない。mainのセッションへ渡す報告には投稿からの経過分を添えるので、古い報告はmainが観測と照合して扱う。
+
+報告の見出しには投稿時刻だけを書き、commitやrunは書かない。scoutは探索中もmainのworktreeとisuscopeを直接読むので、報告は特定のcommitやrunを対象にしたものではない。入力を作った時点のcommitとrunは、各回の`.local/scout/runs/<scout>/<session>/input.json`に残る。

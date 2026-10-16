@@ -11,7 +11,9 @@ Bash call. Heredoc bodies and `bash -n` syntax checks do not count as starting o
   review the scenario map (docs/benchmark-scenario.md) against its hypothesis, and hands it the
   scout reports (.local/scout/reports.md in the main worktree) with their age. Each report goes to
   a session once (.local/scout/delivered.json); a later benchmark gets only the reports posted
-  since. It prints nothing while neither the map nor an undelivered report exists.
+  since. It prints nothing while neither the map nor an undelivered report exists. It also tells
+  main, once per spell, of a scout that keeps failing (a usage limit, an expired login) or has
+  explored for over 40 minutes, for main to pass on to the person who can fix it.
 - `--emergency` (PostToolUse on every tool) hands main a report the person in worktree `human`
   posted with `scripts/scout/main.py post --emergency`, at main's next tool call instead of the
   next benchmark. The settings call it only while .local/scout/emergency.json exists.
@@ -27,6 +29,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 import subprocess
 import sys
 import time
@@ -44,6 +47,10 @@ SCOUT_HINT = ('これは並列で動かしている調査エージェント（sc
               '内容が古くなっている可能性もありますが（各報告に投稿からの経過分を添えています）、'
               'それぞれの視点を参考にして、次回の改善のための参考として確認してください。'
               '前回までのベンチで渡した報告は省いています（各scoutの最新の報告は`.local/scout/reports.md`）。')
+SCOUT_HEALTH_HINT = ('scoutが止まっている、または探索が長く終わらない。直すのは人間（利用上限・認証切れなど）なので、'
+                     'mainは作業を続け、次に人間へ返答するときにこの状態を伝える。')
+SCOUT_FAILURES = 2  # one failure may be a passing hiccup; the daemon retries it
+SCOUT_LONG_SECONDS = 40 * 60  # seventh's scouts took 2 to 18 minutes a run
 EMERGENCY_HINT = ('人間（worktree `human`）からの緊急の報告です。今の作業を続ける前に読み、'
                   'すぐ反映するか、反映しない理由を人間へ伝えてください。')
 
@@ -154,6 +161,36 @@ def scout_context(root, session='', now=None):
     return SCOUT_HINT + '\n\n' + re.sub(r'投稿: (\S+Z)', age, '\n\n'.join(fresh))
 
 
+def scout_health_context(root, session='', now=None):
+    """Scouts that keep failing or have explored for long, each spell told once, or None."""
+    scouts = main_worktree(root) / '.local/scout'
+    database = scouts / 'state.sqlite3'
+    if not database.is_file():
+        return None
+    try:
+        db = sqlite3.connect(database.as_uri() + '?mode=ro', uri=True, timeout=2)
+        try:
+            rows = db.execute('SELECT name,state,error,failures,started_at,posted_at FROM scouts ORDER BY name').fetchall()
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return None
+    now = time.time() if now is None else now
+    sections = []
+    for name, state, error, failures, started, posted in rows:
+        since = f'最後の報告は{int(now - posted) // 60}分前' if posted else 'まだ報告が無い'
+        # Keyed by the last report (a failing spell) or the start (a long run): told again only
+        # after the scout posts or starts anew.
+        if state == 'error' and (failures or 0) >= SCOUT_FAILURES:
+            sections.append((f'failing:{name}@{posted or 0}',
+                             f'- {name}: {failures}回続けて失敗（{since}）。直近のエラー: {error or "(不明)"}'))
+        elif state == 'running' and started and now - started >= SCOUT_LONG_SECONDS:
+            sections.append((f'long:{name}@{started}',
+                             f'- {name}: 探索が{int(now - started) // 60}分続いている（{since}）。'))
+    fresh = undelivered(scouts, session, sections) if sections else []
+    return SCOUT_HEALTH_HINT + '\n' + '\n'.join(fresh) if fresh else None
+
+
 def emergency_context(root, session='', now=None):
     """A report posted with --emergency, handed to main at its next tool call (once), or None.
 
@@ -194,6 +231,8 @@ def waiting_context(root, session='', now=None):
     parts = [SCENARIO_HINT] if (root / SCENARIO).is_file() else []
     if scouts := scout_context(root, session, now):
         parts.append(scouts)
+    if health := scout_health_context(root, session, now):
+        parts.append(health)
     if proposals := proposal_context(root, session, now):
         parts.append(proposals)
     return '\n\n'.join(parts) or None

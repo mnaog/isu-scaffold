@@ -37,6 +37,8 @@
         "codex",
         "exec",
         "--json",
+        "--sandbox",
+        "workspace-write",
         "--model",
         "{model}",
         "--color",

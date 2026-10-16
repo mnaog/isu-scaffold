@@ -1,8 +1,10 @@
 import json
 import os
 from pathlib import Path
+import sqlite3
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -60,7 +62,7 @@ class BenchHookTest(unittest.TestCase):
     def test_a_background_benchmark_hands_over_the_scout_reports(self):
         reports = self.root / '.local/scout/reports.md'
         write(reports, '# Scout reports\n\n## claude\n\n'
-              '投稿: 2026-10-14T00:00:00Z / commit: `abc` / run: `12345678` / base: `なし`\n\n> indexが効いていない\n'
+              '投稿: 2026-10-14T00:00:00Z\n\n> indexが効いていない\n'
               '\n## kimi\n\n未投稿\n')
         started = {'command': 'isuscope run --hypothesis x', 'run_in_background': True}
         output = self.hook(started, '--post')
@@ -82,7 +84,7 @@ class BenchHookTest(unittest.TestCase):
 
     def test_each_scout_report_is_handed_over_once(self):
         reports = self.root / '.local/scout/reports.md'
-        post = '投稿: {} / commit: `abc` / run: `12345678` / base: `なし`\n\n> {}\n'
+        post = '投稿: {}\n\n> {}\n'
         write(reports, '# Scout reports\n\n## claude\n\n' + post.format('2026-10-14T00:00:00Z', '一つ目') +
               '\n## kimi\n\n' + post.format('2026-10-14T00:01:00Z', 'kimiの指摘'))
         started = {'command': 'isuscope run --hypothesis x', 'run_in_background': True}
@@ -110,15 +112,46 @@ class BenchHookTest(unittest.TestCase):
         self.assertNotIn('調査エージェント', output['additionalContext'])
         # With scout reports, the review comes first and the reports follow.
         write(self.root / '.local/scout/reports.md', '# Scout reports\n\n## codex\n\n'
-              '投稿: 2026-10-14T00:00:00Z / commit: `abc` / run: `12345678` / base: `なし`\n\n> 遅い\n')
+              '投稿: 2026-10-14T00:00:00Z\n\n> 遅い\n')
         context = self.hook(started, '--post')['additionalContext']
         self.assertLess(context.index('docs/benchmark-scenario.md'), context.index('調査エージェント'))
         self.assertIn('> 遅い', context)
         self.assertIsNone(self.hook({'command': 'isuscope run --hypothesis x'}, '--post'))
 
+    def test_a_scout_that_keeps_failing_or_runs_long_is_told_once_per_spell(self):
+        # seventh: kimi hit its 5-hour usage limit at 23:25 and failed five times without anyone noticing.
+        database = self.root / '.local/scout/state.sqlite3'
+        database.parent.mkdir(parents=True)
+        db = sqlite3.connect(database)
+        db.executescript((ROOT / 'scripts/scout/schema.sql').read_text())
+        now = time.time()
+        db.executemany('INSERT INTO scouts(name,state,error,failures,started_at,posted_at) VALUES (?,?,?,?,?,?)', [
+            ('claude', 'waiting', None, 0, now - 600, now - 300),
+            ('codex', 'error', 'CLI exit 1: timeout', 1, now - 900, now - 1200),  # once: the daemon retries
+            ('kimi', 'error', "CLI exit 1: error: 403 You've reached your 5-hour usage limit", 2, now - 60, now - 7500),
+            ('human', 'waiting', None, 0, None, None)])
+        db.commit()
+        started = {'command': 'isuscope run --hypothesis x', 'run_in_background': True}
+        context = self.hook(started, '--post')['additionalContext']
+        self.assertIn('人間へ返答するときに', context)
+        self.assertIn('- kimi: 2回続けて失敗（最後の報告は125分前）。直近のエラー: CLI exit 1: error: 403', context)
+        self.assertNotIn('codex', context)
+        self.assertNotIn('claude', context)
+        self.assertIsNone(self.hook(started, '--post'))  # the same spell, told once
+        db.execute("UPDATE scouts SET failures=3 WHERE name='kimi'")
+        db.execute("UPDATE scouts SET state='running',started_at=? WHERE name='claude'", (now - 45 * 60,))
+        db.commit()
+        context = self.hook(started, '--post')['additionalContext']
+        self.assertNotIn('kimi', context)
+        self.assertIn('- claude: 探索が45分続いている（最後の報告は5分前）。', context)
+        db.execute("UPDATE scouts SET state='error',posted_at=? WHERE name='kimi'", (now - 100,))  # posted, then failed again
+        db.commit()
+        self.assertIn('- kimi: 3回続けて失敗（最後の報告は1分前）', self.hook(started, '--post')['additionalContext'])
+        db.close()
+
     def test_an_emergency_report_reaches_main_at_its_next_tool_call_once(self):
         report = ('# Scout reports\n\n## human\n\n'
-                  '投稿: 2026-10-15T12:00:00Z / commit: `abc` / run: `なし` / base: `なし`\n\n> deployを止めて\n')
+                  '投稿: 2026-10-15T12:00:00Z\n\n> deployを止めて\n')
         write(self.root / '.local/scout/reports.md', report)
         self.assertIsNone(self.hook({'command': 'ls'}, '--emergency'))  # no marker: nothing to hand over
         write(self.root / '.local/scout/emergency.json', json.dumps({'key': 'human@2026-10-15T12:00:00Z'}))

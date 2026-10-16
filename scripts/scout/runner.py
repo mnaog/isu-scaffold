@@ -39,7 +39,9 @@ def export_reports(repo, target=None):
                 parts.append('未投稿\n')
                 continue
             stamp = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(r['posted_at']))
-            parts.append(f"投稿: {stamp} / commit: `{r['code_commit']}` / run: `{r['run_id'] or 'なし'}` / base: `{r['base_run_id'] or 'なし'}`\n\n")
+            # Only the time: a scout reads main's worktree and isuscope as it explores, so a report is
+            # not about one commit or run (input.json keeps what its input was built from).
+            parts.append(f"投稿: {stamp}\n\n")
             # Quote model output as plain text, not executable HTML/Markdown.
             parts.extend('> ' + html.escape(line) + '\n' for line in r['report'].splitlines())
         target = target or local(repo) / 'reports.md'
@@ -60,15 +62,14 @@ def post_report(repo, name, report, commit, session='', now=None):
     export_reports(repo)
 
 
-def save_report(repo, name, report, bundle, ref, session, now=None):
+def save_report(repo, name, report, ref, session, now=None):
     report = report.strip()
     if not report:
         raise ValueError('報告が空です')
-    m = bundle['metrics']
+    # No commit or run: the report is about what the scout read while exploring, not its input.
     with connect(repo) as db:
-        db.execute('''UPDATE scouts SET report=?,posted_at=?,input_ref=?,code_commit=?,run_id=?,base_run_id=?,session_id=?,failures=0,error=NULL WHERE name=?''',
-                   (report, time.time() if now is None else now, str(ref), m['current_commit'],
-                    (m.get('latest') or {}).get('short_id'), (m.get('base') or {}).get('short_id'), session, name))
+        db.execute('''UPDATE scouts SET report=?,posted_at=?,input_ref=?,code_commit=NULL,run_id=NULL,base_run_id=NULL,session_id=?,failures=0,error=NULL WHERE name=?''',
+                   (report, time.time() if now is None else now, str(ref), session, name))
     export_reports(repo)
 
 
@@ -86,6 +87,16 @@ def terminate(p):
     except ProcessLookupError:
         pass
     p.wait()
+
+
+def stderr_reason(path):
+    """The last stderr line that names an error (a usage limit, an expired login), else the last line."""
+    try:
+        lines = [line.strip() for line in path.read_text(errors='replace').splitlines() if line.strip()]
+    except OSError:
+        return ''
+    named = [line for line in lines if 'error' in line.lower()]
+    return (named or lines or [''])[-1][:300]
 
 
 def invoke(repo, spec, text, directory, stop, timeout, session, lock_fd=None, role="scout", extra_env=None):
@@ -115,7 +126,8 @@ def invoke(repo, spec, text, directory, stop, timeout, session, lock_fd=None, ro
                 if time.monotonic() >= deadline:
                     raise TimeoutError(f'CLI timeout ({timeout}s)')
             if p.returncode:
-                raise RuntimeError(f'CLI exit {p.returncode}。詳細: {directory.relative_to(repo)}')
+                reason = stderr_reason(directory / 'stderr.log')
+                raise RuntimeError(f'CLI exit {p.returncode}' + (f': {reason}' if reason else '') + f'。詳細: {directory.relative_to(repo)}')
         finally:
             # Also terminate descendants if the parent exited first.
             terminate(p)
@@ -198,7 +210,7 @@ def attempt(repo, cfg, name, stop=None, bundle=None, clock=time.time):
             if metadata.exists():
                 session = json.loads(metadata.read_text()).get('session_id') or session
                 sessions.add(session)
-            save_report(repo, name, report, bundle, directory.relative_to(repo), session, now=clock())
+            save_report(repo, name, report, directory.relative_to(repo), session, now=clock())
             # Count wait_after_report_seconds from the saved report (including the Markdown export), not from the start.
             with connect(repo) as db:
                 db.execute("UPDATE scouts SET state='waiting',next_at=? WHERE name=?", (clock() + cfg['wait_after_report_seconds'], name))

@@ -81,13 +81,13 @@ class ScoutTests(unittest.TestCase):
         self.assertFalse((branch / '.local').exists())
 
     def test_latest_report_export_without_a_length_limit(self):
-        runner.save_report(self.repo, 'codex', 'あ'*2000, self.bundle, 'local-ref', 'session', now=1)
+        runner.save_report(self.repo, 'codex', 'あ'*2000, 'local-ref', 'session', now=1)
         with self.assertRaises(ValueError):
-            runner.save_report(self.repo, 'codex', ' \n', self.bundle, 'local-ref', 'session')
+            runner.save_report(self.repo, 'codex', ' \n', 'local-ref', 'session')
         self.assertEqual(self.query("SELECT report FROM scouts WHERE name='codex'")[0]['report'], 'あ'*2000)
         reports = self.repo / '.local/scout/reports.md'
         self.assertIn('あ'*2000, reports.read_text())
-        runner.save_report(self.repo, 'codex', '順調そう', self.bundle, 'local-ref', 'session', now=2)
+        runner.save_report(self.repo, 'codex', '順調そう', 'local-ref', 'session', now=2)
         text = reports.read_text()
         self.assertIn('順調そう', text)
         self.assertNotIn('あ'*2000, text)
@@ -95,6 +95,9 @@ class ScoutTests(unittest.TestCase):
         # The person's section comes first, in the configuration's order.
         self.assertLess(text.index('## human'), text.index('## codex'))
         self.assertNotIn('local-ref', text)
+        # Only the time heads a report: a scout reads the live worktree, not one commit or run.
+        self.assertRegex(text, r'## codex\n\n投稿: \S+Z\n\n> 順調そう')
+        self.assertNotIn('commit:', text)
         # The reports stay out of Git while the scouts run; only make scout-stop leaves a snapshot.
         self.assertNotIn('docs/', self.git('status', '--porcelain', '--untracked-files=all'))
 
@@ -129,7 +132,7 @@ class ScoutTests(unittest.TestCase):
         cli = [sys.executable, str(self.repo / 'scripts/scout/main.py'), 'stop']
         subprocess.run(cli, cwd=self.repo, text=True, capture_output=True, check=True)
         self.assertFalse((self.repo / 'docs/scout-reports.md').exists())  # nothing reported yet
-        runner.save_report(self.repo, 'codex', '最後の報告', self.bundle, 'ref', 'session')
+        runner.save_report(self.repo, 'codex', '最後の報告', 'ref', 'session')
         result = subprocess.run(cli, cwd=self.repo, text=True, capture_output=True, check=True)
         self.assertIn('docs/scout-reports.md', result.stdout)
         self.assertIn('最後の報告', (self.repo / 'docs/scout-reports.md').read_text())
@@ -187,7 +190,7 @@ class ScoutTests(unittest.TestCase):
         self.assertEqual(row['session_id'], 'session_k')
 
     def test_failure_backoff_keeps_previous_report(self):
-        runner.save_report(self.repo, 'codex', '順調そう', self.bundle, 'ref', 'session')
+        runner.save_report(self.repo, 'codex', '順調そう', 'ref', 'session')
         self.cli.write_text('import sys\nsys.stdin.read()\nprint("  ")\n')
         for attempt, delay in enumerate([480, 960, 1920, 3600], 1):
             self.assertFalse(runner.attempt(self.repo, self.cfg, 'codex', bundle=self.bundle, clock=lambda: 100))
@@ -238,7 +241,7 @@ class ScoutTests(unittest.TestCase):
         self.assertNotIn('claude', bundle['conversations'])
 
     def test_scout_final_check_reads_only_registered_context_and_latest_analysis(self):
-        runner.save_report(self.repo, 'codex', 'PRIVATE SCOUT REPORT', self.bundle, 'ref', 'session')
+        runner.save_report(self.repo, 'codex', 'PRIVATE SCOUT REPORT', 'ref', 'session')
         with store.connect(self.repo) as db:
             db.execute("INSERT INTO conversation_sources(agent,session_id) VALUES ('codex','selected')")
         (self.repo/'docs/agent-history/current.md').write_text('- Agent: `codex`\n- Session: `selected`\nCURRENT CONVERSATION')
@@ -300,6 +303,19 @@ class ScoutTests(unittest.TestCase):
         self.cli.write_text('import time\ntime.sleep(60)\n')
         self.assertFalse(runner.attempt(self.repo,self.cfg,'codex',bundle=self.bundle))
         self.assertIn('timeout',self.query("SELECT error FROM scouts WHERE name='codex'")[0]['error'])
+
+    def test_a_failing_cli_leaves_the_reason_from_its_stderr(self):
+        self.cli.write_text('import sys\nsys.stdin.read()\n'
+                            'print("error: failed to run prompt: 403 You\'ve reached your 5-hour usage limit", file=sys.stderr)\n'
+                            'print("See log: /tmp/cli.log", file=sys.stderr)\nsys.exit(1)\n')
+        self.assertFalse(runner.attempt(self.repo, self.cfg, 'codex', bundle=self.bundle))
+        error = self.query("SELECT error FROM scouts WHERE name='codex'")[0]['error']
+        self.assertIn('CLI exit 1: error: failed to run prompt: 403', error)
+        self.assertIn('.local/scout/runs/codex/', error)
+
+    def test_codex_runs_in_a_sandbox_that_can_open_the_sqlite_databases(self):
+        argv = json.loads((SOURCE/'config/scout.json').read_text())['scouts']['codex']['argv']
+        self.assertEqual(argv[argv.index('--sandbox') + 1], 'workspace-write')
 
     def test_no_time_limit_by_default(self):
         self.assertIsNone(json.loads((SOURCE/'config/scout.json').read_text())['timeout_seconds'])
