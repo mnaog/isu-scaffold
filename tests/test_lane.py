@@ -182,5 +182,80 @@ class LaneTests(unittest.TestCase):
         self.assertNotIn('Main moved on', (self.repo / '.local/progress.log').read_text())
 
 
+    def follow_up(self, write):
+        """Lanes a and b, and memory after both. Each fake lane commits docs/<file> with its own text."""
+        config = json.loads((self.repo / 'config/lanes.json').read_text())
+        lane = {'purpose': '作る', 'prompt': 'config/lanes/code-map.md', 'timeout_minutes': 1}
+        config['lanes'] = {'a': lane, 'b': lane, 'memory': dict(lane, after=['a', 'b'])}
+        (self.repo / 'config/lanes.json').write_text(json.dumps(config))
+        self.claude.write_text(FAKE_CLAUDE.replace(
+            "open('docs/code-map.md', 'w').write('# map\\n')\nsubprocess.run(['git', 'add', 'docs/code-map.md'], check=True)",
+            f"name = os.environ['ISUCON_LANE']\npath = {write}\nopen(path, 'w').write(name + '\\n')\n"
+            "subprocess.run(['git', 'add', path], check=True)").replace("'Map the code'", "'Work in ' + name").replace(
+            "if os.environ.get('FAKE_AFTER_COMMIT'):",
+            "if os.environ.get('FAKE_AFTER_COMMIT') and os.environ.get('FAKE_SLOW_LANE') == name:"))
+
+    def lane_status(self, name):
+        path = self.repo / f'.local/lanes/{name}/status.json'
+        return json.loads(path.read_text()) if path.exists() else {}
+
+    def wait_until_ended(self, name):
+        for _ in range(300):
+            if self.lane_status(name).get('state') in ('complete', 'failed', 'timeout'):
+                return self.lane_status(name)
+            subprocess.run(['sleep', '0.1'])
+        self.fail(f'{name} did not end: {self.lane_status(name)}')
+
+    def test_a_lane_starts_by_itself_on_the_branches_of_the_lanes_it_comes_after(self):
+        self.follow_up("f'docs/{name}.md'")
+        refused = self.lane('start', 'memory')
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn('a, b', refused.stderr)  # it starts by itself
+        self.assertEqual(self.lane('run', 'a').returncode, 0)
+        self.assertEqual(self.lane_status('memory'), {})  # b has not ended
+        self.assertEqual(self.lane('run', 'b').returncode, 0)
+        status = self.wait_until_ended('memory')
+        self.assertEqual(status['state'], 'complete', status)
+        self.assertEqual((status['merged'], status['left_to_merge']), (['lane/a', 'lane/b'], []))
+        worktree = Path(status['worktree'])
+        self.assertEqual([(worktree / f'docs/{n}.md').read_text() for n in ('a', 'b', 'memory')], ['a\n', 'b\n', 'memory\n'])
+        # Their commits stay theirs; main's branch was not touched.
+        subjects = [c.split(' ', 1)[1] for c in status['commits']]
+        self.assertIn('Work in memory', subjects)
+        self.assertFalse([s for s in subjects if 'Work in a' in s or 'Work in b' in s or s.startswith('Merge')], subjects)
+        self.assertIn('lane.pyがlane/a, lane/bをこのbranchへmergeした', json.loads(self.record.read_text())['prompt'])
+        self.assertFalse((self.repo / 'docs/a.md').exists())
+        log = (self.repo / '.local/progress.log').read_text()
+        self.assertIn('lane:memory\tmerged\tlane/a, lane/b', log)
+        self.assertNotIn('Work in a (git cherry-pick', log.split('lane:memory\trunning')[1])
+
+    def test_a_branch_that_conflicts_is_left_for_the_lane_and_a_timed_out_lane_counts_as_ended(self):
+        self.follow_up("'docs/same.md'")
+        config = json.loads((self.repo / 'config/lanes.json').read_text())
+        config['lanes']['b'] = dict(config['lanes']['b'], timeout_minutes=0.05)
+        (self.repo / 'config/lanes.json').write_text(json.dumps(config))
+        self.assertEqual(self.lane('run', 'a').returncode, 0)
+        # b commits, then runs out of time: memory starts with what b committed.
+        self.assertEqual(self.lane('run', 'b', FAKE_AFTER_COMMIT='30', FAKE_SLOW_LANE='b').returncode, 1)
+        self.assertEqual(self.lane_status('b')['state'], 'timeout')
+        status = self.wait_until_ended('memory')
+        self.assertEqual((status['merged'], status['left_to_merge']), (['lane/a'], ['lane/b']))
+        prompt = json.loads(self.record.read_text())['prompt']
+        self.assertIn('lane/bは衝突したのでmergeしていない', prompt)
+        self.assertIn('git merge --no-edit <branch>', prompt)
+
+    def test_a_failed_lane_blocks_the_lanes_after_it_until_forced(self):
+        self.follow_up("f'docs/{name}.md'")
+        self.assertEqual(self.lane('run', 'a').returncode, 0)
+        self.claude.write_text('#!/bin/sh\nexit 3\n')
+        self.assertNotEqual(self.lane('run', 'b').returncode, 0)
+        self.assertEqual(self.lane_status('memory'), {})
+        self.assertIn('lane:memory\tblocked\tb failed', (self.repo / '.local/progress.log').read_text())
+        self.assertNotEqual(self.lane('start', 'memory').returncode, 0)
+        self.claude.write_text(FAKE_CLAUDE)
+        self.assertEqual(self.lane('start', 'memory', '--force').returncode, 0)
+        self.assertEqual(self.wait_until_ended('memory')['merged'], ['lane/a', 'lane/b'])
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -1,11 +1,11 @@
 # lane: full-memory（全メモリ化）
 
-あなたは、アプリが持つ状態をすべてメモリに置く書き換え（全メモリ化）を、このbranchで作る。読み取りと状態の判定はメモリで行い、書き込みはDBに残す。mainのセッションは、lane `state-log`・`local-env`・`n-plus-one`を取り込んだ直後（baselineの後の最初のdeploy）にこのlaneを起動し、自分は別の改善を続ける。このlaneは最後に最新のmainを1度だけ取り込んでから終わる。mainはこのbranchをmainへmergeし、その後にmainへ入ったcommitを自分で全メモリ化の形へ移してからdeployし、PASSしてスコアが上がれば残す。価値は、応答と永続性を変えずに、DBへの読み取りとDBでの判定をなくすこと。
+あなたは、アプリが持つ状態をすべてメモリに置く書き換え（全メモリ化）を、このbranchで作る。読み取りと状態の判定はメモリで行い、書き込みはDBに残す。このlaneは、lane `state-log`・`local-env`・`n-plus-one`が終わると、そのbranchをmergeして自動で始まる。mainのセッションはその間も別の改善を続ける。このlaneは最後に最新のmainを1度だけ取り込んでから終わる。mainはこのbranchをmainへmergeし、その後にmainへ入ったcommitを自分で全メモリ化の形へ移してからdeployし、PASSしてスコアが上がれば残す。価値は、応答と永続性を変えずに、DBへの読み取りとDBでの判定をなくすこと。
 
 ## 前提
 
 - 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。
-- このbranchは、lane `state-log`の状態ログの呼び出し、lane `local-env`のローカル環境、lane `n-plus-one`のN+1の修正を含むmainから分かれている（`scripts/lane.py`が`docs/state-log.md`と`config/local/compose.yaml`の無いmainからは起動しない）。索引やN+1以外の自明な修正はまだmainに入っていないことがあり、作業中もmainは改善を続ける。それらは「最新のmainを取り込む」で1度だけ受け取る。
+- このbranchはmainのbranchから分かれ、始める前に`scripts/lane.py`がlane `state-log`（状態ログの呼び出し）、`local-env`（ローカル環境）、`n-plus-one`（N+1の修正）のbranchをmergeしている。衝突してmergeできなかったbranchがあれば、冒頭にそう書かれているので、最初に自分でmergeして解く（`state-log`と`n-plus-one`は同じ関数を変えることがある。両方の行を残す）。`docs/state-log.md`か`config/local/compose.yaml`が無ければ、そのlaneが失敗している。確かめられない範囲を最後の回答に書いて進める。索引やN+1以外の自明な修正はまだmainに入っていないことがあり、作業中もmainは改善を続ける。それらは「最新のmainを取り込む」で1度だけ受け取る。
 - 読むもの: `docs/official/`（特に、更新の即時反映、整合性の検査、再起動の後に求められること）、`docs/state-log.md`、`docs/benchmark-scenario.md`、`config/local/compose.yaml`の冒頭のコメント（ローカルで動くもの・動かないもの）。
 - 変えてよいもの: `webapp/`のアプリのコード、`docs/cache-design.md`、`config/local/flows/`（確かめるための操作の列）。schema、他の`config/`・`scripts/`・文書は変えない（mainを取り込んで入ってくる変更は別）。mainはこのlaneの間も別の改善を続けるので、変更はメモリ化に要る範囲に留め、衝突を小さくする。
 

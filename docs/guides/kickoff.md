@@ -51,9 +51,10 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
   → 出力の形を確かめる前ならresultはPENDING。python3 scripts/benchmark-sample.py <run>で読み取りを確かめ、
     --apply --score N --pass true|false（自分で読んだ値）でsample・contract・--check・rescoreまで済ませる
 初回runを分析し（スコア・エラー・HTTP・SQL・ホスト負荷。最大の制約と根拠をisuscope analyzeに書く）、観測に基づいて改善を実装・検証
-  → baselineの後の最初のdeployで、lane state-logのcommitを他のlaneより先に取り込み、続けてlane n-plus-oneのcommitを取り込む
+  → lane state-log・local-env・n-plus-oneが終わると、lane full-memory（全メモリ化。書き込みはDBのまま）が
+    それらのbranchをmergeして自動で始まる（mainの取り込み・deploy・baselineを待たない）
+  → baselineの後の最初のdeployで、lane state-log、続けてlane n-plus-oneを`git merge --no-ff`で取り込む
     （次のrunからbriefのstates欄が埋まり、状態についての問いに計測を足さずに答えられる）
-  → state-log・local-env・n-plus-oneを取り込んだcommitで、ベンチの結果を待たずにlane full-memory（全メモリ化。書き込みはDBのまま）を起動する
   → lane indexes・obvious-fixesのcommitをbaselineの観測と照合して選んで取り込む（laneの途中でもcommit単位で取り込める）
   → 全メモリ化の間もmainは改善を止めない。lane full-memoryが終わったら（mainを1度だけ取り込み済み）mainへmergeし、
     laneが取り込んだ後にmainへ入った自分のcommitを全メモリ化の形へ移し、確かめてからdeployして直前のrunと比べる
@@ -83,12 +84,12 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 
 - `make kickoff`が起動するlaneは`config/lanes.json`の`kickoff`（既定は`indexes`、`n-plus-one`、`obvious-fixes`、`local-env`、`state-log`）。`KICKOFF_LANES=`で止め、`KICKOFF_LANES="indexes"`のように選べる。
 - `scenario`は公式資料が要るので、mainが`docs/official/`をcommitした直後に`python3 scripts/lane.py start scenario`で起動する。
-- `full-memory`（全メモリ化）は、`state-log`・`local-env`・`n-plus-one`をmainへ取り込んだら（baselineの後の最初のdeployのcommit）、そのベンチを待たずに`python3 scripts/lane.py start full-memory`で起動する。`indexes`・`obvious-fixes`の取り込みは待たない。N+1を先に入れるのは、全メモリ化がN+1を直した後のコードから始まり、後でmainと衝突しにくくするため。`docs/state-log.md`か`config/local/compose.yaml`がHEADに無いと`lane.py start`が止める（`n-plus-one`の取り込みはmainが確かめる）。
+- `full-memory`（全メモリ化）は、`config/lanes.json`の`after`にある`state-log`・`local-env`・`n-plus-one`が終わると（完了・時間切れ・停止）、`lane.py`がmainのbranchから分け、3つのbranchをmergeして自動で始める。mainの取り込み・deploy・baselineは待たない。N+1を先に入れるのは、全メモリ化がN+1を直した後のコードから始まり、後でmainと衝突しにくくするため。`n-plus-one`は時間の上限が15分で、待ちたくなければ`python3 scripts/lane.py stop n-plus-one`で止めてもそれまでのcommitで始まる。3つのどれかが失敗すると`.local/progress.log`に`lane:full-memory blocked`が出るので、直すか`python3 scripts/lane.py start full-memory --force`で始める。
 - 全メモリ化の間も、mainは読み取り経路・マッチング・通知を含めて改善を止めない。laneは終わる前に最新のmainを1度だけ自分のbranchへmergeして確かめ直し、取り込んだmainのhashを最後の回答に書く。mainは`git merge lane/full-memory`で取り込んだ後、`git log <そのhash>..`のうち自分が後から入れたcommitを全メモリ化の形へ移す（SELECTはstoreから読む、書き込みは変更を確定する関数を通す、cacheやメモリ化はstoreへまとめる。`docs/cache-design.md`に正本と関数の場所がある）。移したら`make local-flow`と`make local-state-log`、`scripts/state-log-compare.py`で状態の変化が漏れていないことを確かめてからdeployする。移す手間より測った改善が小さいcommitは、移さずに捨ててよい。
 - baseline後に並行させたい調査や実装は、promptを書いて`python3 scripts/lane.py start <名前> --prompt-file <path> --purpose "..."`で起動する。進行は`make lanes`で見る。
 - `scenario`は文書だけ、`local-env`はローカル環境の構成と文書だけなので、結果を読んで終わり次第mainへmergeしてよい。
-- `state-log`は書き手のmoduleと呼び出しを2つのcommitにする。baselineの後の最初のdeployで、他のlaneより先に`git cherry-pick`する。取り込む前に、`docs/state-log.md`と最後の回答で、lockの中に残した呼び出しや`entered`にした箇所を確かめる。
-- `n-plus-one`は1handler1commitで積む。baselineの後の最初のdeployで、`state-log`の次に`git cherry-pick`する（全メモリ化をすぐ始めるため、1件ずつ測らずにまとめて入れてよい。buildが通らないcommitや応答を変えるcommitは外す）。
+- `state-log`は書き手のmoduleと呼び出しを2つのcommitにする。baselineの後の最初のdeployで、他のlaneより先に`git merge --no-ff lane/state-log`で取り込む（全メモリ化も同じbranchをmergeしているので、cherry-pickにしない）。取り込む前に、`docs/state-log.md`と最後の回答で、lockの中に残した呼び出しや`entered`にした箇所を確かめる。
+- `n-plus-one`は1handler1commitで積む。baselineの後の最初のdeployで、`state-log`の次に`git merge --no-ff lane/n-plus-one`で丸ごと取り込む（全メモリ化も同じbranchをmergeしている。buildが通らない・応答を変えるcommitがあれば、mergeの後に`git revert`する）。
 - `indexes`と`obvious-fixes`は1件1commitで積み、commitのたびに`.local/progress.log`へ`lane:<名前> commit <hash>`が出る。初回baselineの分析の後、観測と照合して効くcommitから`git cherry-pick`で取り込み（laneの完了は待たない）、deployして`isuscope run`で測る。laneの最後の回答にある「実装しなかった候補」も次の変更を選ぶ材料にする。
 
 ## ローカル実行環境を構築する
