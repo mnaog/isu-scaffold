@@ -122,6 +122,7 @@
     "scripts/progress.py",
     "config/lanes.json",
     "config/lanes/obvious-fixes.md",
+    "config/lanes/n-plus-one.md",
     "config/rust-builder/bases.json",
     "tests/test_lane.py",
     "scripts/first-bench.sh",

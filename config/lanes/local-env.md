@@ -1,6 +1,6 @@
 # lane: local-env
 
-あなたは`make kickoff`が先行回収したアプリを、ローカルのDockerで動かす構成を作る。mainのセッションは同時にベンチ接続と初回ベンチを準備しており、他のlane（`indexes`、`obvious-fixes`）とmainは、この構成をmergeした後に`make local-up`・`make local-check`で修正を確かめる。手順と制約は`docs/local-development.md`が正。
+あなたは`make kickoff`が先行回収したアプリを、ローカルのDockerで動かす構成を作る。mainのセッションは同時にベンチ接続と初回ベンチを準備しており、他のlane（`indexes`、`n-plus-one`、`obvious-fixes`）とmainは、この構成をmergeした後に`make local-up`・`make local-check`で修正を確かめる。手順と制約は`docs/local-development.md`が正。
 
 ## 前提
 

@@ -44,6 +44,7 @@
   },
   "kickoff": [
     "indexes",
+    "n-plus-one",
     "obvious-fixes",
     "local-env",
     "state-log"
@@ -54,8 +55,13 @@
       "prompt": "config/lanes/indexes.md",
       "timeout_minutes": 30
     },
+    "n-plus-one": {
+      "purpose": "N+1（ループ内SQL・同一request内の重複query）だけを1handler1commitで先行実装する（baselineまでdeployしない。終わったらmainが取り込んでfull-memoryを起動）",
+      "prompt": "config/lanes/n-plus-one.md",
+      "timeout_minutes": 30
+    },
     "obvious-fixes": {
-      "purpose": "索引以外の自明なボトルネックを1件1commitで先行実装する（baselineまでdeployしない）",
+      "purpose": "索引とN+1以外の自明なボトルネックを1件1commitで先行実装する（baselineまでdeployしない）",
       "prompt": "config/lanes/obvious-fixes.md",
       "timeout_minutes": 90
     },
@@ -70,7 +76,7 @@
       "timeout_minutes": 45
     },
     "full-memory": {
-      "purpose": "全メモリ化: 状態をすべてメモリに置き、読み取りと判定をメモリで行い、書き込みはDBに残す書き換えを作り、最後に最新のmainを取り込む（mainがstate-logとlocal-envを取り込んだら起動）",
+      "purpose": "全メモリ化: 状態をすべてメモリに置き、読み取りと判定をメモリで行い、書き込みはDBに残す書き換えを作り、最後に最新のmainを1度だけ取り込む（mainがstate-log・local-env・n-plus-oneを取り込んだら起動。その後のmainのcommitはmainが取り込むときに移す）",
       "prompt": "config/lanes/full-memory.md",
       "requires": [
         "docs/state-log.md",

@@ -1,11 +1,11 @@
 # lane: full-memory（全メモリ化）
 
-あなたは、アプリが持つ状態をすべてメモリに置く書き換え（全メモリ化）を、このbranchで作る。読み取りと状態の判定はメモリで行い、書き込みはDBに残す。mainのセッションは、lane `state-log`と`local-env`を取り込んだ直後（baselineの後の最初のdeploy）にこのlaneを起動し、自分は別の改善を続ける。このlaneは最後に最新のmainを取り込んでから終わり、mainはこのbranchをmainへmergeしてdeployし、PASSしてスコアが上がれば残す。価値は、応答と永続性を変えずに、DBへの読み取りとDBでの判定をなくすこと。
+あなたは、アプリが持つ状態をすべてメモリに置く書き換え（全メモリ化）を、このbranchで作る。読み取りと状態の判定はメモリで行い、書き込みはDBに残す。mainのセッションは、lane `state-log`・`local-env`・`n-plus-one`を取り込んだ直後（baselineの後の最初のdeploy）にこのlaneを起動し、自分は別の改善を続ける。このlaneは最後に最新のmainを1度だけ取り込んでから終わる。mainはこのbranchをmainへmergeし、その後にmainへ入ったcommitを自分で全メモリ化の形へ移してからdeployし、PASSしてスコアが上がれば残す。価値は、応答と永続性を変えずに、DBへの読み取りとDBでの判定をなくすこと。
 
 ## 前提
 
 - 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。
-- このbranchは、lane `state-log`の状態ログの呼び出しとlane `local-env`のローカル環境を含むmainから分かれている（`scripts/lane.py`が`docs/state-log.md`と`config/local/compose.yaml`の無いmainからは起動しない）。索引や自明な修正はまだmainに入っていないことがあり、作業中もmainは改善を続ける。それらは「最新のmainを取り込む」で受け取る。
+- このbranchは、lane `state-log`の状態ログの呼び出し、lane `local-env`のローカル環境、lane `n-plus-one`のN+1の修正を含むmainから分かれている（`scripts/lane.py`が`docs/state-log.md`と`config/local/compose.yaml`の無いmainからは起動しない）。索引やN+1以外の自明な修正はまだmainに入っていないことがあり、作業中もmainは改善を続ける。それらは「最新のmainを取り込む」で1度だけ受け取る。
 - 読むもの: `docs/official/`（特に、更新の即時反映、整合性の検査、再起動の後に求められること）、`docs/state-log.md`、`docs/benchmark-scenario.md`、`config/local/compose.yaml`の冒頭のコメント（ローカルで動くもの・動かないもの）。
 - 変えてよいもの: `webapp/`のアプリのコード、`docs/cache-design.md`、`config/local/flows/`（確かめるための操作の列）。schema、他の`config/`・`scripts/`・文書は変えない（mainを取り込んで入ってくる変更は別）。mainはこのlaneの間も別の改善を続けるので、変更はメモリ化に要る範囲に留め、衝突を小さくする。
 
@@ -34,11 +34,11 @@
 
 この1〜5は、書き換えた版で一度通してから、「最新のmainを取り込む」の後にもう一度通す。終わったら`make local-down`する。
 
-## 最新のmainを取り込む
+## 最新のmainを取り込む（1度だけ）
 
-mainはこのlaneの間に索引・修正・メモリ化を入れている。取り込まずに終えると、mainはこのbranchを入れるときに大きな衝突を解くか、mainの改善を捨てることになる。分岐元branchは冒頭に書かれている（以下`<分岐元>`）。
+mainはこのlaneの間に索引・修正・メモリ化を入れている。取り込まずに終えると、mainはこのbranchを入れるときに大きな衝突を解くことになる。一方で、mainはこの間も改善を止めないので、追いかけ続けると終わらない。取り込みは1度だけにし、その後にmainへ入ったcommitはmainが自分で移す。分岐元branchは冒頭に書かれている（以下`<分岐元>`）。
 
-1. 書き換えを確かめてcommitし終えたら、`git log --oneline HEAD..<分岐元>`でmainの新しいcommitを見る。無ければ5へ進む。
+1. 書き換えを確かめてcommitし終えたら、`git log --oneline HEAD..<分岐元>`でmainの新しいcommitを見る。無ければ5へ進む。取り込む直前の`<分岐元>`のhashを控える（`git rev-parse <分岐元>`）。
 2. `git merge --no-edit <分岐元>`で取り込む。衝突は両方の意図を残して解く。mainの変更をこのbranchの形に合わせる:
    - mainが足した・変えたSELECTは、storeからの読み取りにする。
    - mainが足した・変えた書き込みは、変更を確定する関数を通す。DBへ直接書く経路を残さない。
@@ -46,8 +46,8 @@ mainはこのlaneの間に索引・修正・メモリ化を入れている。取
    - 索引（schema）の変更はそのまま受け取る。
    衝突しなかった箇所も、`git diff <マージ前のHEAD> HEAD -- webapp/`でmain側の変更を読み、上の3つに当てはまるものを直す。`git merge --abort`でやり直してよい。
 3. 解き終えたらmerge commitを作り、上の直しを別のcommitにする。
-4. 「確かめる」の1〜5をもう一度通す。状態ログの`before`は取り込む前のmainで取ったので、mainの変更が状態の変化を変えた場合は差が出る。差がmainのcommitによるものか（`git log -p <分岐元commit>..<分岐元>`で取り込んだ変更を読む）を確かめ、そうなら理由を`docs/cache-design.md`に書く。メモリ化による差なら直す。
-5. 終わる直前にもう一度`git log --oneline HEAD..<分岐元>`を見る。新しいcommitがあれば2〜4を繰り返す（時間が足りなければ、取り込めなかったcommitを最後の回答に書く）。
+4. 「確かめる」の1〜5をもう一度通す。状態ログの`before`は取り込む前のmainで取ったので、mainの変更が状態の変化を変えた場合は差が出る。差がmainのcommitによるものか（`git log -p <分岐元commit>..<控えたhash>`で取り込んだ変更を読む）を確かめ、そうなら理由を`docs/cache-design.md`に書く。メモリ化による差なら直す。
+5. ここで終える。この後に`<分岐元>`へ新しいcommitが入っていても、もう取り込まない。控えたhashを最後の回答に書く（mainはそれより後のcommitを自分で移す）。
 
 `make local-*`は環境変数を前に付けずにそのまま呼ぶ（付けた形はlaneの権限で止められる）。
 
@@ -63,7 +63,7 @@ mainはこのlaneの間に索引・修正・メモリ化を入れている。取
 
 最後の回答は日本語で、次を短く並べる。
 
-1. commitごとに: hash、変えたこと。取り込んだmainのcommit（最後に取り込んだ分岐元のhash）と、衝突を解いた箇所
+1. commitごとに: hash、変えたこと。取り込んだmainのcommit（取り込んだ分岐元のhash。mainはこれより後のcommitを移す）と、衝突を解いた箇所
 2. メモリに持ったものと持たなかったもの、変更を確定する関数
 3. 状態ログの比較と再起動の結果、確かめられなかったこと
-4. mainが測るときに気をつけること（lockが粗い所、initializeにかかる時間、メモリの量、取り込めなかったmainのcommit）
+4. mainが取り込んで測るときに気をつけること（lockが粗い所、initializeにかかる時間、メモリの量、mainが後から入れたcommitを移すときに当てはめる規則：SELECTはstoreから、書き込みは変更を確定する関数を通す、cacheはstoreへまとめる）
