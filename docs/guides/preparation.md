@@ -54,6 +54,10 @@
 - ログインした状態で`python3 scripts/portal-cookie.py --portal <URL> --check`を流し、cookieが取れることを確かめる（値は出ない）。ポータルのURLを`docs/preparation/readiness.md`に記録する。
 - 開始用repoで`make worktree BRANCH=portal PURPOSE="ポータルの情報とベンチ接続"`を作っておく（問題の情報は入らない）。
 
+## improveの作業場所
+
+- 開始用repoで`make worktree BRANCH=improve PURPOSE="継続的な改善（/improve）"`を作っておく。開始と同時に人間がここでClaude Codeを起動して`/improve`を打つ。改善はこのworktreeの中で、変更ごとのbranch（`improve-<名前>`）を切って進める（`improve/<名前>`はbranch `improve`と名前がぶつかるので使わない）。
+
 ## 人間の作業場所
 
 - 開始用repoで`make worktree BRANCH=human PURPOSE="人間の作業場所"`を作っておく。人間は競技中ずっとここを触り、mainの作業ツリーには触れない。

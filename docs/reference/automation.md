@@ -73,16 +73,20 @@ mainはrepoのrootで動くClaude Codeのセッション1つです。`/main`（`
 
 ```bash
 python3 scripts/main-session.py show
-python3 scripts/proposal.py submit --hypothesis "..." --expect "..." --verified "..."   # worktreeで
+python3 scripts/proposal.py submit --hypothesis "..." --expect "..." --verified "..." [--based-on <短縮ID>]   # worktreeで
 make proposals                                  # 投稿の一覧（python3 scripts/proposal.py list [--all]）
 python3 scripts/proposal.py show [<branch>]     # 1件の状態とmainの判断
+python3 scripts/proposal.py pending                                     # mainが、まだ受け取っていない投稿を読む
 python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID> --note "理由"   # mainが
+scripts/runs.sh brief latest                    # worktreeから、rootのrunを読む（isuscopeの読み取りだけ）
 python3 scripts/proposal.py withdraw [<branch>]
 ```
 
-- **止めるもの**: 宣言がある間、`scripts/tool-guard.py`は、hookのpayloadのセッションIDとagentのセッションIDの環境変数のどれもmainと一致しない呼び出しから、deploy・rollback・import・kickoff・bootstrap・bench-check・first-bench・tare・ansibleの実行、ベンチadapterとその前後処理、`isuscope`の記録系command（`list`・`brief`・`query`・`sql`・`states`・`routes`以外）、`lane.py start / kickoff / stop`、scoutの起動・停止、`.local/operation.lock`を止めます。宣言が無いとき、セッションIDが分からないときは止めません。
-- **投稿**: worktreeで変更をcommitしてから`submit`します。root worktreeとmainのbranchからは投稿できず、commitしていない変更（`docs/agent-history/`を除く）があると止まります。投稿は`.local/proposals/<branch>.json`に、branch、commit、仮説、期待する観測、確かめたこと、変えたfile、投稿者を残します。commitを足して投稿し直すと置き換わります。
-- **mainへ渡す**: mainがベンチを`run_in_background`で起動すると、`bench-hook.py --post`が、そのセッションにまだ渡していないcommitの投稿を、`git merge-tree`でmainのbranchへ衝突なく入ると確かめたものだけ渡します。衝突するものは`needs-sync`にして衝突したfileを残し、渡しません（mainには、投稿者の追従待ちであることを1度だけ伝えます）。mainのbranchがcommitを含んだ投稿は`merged`になります。宣言がある間は、main以外のセッションには渡しません。
+- **止めるもの**: 宣言がある間、`scripts/tool-guard.py`は、hookのpayloadのセッションIDとagentのセッションIDの環境変数のどれもmainと一致しない呼び出しから、deploy・rollback・import・kickoff・bootstrap・bench-check・first-bench・tare・ansibleの実行、ベンチadapterとその前後処理、`isuscope`の記録系command（`list`・`brief`・`query`・`sql`・`series`・`states`・`routes`・`change list / show`以外）、`proposal.py decide / pending`、`lane.py start / kickoff / stop`、scoutの起動・停止、`.local/operation.lock`を止めます。宣言が無いとき、セッションIDが分からないときは止めません。
+- **投稿**: worktreeで変更をcommitしてから`submit`します。root worktreeとmainのbranchからは投稿できず、commitしていない変更（`docs/agent-history/`を除く）があると止まります。投稿は`.local/proposals/<branch>.json`に、branch、commit、仮説、期待する観測、確かめたこと、根拠のrun（`--based-on`）、変えたfile、投稿者を残します。commitを足して投稿し直すと置き換わります。
+- **mainへ渡す**: mainがベンチを`run_in_background`で起動すると、`bench-hook.py --post`が、そのセッションにまだ渡していないcommitの投稿を、`git merge-tree`でmainのbranchへ衝突なく入ると確かめたものだけ渡します。衝突するものは`needs-sync`にして衝突したfileを残し、渡しません（mainには、投稿者の追従待ちであることを1度だけ伝えます）。mainのbranchがcommitを含んだ投稿は`merged`になります。宣言がある間は、main以外のセッションには渡しません。ベンチが空いている間は、mainが`pending`で同じものを受け取ります（同じcommitは1度だけ）。
+- **知らせ**: `submit`は`proposal submitted`、`decide`は`proposal accepted|rejected|deferred`の行を`.local/progress.log`へ書きます。mainは分析の後に`main analyzed`、終了前に`main freeze`を、improveは`improve started`・`improve working`を`scripts/progress.py emit`で書きます。両者はMonitorでこのfileを追い、pollingしません。
+- **runの読み取り**: isuscopeの設定（`.isuscope/config.toml`、discoverが書き、Gitに入れない）とrunはrootにしかありません。`scripts/runs.sh`はisuscopeの読み取り（`list`・`brief`・`query`・`sql`・`series`・`states`・`change list / show`）だけをrootで実行し、worktreeから同じrunを読めるようにします。
 - **表示**: `.claude/skills/isucon-main/`はClaude Codeのmod（function hooks）です。信頼したworkspaceで開くと`.claude/skills/`から自動で読み込まれます（`claude plugin list`で確かめ、読み込まれていなければ`/reload-plugins`）。10秒ごとと各turnの後に`python3 scripts/main-session.py badge`を呼び、mainのセッションのプロンプトの上に`★ MAIN`の帯と待っている投稿の数を、status lineに`★ MAIN`を出します。ほかのセッションには`WORKTREE`（rootなら`NOT MAIN`）、branch、mainのセッション、自分の投稿の状態を、宣言が無ければ`/main`の案内を出します。表示のテストは`claude plugin test .claude/skills/isucon-main`、検査は`claude plugin validate .claude/skills/isucon-main`です。
 
 Rustを採用しているため、draftは`webapp/`全体ではなく、`webapp/rust`（`sync.rust.example.json`のbuild設定とCargo.tomlのbinary名つき）、Rustのsystemd unit、`webapp/sql`内の1MiB以下の`.sql`・`.sh`、nginx・MySQL設定だけを同期対象に提案します。初期データはnodeに残し、配布しません。初期状態でRust用unitがない場合（他言語のunitだけが動いている場合）はrestart commandを入れずWARNにするので、unitを`config/systemd/`へ作ってitemとcommandを足してから切り替えます。

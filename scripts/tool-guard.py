@@ -17,7 +17,8 @@ Stopped calls:
 
 While a main session is declared (/main, scripts/main-session.py), every other session is also
 refused what only main does: deploy, rollback, import, kickoff, the benchmark (not the adapter's
---check and --probe), isuscope records, starting or stopping lanes and scouts, and the operation lock. Calls without a session id, and
+--check and --probe), isuscope records, deciding worktree proposals, starting or stopping lanes and scouts, and the operation lock.
+Calls without a session id, and
 every call while no main is declared, are not checked for this.
 
 Contest keywords and paths come from config/tool-guard.json. Empty lists turn those rules
@@ -66,7 +67,9 @@ LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'final-check', 'final-reboo
                      'bench-check', 'first-bench', 'tare', 'practice-check', 'practice-create', 'practice-status',
                      'practice-delete'}
 # Read-only isuscope commands; everything else records, benchmarks or reaches nodes.
-LANE_ISUSCOPE = {'list', 'brief', 'query', 'sql', 'help', '--help', '-h', '--version', 'version'}
+LANE_ISUSCOPE = {'list', 'brief', 'query', 'sql', 'series', 'help', '--help', '-h', '--version', 'version'}
+# `isuscope change` subcommands that only read; `decide` records.
+READ_CHANGE = {'list', 'show', 'help', '--help', '-h'}
 LANE_PROGRAMS = {'ansible', 'ansible-playbook', 'aws', 'gh', 'claude', 'codex', 'opencode'}
 MAIN_HINT = ('この操作はmainのセッション（/mainで宣言したセッション）だけが行う。'
              'worktreeの変更はcommitして`python3 scripts/proposal.py submit --hypothesis ... --expect ... --verified ...`'
@@ -360,10 +363,15 @@ class Guard:
             raise Denied(MAIN_HINT)
         if script == 'main.py' and operands[:1] and operands[0] in {'start', 'stop', 'daemon'}:
             raise Denied(MAIN_HINT)  # scripts/scout/main.py
+        # Measuring and deciding a proposal is main's; improve and people submit and read.
+        if script == 'proposal.py' and operands[:1] and operands[0] in {'decide', 'pending'}:
+            raise Denied(MAIN_HINT)
         if program == 'make' and any(a in MAIN_MAKE_TARGETS for a in operands):
             raise Denied(MAIN_HINT)
         # Reading runs (states, route suggestions included) helps a worktree; recording them is main's.
-        if program == 'isuscope' and args and args[0] not in LANE_ISUSCOPE | {'states', 'routes'}:
+        reading_changes = args[:1] == ['change'] and len(args) > 1 and args[1] in READ_CHANGE
+        if (program == 'isuscope' and args and args[0] not in LANE_ISUSCOPE | {'states', 'routes'}
+                and not reading_changes):
             raise Denied(MAIN_HINT)
 
     def seen(self, program, args):

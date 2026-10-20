@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Proposals: a worktree hands main a branch to measure, and main hands back its decision.
 
-  proposal.py submit --hypothesis TEXT --expect TEXT --verified TEXT [--note TEXT]
+  proposal.py submit --hypothesis TEXT --expect TEXT --verified TEXT [--based-on RUN] [--note TEXT]
   proposal.py list [--all]                 the proposals and their state
   proposal.py show [BRANCH]                one proposal (default: this worktree's branch)
+  proposal.py pending                      main: the proposals not handed to it yet (as the hook does)
   proposal.py decide BRANCH accepted|rejected|deferred [--run ID] [--note TEXT]
   proposal.py withdraw [BRANCH]
 
@@ -19,6 +20,11 @@ runs. One that conflicts is not handed over: it is marked needs-sync, for its au
 main's branch and submit again. A proposal whose commit main's branch already holds is merged.
 main records its decision with `decide`, which the author reads with `show` (and the Claude Code
 mod draws above the author's prompt).
+
+Submitting and deciding each write a line to .local/progress.log (`proposal submitted`, `proposal
+accepted|rejected|deferred`), which main and the improve session (/improve) follow with Monitor:
+main, with no benchmark running, picks a new proposal up with `pending` instead of waiting for the
+next benchmark, and improve learns the decision without polling.
 """
 import argparse
 import importlib.util
@@ -33,11 +39,23 @@ _spec = importlib.util.spec_from_file_location('main_session', SCRIPTS / 'main-s
 main_session = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(main_session)
 
+
+def progress(state, message):
+    """A line in .local/progress.log; never fails the proposal (progress.py may be absent)."""
+    try:
+        spec = importlib.util.spec_from_file_location('progress', SCRIPTS / 'progress.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.emit('proposal', state, message, root=SCRIPTS.parent)
+    except (OSError, ImportError, AttributeError):
+        pass
+
 OPEN = ('submitted', 'delivered', 'needs-sync')
 DECISIONS = ('accepted', 'rejected', 'deferred')
 HINT = ('worktreeからの投稿です（mainのbranchへ衝突なく入ることを確かめ済み）。ベンチを待つ間に読み、'
         '次に測るものを選んだら`git merge --no-ff <branch>`して`make build`しておく。'
-        '1回のベンチで測る変更は1つにする。採否は`python3 scripts/proposal.py decide <branch> '
+        '互いに独立した投稿は1回のベンチでまとめて測ってよい（仮説に投稿ごとの期待を並べ、'
+        '`isuscope analyze`を投稿ごとに`--change <branch>`で記録する）。採否は`python3 scripts/proposal.py decide <branch> '
         'accepted|rejected|deferred --run <短縮ID> --note "理由"`で投稿者へ返す（isuscopeの`analyze --change`とは別に記録する）。')
 
 
@@ -88,7 +106,7 @@ def current_branch(cwd=None):
     return git('symbolic-ref', '--quiet', '--short', 'HEAD', cwd=cwd).stdout.strip()
 
 
-def submit(root, hypothesis, expect, verified, note=None, cwd=None):
+def submit(root, hypothesis, expect, verified, note=None, cwd=None, based_on=None):
     here = main_session.toplevel(cwd)
     if here is None or here == Path(root).resolve():
         raise SystemExit('投稿はworktree（make worktree BRANCH=...）から行う。repoのrootはmainの作業場所。')
@@ -110,6 +128,7 @@ def submit(root, hypothesis, expect, verified, note=None, cwd=None):
     previous = load(root, branch) or {}
     data = {'branch': branch, 'commit': commit, 'base': base, 'worktree': str(here),
             'hypothesis': hypothesis, 'expect': expect, 'verified': verified, 'note': note or '',
+            'based_on': based_on or '',
             'files': files, 'author': {'agent': agent, 'session': session},
             'submitted_at': now(), 'first_submitted_at': previous.get('first_submitted_at', now()),
             'status': 'submitted', 'delivered': previous.get('delivered', {}), 'history': previous.get('history', [])}
@@ -117,6 +136,7 @@ def submit(root, hypothesis, expect, verified, note=None, cwd=None):
         data['history'].append({'commit': previous['commit'], 'status': previous.get('status'),
                                 'decision': previous.get('decision')})
     save(root, data)
+    progress('submitted', f'{branch} {commit[:8]}: {hypothesis[:120]}')
     return f'{branch}（{commit[:8]}）を投稿した。mainが次にベンチを起動したときに渡る。状態は`python3 scripts/proposal.py show`。'
 
 
@@ -188,6 +208,7 @@ def deliver(root, session, at=None):
             f'- 仮説: {data.get("hypothesis")}',
             f'- 期待する観測: {data.get("expect")}',
             f'- 確かめたこと: {data.get("verified")}',
+            *([f'- 根拠のrun: {data["based_on"]}'] if data.get('based_on') else []),
             *([f'- 補足: {data["note"]}'] if data.get('note') else []),
             f'- 変えたfile: {shown or "(なし)"}',
             f'- 中身: `git log --stat {base}..{data["branch"]}`、取り込み: `git merge --no-ff {data["branch"]}`',
@@ -210,6 +231,7 @@ def decide(root, branch, decision, run=None, note=None):
                                            'at': now(), 'by': {'agent': agent, 'session': session},
                                            'commit': data['commit']})
     save(root, data)
+    progress(decision, f'{branch} run {run or "-"}: {note or ""}')
     return f'{branch}を{decision}にした。'
 
 
@@ -226,6 +248,8 @@ def describe(data):
     lines = [f'{data["branch"]}  {data.get("status")}  {data["commit"][:8]}  投稿 {age(data.get("submitted_at"))}',
              f'  仮説: {data.get("hypothesis")}', f'  期待する観測: {data.get("expect")}',
              f'  確かめたこと: {data.get("verified")}']
+    if data.get('based_on'):
+        lines.append(f'  根拠のrun: {data["based_on"]}')
     if data.get('status') == 'needs-sync':
         lines.append(f'  mainのbranchと衝突: {", ".join(data.get("conflicts") or []) or "(詳細不明)"}。'
                      f'`git merge {data.get("base") or "main"}`で追従してcommitし、submitし直す。')
@@ -242,11 +266,13 @@ def main():
     p.add_argument('--hypothesis', required=True, help='何を変えて、なぜ速くなる（点が上がる）と考えるか')
     p.add_argument('--expect', required=True, help='期待する観測値（route、SQL、CPUなど、briefとqueryで確かめられるもの）')
     p.add_argument('--verified', required=True, help='ローカルで確かめたこと（build、test、local-check、local-flowなど）')
+    p.add_argument('--based-on', help='根拠にしたrunの短縮ID（mainが前提の古さを確かめる）')
     p.add_argument('--note')
     p = sub.add_parser('list')
     p.add_argument('--all', action='store_true')
     p = sub.add_parser('show')
     p.add_argument('branch', nargs='?')
+    sub.add_parser('pending')
     p = sub.add_parser('decide')
     p.add_argument('branch')
     p.add_argument('decision', choices=DECISIONS)
@@ -257,7 +283,12 @@ def main():
     args = parser.parse_args()
     root = main_session.root_repo()
     if args.action == 'submit':
-        print(submit(root, args.hypothesis, args.expect, args.verified, args.note))
+        print(submit(root, args.hypothesis, args.expect, args.verified, args.note, based_on=args.based_on))
+    elif args.action == 'pending':
+        _, session = main_session.current_session()
+        if main_session.is_main(root, session) is False:
+            raise SystemExit('投稿を受け取るのはmain（/mainで宣言したセッション）。')
+        print(deliver(root, session or 'unknown') or '新しい投稿は無い。')
     elif args.action == 'decide':
         print(decide(root, args.branch, args.decision, args.run, args.note))
     elif args.action == 'withdraw':
