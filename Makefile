@@ -16,7 +16,7 @@ help:
 		'make isuscope-node                    準備: nodeでaccess logを集計するisuscope-nodeをbuildする' \
 		'make deploy                           commit済みのlocal状態を全nodeへ反映する' \
 		'make rollback RELEASE=<id>            deploy前のremote状態へ戻す' \
-		'make status                           全application nodeを検査する' \
+		'make status                           全nodeを並列に検査する（様子とstatus_commands、20秒で打ち切り）' \
 		'make bench-check                      ベンチ前の全node・isuscope検査を行う' \
 		'make first-bench                      import commit後にbench-check・初回survey-run・deployを続けて行う' \
 		'make tare                             baseline後に接続・fdの上限を上げる1 commitを作る' \
