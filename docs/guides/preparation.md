@@ -23,8 +23,8 @@
 - `./scripts/ansible-install.sh --all`を実行し、legacy・modernの両controllerのlocalhostでAnsible moduleが動くことを確認する。Pythonと解決した依存版を記録する。対象nodeのPythonは開始後に`ansible-runtime.py`が調べて選ぶ。
 - 使用版のisuscopeをbuild/installし、`lock`、`routes`、`rescore`、`doctor`等の必要なコマンドがあることを確認する。version表示だけで同一buildとは判定しない。
 - Rust、Cargo、linker、採用予定の汎用開発ツールを確認し、問題を使わない小さなRustプログラムでbuild・testする。事前に分かるRust版は準備し、配布アプリの正確なtoolchain・Cargo依存・DB schemaは公開後に合わせる。
-- `./scripts/fetch-observability-tools.sh`で、repoへ取り込んだalp・slp・FlameGraphがpin済みの版とSHA256SUMSに一致することを確認する。版を上げる場合だけ`--update`で取り直してcommitする。
-- `make isuscope-node`で、nodeでaccess logの差分を集計する`isuscope-node`を、installしたisuscopeのsourceからLinuxの静的binary（amd64とarm64）としてbuildし、`.local/isuscope-node/`へ置く。bootstrapがnodeへcopyし、isuscopeの`alp` collectorがawkとalpの代わりに使う（2コアで62万行を約20秒から約1.2秒へ）。muslの静的binaryなのでnodeのOSに依存せず、Dockerも要らない。`./scripts/build-isuscope-node.sh --check`で、置いたbinaryがinstallしたisuscopeと同じbuildかを確かめ、BUILD_IDを記録する。isuscopeを入れ直したら作り直す。
+- `./scripts/fetch-observability-tools.sh`で、repoへ取り込んだslp・FlameGraphがpin済みの版とSHA256SUMSに一致することを確認する。版を上げる場合だけ`--update`で取り直してcommitする。
+- `make isuscope-node`で、nodeでaccess logの差分を集計する`isuscope-node`を、installしたisuscopeのsourceからLinuxの静的binary（amd64とarm64）としてbuildし、`.local/isuscope-node/`へ置く。bootstrapがnodeへcopyし、isuscopeの`alp` collectorがaccess logの差分をnode上で集計する（2コアで62万行を約1.2秒）。無いと`alp` collectorが失敗し、runにHTTPの計測が残らない。muslの静的binaryなのでnodeのOSに依存せず、Dockerも要らない。`./scripts/build-isuscope-node.sh --check`で、置いたbinaryがinstallしたisuscopeと同じbuildかを確かめ、BUILD_IDを記録する。isuscopeを入れ直したら作り直す。
 - `make builder-images`で`config/rust-builder/bases.json`の候補base×targetのbuilder imageを作り、所要時間と取得できなかったtagを記録する。問題のコードは使わない。
 - 配布可能な計測toolの取得元・版を固定する。ローカルへ事前取得する場合はhashと再取得手順を残す。サーバーのOS・architecture・kernelに依存するpackageの選択と導入は公開後に行う。
 - `bash tests/kickoff-automation.sh`と`make test`で、問題や実サーバーを使わずimport/deploy/rollback、worktree、ボードの動作を確認する。

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 準備でisuscope-node（nodeでaccess logの差分を集計するbinary）をbuildし、.local/isuscope-node/へ置く。
 # bootstrapのobservability roleが、nodeのarchitectureに合うものを/usr/local/bin/isuscope-nodeへcopyし、
-# isuscopeのalp collectorはawkとalpの代わりにそれを使う（2コアで62万行を約20秒から約1.2秒へ）。
+# isuscopeのalp collectorはそれでaccess logを集計し、無ければ失敗する（2コアで62万行を約1.2秒）。
 # muslの静的binaryなのでnodeのOSに依存せず、問題の公開前に作れる。
 #   ./scripts/build-isuscope-node.sh           # installしたisuscopeのsourceからamd64とarm64をbuildする
 #   ./scripts/build-isuscope-node.sh --check   # 置いたbinaryが、installしたisuscopeと同じbuildか確かめる

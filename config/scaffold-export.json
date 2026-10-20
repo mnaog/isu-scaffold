@@ -70,8 +70,6 @@
     "scripts/build-isuscope-node.sh",
     "ansible/roles/observability/files/vendor/README.md",
     "ansible/roles/observability/files/vendor/SHA256SUMS",
-    "ansible/roles/observability/files/vendor/alp_v1.0.21_linux_amd64.tar.gz",
-    "ansible/roles/observability/files/vendor/alp_v1.0.21_linux_arm64.tar.gz",
     "ansible/roles/observability/files/vendor/slp_v0.2.1_linux_amd64.tar.gz",
     "ansible/roles/observability/files/vendor/slp_v0.2.1_linux_arm64.tar.gz",
     "ansible/roles/observability/files/vendor/FlameGraph/stackcollapse-perf.pl",

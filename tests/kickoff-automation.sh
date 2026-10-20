@@ -622,7 +622,7 @@ cat >"${fixture_repo}/.local/inspection/app1.json" <<'EOF'
   "service_environment_files":["isu-rust.service\t/home/isucon/env.sh\tisucon\tisucon"],
   "nginx_access_logs":["/var/log/nginx/custom.log","/var/log/nginx/isuscope-access.log"],
   "mysql_slow_logs":["/var/log/mysql/slow.log"],
-  "versions":{"nginx":"nginx/1","mysql":"mysql 8","perf":"perf 6","sar":"sar 12","alp":"alp 1","slp":"slp 1"}
+  "versions":{"nginx":"nginx/1","mysql":"mysql 8","perf":"perf 6","sar":"sar 12","slp":"slp 1"}
 }
 EOF
 cat >"${fixture_repo}/.local/inspection/app2.json" <<'EOF'
@@ -635,7 +635,7 @@ cat >"${fixture_repo}/.local/inspection/app2.json" <<'EOF'
   "service_fragments":["nginx.service\t/etc/systemd/system/nginx.service"],
   "nginx_access_logs":["/var/log/nginx/custom.log"],
   "mysql_slow_logs":[],
-  "versions":{"nginx":"nginx/1","mysql":"","perf":"perf 6","sar":"sar 12","alp":"alp 1","slp":"slp 1"}
+  "versions":{"nginx":"nginx/1","mysql":"","perf":"perf 6","sar":"sar 12","slp":"slp 1"}
 }
 EOF
 printf '[package]\nname = "isu-app"\nversion = "0.1.0"\n' >"${fixture_repo}/webapp/rust/Cargo.toml"

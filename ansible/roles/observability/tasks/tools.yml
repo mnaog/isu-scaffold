@@ -22,7 +22,7 @@
 
     # bundledはrepoのfiles/vendor（scripts/fetch-observability-tools.shで取り込む）をcopyする。
     # nodeがGitHubへ出られない・git が無い・rate limitに当たる場合も同じ版が入る。
-    - name: Install pinned alp and slp releases from the repository
+    - name: Install pinned slp release from the repository
       ansible.builtin.unarchive:
         src: "vendor/{{ item.name }}_{{ item.version }}_linux_{{ observability_go_arch[ansible_facts.architecture] }}.tar.gz"
         dest: /usr/local/bin
@@ -38,7 +38,7 @@
         - observability_download_tools | bool
         - observability_tools_source == 'bundled'
 
-    - name: Download pinned alp and slp releases
+    - name: Download pinned slp release
       ansible.builtin.unarchive:
         src: "https://github.com/tkuchiki/{{ item.name }}/releases/download/{{ item.version }}/{{ item.name }}_linux_{{ observability_go_arch[ansible_facts.architecture] }}.tar.gz"
         dest: /usr/local/bin
@@ -115,7 +115,7 @@
       when: observability_tools_strict | bool
 
 # 準備で./scripts/build-isuscope-node.shが.local/isuscope-nodeへ作った静的binary。isuscopeのalp
-# collectorはこれでaccess logを集計し、無いか違うbuildならawkとalpで集計する（約15倍遅い）。
+# collectorはこれでaccess logを集計し、無いか違うbuildなら失敗する（verify.ymlも必須にしている）。
 - name: Install isuscope-node built while preparing
   ansible.builtin.copy:
     src: "{{ observability_isuscope_node_directory }}/isuscope-node-linux-{{ observability_go_arch[ansible_facts.architecture] }}"
@@ -126,11 +126,11 @@
   when: (observability_isuscope_node_directory ~ '/isuscope-node-linux-' ~ observability_go_arch[ansible_facts.architecture]) is file
   tags: [observability_isuscope_node]
 
-- name: Report that the alp collector falls back to awk and alp
+- name: Report that the alp collector cannot aggregate without isuscope-node
   ansible.builtin.debug:
     msg: >-
       isuscope-node is not built in {{ observability_isuscope_node_directory }}; the alp collector
-      aggregates with awk and alp (about 15x slower). Run ./scripts/build-isuscope-node.sh, then
+      fails and the runs carry no HTTP metrics. Run ./scripts/build-isuscope-node.sh, then
       ./scripts/run-ansible-playbook.sh bootstrap.yml --tags observability_isuscope_node.
   when: not ((observability_isuscope_node_directory ~ '/isuscope-node-linux-' ~ observability_go_arch[ansible_facts.architecture]) is file)
   tags: [observability_isuscope_node]

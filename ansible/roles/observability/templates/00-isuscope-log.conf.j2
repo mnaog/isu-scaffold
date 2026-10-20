@@ -1,5 +1,5 @@
 # Managed by ansible/roles/observability (observability_nginx_ltsv). Do not edit on the node.
-# isuscope/alp用のLTSV。項目名はisuscopeの既定値（method/uri/status/reqtime/apptime/size/conn/connreqs/msec/session）に合わせる。
+# isuscope用のLTSV。項目名はisuscopeの既定値（method/uri/status/reqtime/apptime/size/conn/connreqs/msec/session）に合わせる。
 # connとmsecは、ベンチ側が接続をどう使ったか（保持数、要求の間隔）をisuscopeが出すために要る。
 # upstream_*は、どのバックエンドへの接続・応答で時間を使ったかを接続先別に出すために要る。
 # 既存のaccess_logは変えず、専用ファイルへ追加で出力する。serverブロックにaccess_logがあると、そのserverではこの設定が効かない。
