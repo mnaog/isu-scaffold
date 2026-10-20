@@ -139,7 +139,7 @@
     # One remote shell instead of a loop: each loop item is a separate module run.
     - name: Probe common commands
       ansible.builtin.shell: |
-        for tool in nginx mysql psql redis-server go rustc node ruby python3 java perf sar alp slp \
+        for tool in nginx mysql psql redis-server go rustc node ruby python3 java perf sar slp \
             stackcollapse-perf.pl flamegraph.pl offcputime-bpfcc; do
           version=
           if command -v "$tool" >/dev/null 2>&1; then

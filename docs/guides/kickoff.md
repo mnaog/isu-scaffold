@@ -8,11 +8,11 @@
 
 SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を4本起動する。`indexes`が索引を、`obvious-fixes`が索引以外の自明な修正を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書く。kickoffは、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。開始と同時に、worktree `portal`で起動したもう1つのセッションが`/portal`で、ポータルと当日マニュアルの保存、サーバーの起動に要る情報、ベンチ接続を作る。mainのセッションはその間にサーバーの起動、kickoff build設定、draftの判断を進め、portalの公式資料をmergeしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
 
-調査・修正・ローカル検証・deploy・ベンチ・採否判断の責任はmainのセッションが持つ。laneの成果は根拠を照合してからmergeする。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
+merge・次に測るものの判断・deploy・ベンチ・分析・採否の責任はmainのセッションが持ち、改善の調査・実装・ローカル検証はimproveのセッション（`/improve`）が持つ（improveが動いていなければmainが実装も行う）。laneの成果は根拠を照合してからmergeする。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
 
 ## 流れ
 
-chrome-debugでのポータルのログインと、worktree `portal`は準備で済ませてある（[準備](preparation.md)の「ポータル」）。開始と同時に、人間が2つのセッションを起動する。rootでmain（`/main`の後に`/goal`）、worktree `portal`でportal（`/portal`）。ログインが切れていたら、そのときに人間が入り直す。portalは結果を`.local/progress.log`へ`portal <official|environment|bench|notice>`の行で書き、mainはkickoffの他の行と一緒に追う。
+chrome-debugでのポータルのログインと、worktree `portal`・`improve`は準備で済ませてある（[準備](preparation.md)の「ポータル」「improveの作業場所」）。開始と同時に、人間が3つのセッションを起動する。rootでmain（`/main`の後に`/goal`）、worktree `portal`でportal（`/portal`）、worktree `improve`でimprove（`/improve`）。improveは`code-ready`の後にコードとschemaを読み始め、mainがbaselineの分析を`main analyzed`の行で知らせたら最初の変更を作る。ログインが切れていたら、そのときに人間が入り直す。portalは結果を`.local/progress.log`へ`portal <official|environment|bench|notice>`の行で書き、mainはkickoffの他の行と一緒に追う。
 
 ```text
 portal（mainと並行。手順は.claude/commands/portal.md）
@@ -49,7 +49,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
   → そうでなければ、make deploy（kickoff buildの完了を待つ）の後にsurvey-run、続けてscoutを起動
   → 出力の形を確かめる前ならresultはPENDING。python3 scripts/benchmark-sample.py <run>で読み取りを確かめ、
     --apply --score N --pass true|false（自分で読んだ値）でsample・contract・--check・rescoreまで済ませる
-初回runを分析し（スコア・エラー・HTTP・SQL・ホスト負荷。最大の制約と根拠をisuscope analyzeに書く）、観測に基づいて改善を実装・検証
+初回runを分析し（スコア・エラー・HTTP・SQL・ホスト負荷。最大の制約と根拠をisuscope analyzeに書く）、`main analyzed`でimproveへ知らせる。improveが観測に基づいて改善を実装・検証して投稿する
   → baselineの後の最初のdeployで、lane state-logのcommitを他のlaneより先に取り込む
     （次のrunからbriefのstates欄が埋まり、状態についての問いに計測を足さずに答えられる）
   → そのdeployをcommitしたら、ベンチの結果を待たずにlane full-memory（全メモリ化。書き込みはDBのまま）を起動する
@@ -206,7 +206,7 @@ APIの一覧には、各APIのhandler（`file:line`）と主なSQL・外部処�
 
 ## baselineの後に次の変更を選ぶ
 
-初回baselineの分析では、SQLの候補を消化する前に、観測された最大の制約を特定し、根拠（node別の観測値）とともに初回runの`isuscope analyze`の分析に書く（survey-runがPASSなら、分析を記録するまで次のベンチは始められない）。`isuscope brief`のnode別CPU・iowait・disk util・network、`database_io`、`logs`から、少なくとも次を確認する。
+mainは初回baselineの分析で、SQLの候補を消化する前に、観測された最大の制約を特定し、根拠（node別の観測値）とともに初回runの`isuscope analyze`の分析に書く（survey-runがPASSなら、分析を記録するまで次のベンチは始められない）。`isuscope brief`のnode別CPU・iowait・disk util・network、`database_io`、`logs`から、少なくとも次を確認する。
 
 - 負荷が1台に集中し、他のnodeが空いていないか
 - CPUよりI/O待ち（iowait、disk util、COMMITやfile待ち）が支配的でないか
@@ -219,7 +219,7 @@ APIの一覧には、各APIのhandler（`file:line`）と主なSQL・外部処�
 - DB・アプリ・nginxを別のnodeへ分ける配置変更
 - 読み取りのキャッシュ・メモリ化
 
-どちらも根拠（run ID、node別の観測値、期待する効果）を残し、1つずつ入れて通常の`isuscope run`で測る。全メモリ化はlane `full-memory`に任せる。それより前にmainが入れるメモリ化は1つの読み取り経路ずつ進め、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築方法を`docs/cache-design.md`へ書いてから入れる。WALなどでDBを外すのは、書き込みが律速だと測れてからにする。非同期化やwrite-behindなど、整合性条件や永続化の時機を変える変更が必要なら、根拠をrunの分析に残し、AGENTS.mdの「判断の原則」に沿って入れる。
+improveはこの分析から次の変更を選ぶ。どちらも根拠（run ID、node別の観測値、期待する効果）を投稿に残し、mainが通常の`isuscope run`で測る。全メモリ化はlane `full-memory`に任せる。それより前にmainが入れるメモリ化は1つの読み取り経路ずつ進め、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築方法を`docs/cache-design.md`へ書いてから入れる。WALなどでDBを外すのは、書き込みが律速だと測れてからにする。非同期化やwrite-behindなど、整合性条件や永続化の時機を変える変更が必要なら、根拠をrunの分析に残し、AGENTS.mdの「判断の原則」に沿って入れる。
 
 ## 残すもの
 

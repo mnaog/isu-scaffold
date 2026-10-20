@@ -1,4 +1,4 @@
-.PHONY: help discover kickoff kickoff-apply build deploy rollback status bench-check first-bench tare lanes proposals builder-images
+.PHONY: help discover kickoff kickoff-apply build deploy rollback status bench-check first-bench tare lanes proposals builder-images isuscope-node final-check final-reboot final-db-late
 
 help:
 	@printf '%s\n' \
@@ -6,16 +6,20 @@ help:
 		'make kickoff                          コード先行回収・kickoff buildからdraft生成と検査まで進める' \
 		'make lanes                            claude -pのAI lane（indexes、local-env、scenarioなど）の状態を見る' \
 		'make worktree BRANCH=<name> PURPOSE="..."  目的つきで並行laneのworktreeを作る' \
-		'make proposals                        worktreeからmainへの投稿と、その状態を見る' \
+		'make proposals                        ベンチ待ちのキュー（worktreeからの投稿）と、その状態を見る' \
 		'CONFIRM_DRAFT=true make kickoff-apply  検査済みdraftを反映して完全importする' \
 		'make local-up / local-check / local-down  worktree専用のローカル実行環境を操作する' \
 		'make local-flow FLOW=<json> [FROM=<前のflow>]  決まった操作の列をローカルのアプリへ流す' \
 		'make local-state-log NAME=<名前>       ローカルのアプリから状態ログを取り出す' \
 		'make build                            ローカルでLinux向けRust成果物を準備する' \
 		'make builder-images                   準備: 候補baseのRust builder imageを事前に作る' \
+		'make isuscope-node                    準備: nodeでaccess logを集計するisuscope-nodeをbuildする' \
 		'make deploy                           commit済みのlocal状態を全nodeへ反映する' \
 		'make rollback RELEASE=<id>            deploy前のremote状態へ戻す' \
-		'make status                           全application nodeを検査する' \
+		'make status                           全nodeを並列に検査する（様子とstatus_commands、20秒で打ち切り）' \
+		'make final-check                      終了前: 再起動せずに追試で落ちる原因を確かめる' \
+		'make final-reboot                     終了前: 全台を再起動し、戻った後と数分後を確かめる' \
+		'make final-db-late                    終了前: DBが後から起動してもアプリが立ち直るか確かめる' \
 		'make bench-check                      ベンチ前の全node・isuscope検査を行う' \
 		'make first-bench                      import commit後にbench-check・初回survey-run・deployを続けて行う' \
 		'make tare                             baseline後に接続・fdの上限を上げる1 commitを作る' \
@@ -39,6 +43,9 @@ proposals:
 builder-images:
 	@python3 scripts/local-build.py prepare-images
 
+isuscope-node:
+	@./scripts/build-isuscope-node.sh
+
 worktree:
 	@test -n "$(BRANCH)" || { echo 'BRANCH=<name>を指定してください' >&2; exit 2; }
 	@test -n "$(PURPOSE)" || { echo 'PURPOSE="何をするlaneか"を指定してください' >&2; exit 2; }
@@ -59,6 +66,15 @@ rollback:
 
 status:
 	@./scripts/status.sh
+
+final-check:
+	@python3 scripts/final-verification.py check
+
+final-reboot:
+	@python3 scripts/final-verification.py reboot --yes
+
+final-db-late:
+	@python3 scripts/final-verification.py db-late --yes
 
 tare:
 	@python3 scripts/tare.py

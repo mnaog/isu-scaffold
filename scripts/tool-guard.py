@@ -17,7 +17,8 @@ Stopped calls:
 
 While a main session is declared (/main, scripts/main-session.py), every other session is also
 refused what only main does: deploy, rollback, import, kickoff, the benchmark (not the adapter's
---check and --probe), isuscope records, starting or stopping lanes and scouts, and the operation lock. Calls without a session id, and
+--check and --probe), isuscope records, deciding worktree proposals, starting or stopping lanes and scouts, and the operation lock.
+Calls without a session id, and
 every call while no main is declared, are not checked for this.
 
 Contest keywords and paths come from config/tool-guard.json. Empty lists turn those rules
@@ -61,12 +62,14 @@ LANE_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-
                 'status.sh', 'switch-language-service.sh', 'sync-check.sh', 'benchmark.sh',
                 'benchmark-prepare.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'kickoff-build.py',
                 'lane.py', 'review-draft.py', 'check-deployed-commit.sh', 'first-bench.sh',
-                'benchmark-markers.py', 'deploy-plan.py'}
-LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap',
+                'benchmark-markers.py', 'deploy-plan.py', 'final-verification.py'}
+LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'final-check', 'final-reboot', 'final-db-late', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap',
                      'bench-check', 'first-bench', 'tare', 'practice-check', 'practice-create', 'practice-status',
                      'practice-delete'}
 # Read-only isuscope commands; everything else records, benchmarks or reaches nodes.
-LANE_ISUSCOPE = {'list', 'brief', 'query', 'sql', 'help', '--help', '-h', '--version', 'version'}
+LANE_ISUSCOPE = {'list', 'brief', 'query', 'sql', 'series', 'help', '--help', '-h', '--version', 'version'}
+# `isuscope change` subcommands that only read; `decide` records.
+READ_CHANGE = {'list', 'show', 'help', '--help', '-h'}
 LANE_PROGRAMS = {'ansible', 'ansible-playbook', 'aws', 'gh', 'claude', 'codex', 'opencode'}
 MAIN_HINT = ('この操作はmainのセッション（/mainで宣言したセッション）だけが行う。'
              'worktreeの変更はcommitして`python3 scripts/proposal.py submit --hypothesis ... --expect ... --verified ...`'
@@ -75,8 +78,9 @@ MAIN_HINT = ('この操作はmainのセッション（/mainで宣言したセッ
 MAIN_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-apply.sh', 'bootstrap.sh',
                 'bootstrap-ssh.sh', 'configure-apply.sh', 'bench-check.sh', 'quick-import-code.sh',
                 'run-ansible-playbook.sh', 'switch-language-service.sh', 'benchmark.sh', 'benchmark-prepare.sh',
-                'benchmark-stop.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'first-bench.sh'}
-MAIN_MAKE_TARGETS = {'deploy', 'rollback', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap', 'bench-check',
+                'benchmark-stop.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'first-bench.sh',
+                'final-verification.py'}
+MAIN_MAKE_TARGETS = {'deploy', 'rollback', 'final-reboot', 'final-db-late', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap', 'bench-check',
                      'first-bench', 'tare', 'scout-start', 'scout-stop', 'practice-create', 'practice-delete'}
 LOCAL_URL = re.compile(r'^(?:https?://)?(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:/|$)')
 
@@ -350,7 +354,8 @@ class Guard:
             operands = operands[1:]
         # The adapter's --check and --probe never start a benchmark: the portal session (/portal)
         # builds the connection with them while main runs kickoff.
-        checking = script == 'benchmark.sh' and script_args[:1] in (['--check'], ['--probe'])
+        checking = ((script == 'benchmark.sh' and script_args[:1] in (['--check'], ['--probe']))
+                    or (script == 'final-verification.py' and script_args[:1] == ['check']))
         if ((script in MAIN_SCRIPTS and not checking) or program in {'ansible', 'ansible-playbook'}
                 or any('operation.lock' in a for a in args)):
             raise Denied(MAIN_HINT)
@@ -358,10 +363,16 @@ class Guard:
             raise Denied(MAIN_HINT)
         if script == 'main.py' and operands[:1] and operands[0] in {'start', 'stop', 'daemon'}:
             raise Denied(MAIN_HINT)  # scripts/scout/main.py
+        # Measuring and deciding a proposal is main's; improve and people submit and read.
+        if script == 'proposal.py' and operands[:1] and operands[0] in {'decide', 'pending', 'sync', 'hold', 'unhold',
+                                                                         'requeue', 'freeze'}:
+            raise Denied(MAIN_HINT)
         if program == 'make' and any(a in MAIN_MAKE_TARGETS for a in operands):
             raise Denied(MAIN_HINT)
         # Reading runs (states, route suggestions included) helps a worktree; recording them is main's.
-        if program == 'isuscope' and args and args[0] not in LANE_ISUSCOPE | {'states', 'routes'}:
+        reading_changes = args[:1] == ['change'] and len(args) > 1 and args[1] in READ_CHANGE
+        if (program == 'isuscope' and args and args[0] not in LANE_ISUSCOPE | {'states', 'routes'}
+                and not reading_changes):
             raise Denied(MAIN_HINT)
 
     def seen(self, program, args):
