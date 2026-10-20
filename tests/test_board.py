@@ -30,6 +30,8 @@ class BoardTests(unittest.TestCase):
         self.repo = Path(self.temp.name).resolve() / 'repo'
         self.repo.mkdir()
         shutil.copytree(SOURCE / 'scripts/board', self.repo / 'scripts/board')
+        for name in ('proposal.py', 'main-session.py', 'progress.py'):
+            shutil.copy(SOURCE / 'scripts' / name, self.repo / 'scripts' / name)
         (self.repo / 'config').mkdir()
         shutil.copy(SOURCE / 'config/records.json', self.repo / 'config/records.json')
         (self.repo / '.gitignore').write_text('.local/\n__pycache__/\n')
@@ -441,13 +443,32 @@ class BoardTests(unittest.TestCase):
         write(self.repo / '.local/scout.json', json.dumps({'scouts': {'codex': {}}}))
         self.assertEqual([r['name'] for r in scout.scouts(self.repo)['reports']], ['codex'])
 
+    def test_queue_lists_measuring_next_waiting_and_held_in_that_order(self):
+        import proposals
+        stored = self.repo / '.local/proposals'
+        stored.mkdir(parents=True)
+        for branch, status, at in [('improve-held', 'held', '1'), ('improve-wait', 'delivered', '3'),
+                                   ('human', 'submitted', '2'), ('improve-next', 'merged', '4'),
+                                   ('improve-now', 'measuring', '5'), ('improve-done', 'accepted', '0')]:
+            (stored / f'{branch}.json').write_text(json.dumps({
+                'branch': branch, 'status': status, 'commit': '0123456789', 'first_submitted_at': at,
+                'hypothesis': branch, 'author': {'role': 'improve' if branch != 'human' else 'worktree'},
+                **({'hold': {'until': 'DBが最大の制約になったら'}} if status == 'held' else {})}))
+        result = proposals.queue(self.repo)
+        self.assertEqual([r['branch'] for r in result['items']],
+                         ['improve-now', 'improve-next', 'human', 'improve-wait', 'improve-held'])
+        # The queue counts what waits for a benchmark: the measured and the held are out of it.
+        self.assertEqual(result['waiting'], 3)
+        self.assertEqual(result['items'][-1]['hold']['until'], 'DBが最大の制約になったら')
+
     def test_http_board_read_only(self):
         p=subprocess.Popen([sys.executable,str(self.repo/'scripts/board/main.py'),'--port','0'],cwd=self.repo,stdout=subprocess.PIPE,text=True)
         try:
             url=p.stdout.readline().strip()
             with urllib.request.urlopen(url+'/api/board') as r:
                 data=json.load(r)
-                self.assertEqual(set(data),{'metrics','activity','scouts'})
+                self.assertEqual(set(data),{'metrics','activity','scouts','queue'})
+                self.assertEqual((data['queue']['waiting'],data['queue']['items']),(0,[]))
             with urllib.request.urlopen(url+'/api/records') as r:
                 self.assertEqual(len(json.load(r)['records']), len(records.declared(SOURCE)))
             with urllib.request.urlopen(url+'/board-records.js') as r:
@@ -460,6 +481,7 @@ class BoardTests(unittest.TestCase):
                 page=r.read().decode()
                 self.assertIn('id="run-select"',page)
                 self.assertIn('id="base-select"',page)
+                self.assertLess(page.index('id="queue-section"'),page.index('id="overview"'))
                 self.assertIn('textContent',page)
             with urllib.request.urlopen(url+'/board-workspace.js') as r:
                 self.assertIn('workspaceData', r.read().decode())

@@ -17,6 +17,7 @@ from board_data import DetailCache, selection
 from reads import ISUSCOPE, metrics, root
 import records
 from scout import scouts
+from proposals import queue
 
 CONFIG = {'isuscope': ISUSCOPE}
 
@@ -84,6 +85,7 @@ def serve(repo, port):
                 result = {'metrics': cached['value']}
                 result['activity'] = activity(repo)
                 result['scouts'] = scouts(repo)
+                result['queue'] = queue(repo)
                 body = json.dumps(result, ensure_ascii=False).encode()
                 content_type = 'application/json; charset=utf-8'
             else:

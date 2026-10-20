@@ -44,7 +44,7 @@ MANIFEST_NAMES = {
     "pom.xml",
     "build.gradle",
 }
-OBSERVABILITY_TOOLS = ("sar", "perf", "alp", "slp", "stackcollapse-perf.pl", "flamegraph.pl", "offcputime-bpfcc")
+OBSERVABILITY_TOOLS = ("sar", "perf", "slp", "stackcollapse-perf.pl", "flamegraph.pl", "offcputime-bpfcc")
 
 
 def read_json(path: Path):

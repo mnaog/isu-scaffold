@@ -19,7 +19,8 @@ Bash call. Heredoc bodies and `bash -n` syntax checks do not count as starting o
   next benchmark. The settings call it only while .local/scout/emergency.json exists.
   It also hands main the worktree proposals (scripts/proposal.py) it has not seen at their current
   commit and that merge into main's branch cleanly, so main picks and builds the next candidate
-  while the benchmark runs. While a main is declared (/main) only main gets them.
+  while the benchmark runs. While a main is declared (/main) only main gets them. The proposals
+  main merged for this benchmark leave the queue as measuring.
 
 Internal errors let the call through, like tool-guard.
 """
@@ -238,6 +239,21 @@ def waiting_context(root, session='', now=None):
     return '\n\n'.join(parts) or None
 
 
+def started(root, session):
+    """A benchmark started in the background: the merged proposals are measured now, then the waiting context."""
+    repo = main_worktree(root)
+    if proposal.main_session.is_main(repo, session) is not False:
+        measuring = proposal.start_measuring(repo)
+    else:
+        measuring = []
+    context = waiting_context(root, session)
+    if measuring:
+        note = (f'このベンチで測る投稿: {", ".join(measuring)}（キューから外し、測定中にした）。'
+                'ベンチを待つ間に`python3 scripts/proposal.py sync`で待っている投稿をmainのbranchへ追従させる。')
+        context = '\n\n'.join(part for part in (note, context) if part)
+    return context
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
@@ -254,7 +270,7 @@ def main():
         if '--pre' in sys.argv and not background:
             output = {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
                       'permissionDecisionReason': BACKGROUND_HINT}
-        elif '--post' in sys.argv and background and (context := waiting_context(root, str(payload.get('session_id') or ''))):
+        elif '--post' in sys.argv and background and (context := started(root, str(payload.get('session_id') or ''))):
             output = {'hookEventName': 'PostToolUse', 'additionalContext': context}
         else:
             return 0

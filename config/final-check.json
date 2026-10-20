@@ -1,0 +1,15 @@
+{
+  "description": "make final-check / final-reboot / final-db-late の問題ごとの入力。kickoffで当日マニュアルの追試の節から埋める。空の項目は確かめない（そう表示する）。",
+  "envcheck_command": "",
+  "protected_units": [],
+  "admin_users": [],
+  "units": [],
+  "http_checks": [
+    {"node_group": "role_nginx", "url": "http://127.0.0.1/", "host": "", "expect_status": 200}
+  ],
+  "instance_type": "",
+  "instance_count": 0,
+  "min_score_ratio": 0.85,
+  "settle_seconds": 300,
+  "reboot_timeout_seconds": 600
+}

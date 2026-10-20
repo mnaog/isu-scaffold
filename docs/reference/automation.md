@@ -73,17 +73,32 @@ mainはrepoのrootで動くClaude Codeのセッション1つです。`/main`（`
 
 ```bash
 python3 scripts/main-session.py show
-python3 scripts/proposal.py submit --hypothesis "..." --expect "..." --verified "..."   # worktreeで
+python3 scripts/proposal.py submit --hypothesis "..." --expect "..." --verified "..." [--based-on <短縮ID>]   # worktreeで
 make proposals                                  # 投稿の一覧（python3 scripts/proposal.py list [--all]）
 python3 scripts/proposal.py show [<branch>]     # 1件の状態とmainの判断
-python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID> --note "理由"   # mainが
+python3 scripts/proposal.py wait [--timeout 3600]                       # improveが、キューの空きを待つ（background）
+python3 scripts/proposal.py improve                                    # /improveが宣言する
+python3 scripts/proposal.py pending                                     # mainが、まだ受け取っていない投稿を読む
+python3 scripts/proposal.py sync [<branch> ...]                         # mainが、待っている投稿をmainのbranchへ追従させる
+python3 scripts/proposal.py hold <branch> --until "条件" / unhold <branch>   # mainが、条件付きで寝かせる・戻す
+python3 scripts/proposal.py requeue [<branch> ...]                      # mainが、測れなかったベンチの測定中を待ちへ戻す
+python3 scripts/proposal.py decide <branch> accepted|rejected|deferred [--run <短縮ID>] --note "理由"   # mainが
+python3 scripts/proposal.py freeze [--off] --note "..."                  # mainが、終了前にimproveの投稿を止める
+scripts/runs.sh brief latest                    # worktreeから、rootのrunを読む（isuscopeの読み取りだけ）
 python3 scripts/proposal.py withdraw [<branch>]
 ```
 
-- **止めるもの**: 宣言がある間、`scripts/tool-guard.py`は、hookのpayloadのセッションIDとagentのセッションIDの環境変数のどれもmainと一致しない呼び出しから、deploy・rollback・import・kickoff・bootstrap・bench-check・first-bench・tare・ansibleの実行、ベンチadapterとその前後処理、`isuscope`の記録系command（`list`・`brief`・`query`・`sql`・`states`・`routes`以外）、`lane.py start / kickoff / stop`、scoutの起動・停止、`.local/operation.lock`を止めます。宣言が無いとき、セッションIDが分からないときは止めません。
-- **投稿**: worktreeで変更をcommitしてから`submit`します。root worktreeとmainのbranchからは投稿できず、commitしていない変更（`docs/agent-history/`を除く）があると止まります。投稿は`.local/proposals/<branch>.json`に、branch、commit、仮説、期待する観測、確かめたこと、変えたfile、投稿者を残します。commitを足して投稿し直すと置き換わります。
-- **mainへ渡す**: mainがベンチを`run_in_background`で起動すると、`bench-hook.py --post`が、そのセッションにまだ渡していないcommitの投稿を、`git merge-tree`でmainのbranchへ衝突なく入ると確かめたものだけ渡します。衝突するものは`needs-sync`にして衝突したfileを残し、渡しません（mainには、投稿者の追従待ちであることを1度だけ伝えます）。mainのbranchがcommitを含んだ投稿は`merged`になります。宣言がある間は、main以外のセッションには渡しません。
-- **判断**: `decide`の判断は、mainが取り込んで測ったcommitに付きます。mainが取り込んだ後に投稿者が同じbranchへ投稿し直していれば、判断は取り込んだ前のcommit（`history`）に付き、今の投稿は未判断のまま残ります（seventhでは、座標のまとめ書きへの`accepted`が、後から投稿された未計測のMySQLの変更に付いた）。別のcommitに付けるときは`--commit`で指定します。`accepted`には測ったrun（`--run`）が要り、mainのbranchに入っていないcommitには付けられません。`merged`は取り込んだだけで終わりではないので、判断が返るまで`list`に残り、ベンチを起動するたびにmainへ「取り込んだが採否を返していない投稿」として示します。
+- **止めるもの**: 宣言がある間、`scripts/tool-guard.py`は、hookのpayloadのセッションIDとagentのセッションIDの環境変数のどれもmainと一致しない呼び出しから、deploy・rollback・import・kickoff・bootstrap・bench-check・first-bench・tare・ansibleの実行、ベンチadapterとその前後処理、`isuscope`の記録系command（`list`・`brief`・`query`・`sql`・`series`・`states`・`routes`・`change list / show`以外）、`proposal.py decide / pending / sync / hold / unhold / requeue / freeze`、`lane.py start / kickoff / stop`、scoutの起動・停止、`.local/operation.lock`を止めます。宣言が無いとき、セッションIDが分からないときは止めません。
+- **投稿**: worktreeで変更をcommitしてから`submit`します。root worktreeとmainのbranchからは投稿できず、commitしていない変更（`docs/agent-history/`を除く）があると止まります。投稿は`.local/proposals/<branch>.json`に、branch、commit、仮説、期待する観測、確かめたこと、根拠のrun（`--based-on`）、変えたfile、投稿者を残します。commitを足して投稿し直すと置き換わります。
+- **mainへ渡す**: mainがベンチを`run_in_background`で起動すると、`bench-hook.py --post`が、そのセッションにまだ渡していないcommitの投稿を、`git merge-tree`でmainのbranchへ衝突なく入ると確かめたものだけ渡します。衝突するものは`needs-sync`にして衝突したfileを残し、渡しません（mainには、投稿者の追従待ちであることを1度だけ伝えます）。mainのbranchがcommitを含んだ投稿は`merged`になります。宣言がある間は、main以外のセッションには渡しません。ベンチが空いている間は、mainが`pending`で同じものを受け取ります（同じcommitは1度だけ）。
+- **キュー**: ベンチを待つ投稿（`submitted`・`delivered`・`needs-sync`・`merged`）がキューです。mainがベンチを`run_in_background`で起動すると、`bench-hook.py --post`がmerge済み（`merged`）の投稿を`measuring`にしてキューから外します。`hold`した投稿（`held`）もキューに数えません。ベンチが起動できなかった・中断した・ベンチの外の原因で落ちたときは、`requeue`で測定中を待ち（mainのbranchにあれば`merged`）へ戻します。mainは投稿を好きな順で選び、好きに組み合わせて測ります（キューの並びは表示の順）。`/improve`で宣言したセッション（`.local/proposal-state/improve.json`）は、キュー全体の待ちが1件以下のときだけ新しい投稿を足せ（待っている自分の投稿の差し替えは足したことにならない）、それ以外は終了コード3で断られます。`wait`はキューに空きが出るまで2秒おきに投稿のfileを読み、空けば0、`--timeout`で2、`freeze`なら4で終わります。人間などimprove以外の投稿は制限しません。
+- **追従**: 投稿したbranchは採否が出るまでmainのものです。`sync`は`.local/proposal-sync`のworktree（detached）で、待っている投稿と保留の各branchへmainのbranchを`--no-ff`でmergeし、投稿の`commit`をそのmergeへ進めます（mainが読んだ印も移すので、追従しただけでは渡し直しません）。衝突しないものから順に行い、衝突したら衝突をworktreeに残して止まります。解消して`git add`し、もう一度`sync`するとcommitして続けます。投稿の後にbranchが動いたもの、投稿者のworktreeでcheckoutされたままのものは飛ばして理由を出します。
+- **積み重ね**: 取り込み前の投稿の上に積んだ投稿は、`submit`が`depends_on`に記録します。土台が`rejected`・`deferred`・取り下げになると、積んだ投稿も`deferred`で返ります。
+- **測らずに返す**: `decide rejected|deferred`は`--run`なしでも使えます。mainは、前提が崩れた投稿や確かめが足りない投稿を、ベンチにかけずに返せます。
+- **知らせ**: `submit`・`sync`・`hold`・`unhold`・`requeue`・`decide`・`withdraw`とhookは`proposal <submitted|synced|held|unheld|requeued|measuring|accepted|rejected|deferred|withdrawn>`、`improve`は`improve started`、`freeze`は`main freeze`の行を`.local/progress.log`へ書きます。mainは分析の後に`main analyzed`を、improveは`improve working`を`scripts/progress.py emit`で書きます。両者はMonitorでこのfileを追い、pollingしません。
+- **runの読み取り**: isuscopeの設定（`.isuscope/config.toml`、discoverが書き、Gitに入れない）とrunはrootにしかありません。`scripts/runs.sh`はisuscopeの読み取り（`list`・`brief`・`query`・`sql`・`series`・`states`・`change list / show`）だけをrootで実行し、worktreeから同じrunを読めるようにします。
+
+- **判断**: `decide`の判断は、mainが取り込んで測ったcommitに付きます。mainが取り込んだ後に投稿者が同じbranchへ投稿し直していれば、判断は取り込んだ前のcommit（`history`）に付き、今の投稿は未判断のまま残ります（seventhでは、座標のまとめ書きへの`accepted`が、後から投稿された未計測のMySQLの変更に付いた）。別のcommitに付けるときは`--commit`で指定します。`accepted`には測ったrun（`--run`）が要り、mainのbranchに入っていないcommitには付けられません。`merged`・`measuring`は取り込んだだけで終わりではないので、判断が返るまで`list`に残り、ベンチを起動するたびにmainへ「取り込んだが採否を返していない投稿」として示します。
 - **表示**: `.claude/skills/isucon-main/`はClaude Codeのmod（function hooks）です。信頼したworkspaceで開くと`.claude/skills/`から自動で読み込まれます（`claude plugin list`で確かめ、読み込まれていなければ`/reload-plugins`）。10秒ごとと各turnの後に`python3 scripts/main-session.py badge`を呼び、mainのセッションのプロンプトの上に`★ MAIN`の帯と待っている投稿の数を、status lineに`★ MAIN`を出します。ほかのセッションには`WORKTREE`（rootなら`NOT MAIN`）、branch、mainのセッション、自分の投稿の状態を、宣言が無ければ`/main`の案内を出します。表示のテストは`claude plugin test .claude/skills/isucon-main`、検査は`claude plugin validate .claude/skills/isucon-main`です。
 
 Rustを採用しているため、draftは`webapp/`全体ではなく、`webapp/rust`（`sync.rust.example.json`のbuild設定とCargo.tomlのbinary名つき）、Rustのsystemd unit、`webapp/sql`内の1MiB以下の`.sql`・`.sh`、nginx・MySQL設定だけを同期対象に提案します。初期データはnodeに残し、配布しません。初期状態でRust用unitがない場合（他言語のunitだけが動いている場合）はrestart commandを入れずWARNにするので、unitを`config/systemd/`へ作ってitemとcommandを足してから切り替えます。
@@ -150,11 +165,11 @@ local venvへ固定versionのAnsibleを導入し、SSH接続を確立してか�
 
 Ansibleのcontrollerは対象nodeのPythonに合わせて選びます。`bootstrap.sh`はSSH確立後に`scripts/ansible-runtime.py`で全nodeの`/usr/bin/python3`の版を調べ、`legacy`（ansible-core 2.19、target Python 3.8〜3.13）か`modern`（ansible-core 2.21、target Python 3.9〜3.14）を`.local/ansible-runtime.env`へ記録します。両方に収まらない組み合わせはinventoryを分ける必要があるため停止します。依存版は`ansible/requirements-<profile>.txt`、venvは`.local/ansible-venv-<profile>`です。controller自体はPython 3.12または3.13で動かし（`config/ansible-controller.env`の`PYTHON_BIN`）、準備では`./scripts/ansible-install.sh --all`で両方を用意しておきます。Ansibleが対象nodeへ配るhelper（`tree-digest.py`など）は、`tests/test_remote_helpers.py`でPython 3.8でも動くことを確認します。
 
-alp・slpのreleaseとFlameGraphのscriptは、準備のうちに`./scripts/fetch-observability-tools.sh --update`でrepo（`ansible/roles/observability/files/vendor/`、x86_64とarm64）へ取り込んであり、bootstrapはそれをnodeへcopyします（`observability_tools_source: bundled`）。nodeがGitHubへ出られない、`git`が無い、rate limitに当たる場合も同じ版が入ります。各nodeにGitHubから取らせる場合だけ`download`にします。版を上げたらscriptを再実行してcommitし、引数なしの実行でSHA256SUMSと照合します。計測toolの取得（package、alp・slp、FlameGraph）が失敗しても、log・時刻同期・journalなどの土台の設定は続けます。必須toolの欠落は`verify.yml`（`make bench-check`）が検出します。取得の失敗で止めたい場合は`observability_tools_strict: true`にし、取得だけをやり直すときは`--tags observability_acquire`を使います。perfは`perf stat -e task-clock -- true`で実際にeventを取れるかまで確認します。
+slpのreleaseとFlameGraphのscriptは、準備のうちに`./scripts/fetch-observability-tools.sh --update`でrepo（`ansible/roles/observability/files/vendor/`、x86_64とarm64）へ取り込んであり、bootstrapはそれをnodeへcopyします（`observability_tools_source: bundled`）。nodeがGitHubへ出られない、`git`が無い、rate limitに当たる場合も同じ版が入ります。各nodeにGitHubから取らせる場合だけ`download`にします。版を上げたらscriptを再実行してcommitし、引数なしの実行でSHA256SUMSと照合します。計測toolの取得（package、slp、FlameGraph）が失敗しても、log・時刻同期・journalなどの土台の設定は続けます。必須toolの欠落は`verify.yml`（`make bench-check`）が検出します。取得の失敗で止めたい場合は`observability_tools_strict: true`にし、取得だけをやり直すときは`--tags observability_acquire`を使います。access logの差分を集計する`isuscope-node`は、準備で`make isuscope-node`（`scripts/build-isuscope-node.sh`）がinstallしたisuscopeのsourceからmuslの静的binaryとして`.local/isuscope-node/`へ作り、bootstrapがnodeのarchitectureに合うものを`/usr/local/bin/isuscope-node`へcopyします。無ければbootstrapはそう表示して続けますが、`isuscope-node`は必須toolなので`verify.yml`（`make bench-check`）が失敗し、isuscopeの`alp` collectorも失敗します（awkとalpで集計する経路はありません）。isuscopeを入れ直したら作り直し、`./scripts/run-ansible-playbook.sh bootstrap.yml --tags observability_isuscope_node`で置き直します。置いたbinaryが手元のisuscopeと違うbuildなら、`isuscope doctor`（`make bench-check`）のpreflightが失敗します。perfは`perf stat -e task-clock -- true`で実際にeventを取れるかまで確認します。
 
 | 項目 | 内容 | 無効化する変数 |
 | --- | --- | --- |
-| 計測tool | `sysstat`、`ethtool`（ENAの上限超過counter）、実行中kernel用のperf、pin済みの`alp`・`slp`、FlameGraph scripts。off-CPU用の`bpfcc-tools`は既定では入れない | `observability_install_packages`、`observability_download_tools`（取得元は`observability_tools_source`、`observability_install_offcpu`で有効化） |
+| 計測tool | `sysstat`、`ethtool`（ENAの上限超過counter）、実行中kernel用のperf、pin済みの`slp`、FlameGraph scripts、準備でbuildした`isuscope-node`。off-CPU用の`bpfcc-tools`は既定では入れない | `observability_install_packages`、`observability_download_tools`（取得元は`observability_tools_source`、`observability_install_offcpu`で有効化） |
 | perf権限 | `kernel.perf_event_paranoid=-1`、`kernel.kptr_restrict=0` | — |
 | Nginx access log | `conf.d/00-isuscope-log.conf`でLTSVを`/var/log/nginx/isuscope-access.log`へ追加出力（既存のaccess_logは変えない）。sessionは`observability_nginx_session_source`で問題に合わせる | `observability_nginx_ltsv` |
 | MySQL slow log | 既定は無効。SQLはisuscopeがperformance_schemaのstatement digestから取る（`mysql-digest`）。digestが使えないMariaDBなどでだけtrueにし、`zzz-isuscope-slow.cnf`で`long_query_time=0`を`/var/log/mysql/isuscope-slow.log`へ出力する | `observability_mysql_slow_log`（既定false） |
@@ -246,6 +261,10 @@ make deploy
 make status
 ```
 
+`make final-check`・`make final-reboot`・`make final-db-late`（`scripts/final-verification.py`）は、終了前に主催者の追試で落ちる原因を確かめます（手順は`docs/guides/finish.md`）。問題ごとの値（envcheckのcommand、守るunitと管理ユーザー、確かめるURL、インスタンス種別と台数、再現スコアのしきい値）は`config/final-check.json`に書きます。確かめるunitは、その設定の`units`、`config/sync.json`の`systemctl`の行（is-active、enable、restartなど）、`config/systemd/`のunit、nginx・mysql・mariadbなどのmiddlewareで、nodeに無いunitと、止まっていてenableもされていないunitは数えません。結果は1行ずつOK・WARN・FAIL・INFOで出し、FAILがあれば1で終わります。再起動とDBの停止は操作lockの中で行い、mainのセッションだけが実行できます（`make final-check`は読み取りなので、どのセッションからも実行できます）。ISUCON9〜14の追試の手順と、実際に失格・事故になった例（enableしていないservice、DBより先に起動して落ちるアプリ、15分後に止められたDB、再起動で消える設定、追試の2回目で落ちるアプリ）から項目を選んでいます。
+
+`make status`（`scripts/status.sh`）は全nodeを並列に検査します。nodeごとに1回のSSHで、そのnodeの様子（load、メモリ、disk、失敗したunit、待ち受けport、直近30分のOOM kill、直近10分のerror、MySQLの実行中のSQL）と、`config/sync.json`の`status_commands`の結果を返します。node上の各行は5秒、node全体は`STATUS_TIMEOUT_SECONDS`（既定20秒）で打ち切り、応答しないnodeは「no answer」、接続できないnodeは「SSH failed」と出します。終了コードが失敗になるのは`status_commands`の失敗と、応答しない・接続できないnodeだけです。このSSHは使い回しの接続（ControlMaster）を使いません。固まったnodeへの古い接続に乗って待たないためです。`scripts/ssh-node.sh`はどの接続にも`ServerAliveInterval=5`・`ServerAliveCountMax=3`を付け、接続した後にnodeが応答しなくなった場合も約15秒で切ります（接続の段階は`ConnectTimeout=5`）。practice-14-seventhでは、メモリを使い切ったDBのnodeに時間制限の無い手打ちのsshが120秒固まり、portが開くのを待つloopで180秒ずつ待ってから原因に気付いていました。
+
 `import`は対象groupの全nodeでpathの内容・mode・symlinkをdigest比較し、不一致なら回収前に停止します。意図した差異だと確認した場合だけ`IMPORT_ALLOW_DIVERGENT=true ./scripts/import.sh`とし、itemごとの`source_node`から回収します。比較表は`.local/import-comparison.tsv`へ残ります。directory itemの`exclude`（itemからの相対path）は、digest比較と転送の両方から外します。draftのRust itemは`target`と`.git`を除外します。build成果物はGit管理もdeployもしないので、回収すると不要な転送が増え（practice-14では約720MiB）、node間でbuild状態が違うだけで不一致として止まるためです。実行時に必要なファイルが除外pathの下にあるなら、`exclude`から外して明示的に回収します。
 
 `deploy`は未コミットの同期対象を拒否します。全nodeでsudo、owner/group、空き容量、配置先をpreflightし、全fileをstagingし、build commandを完了してから切り替えます。一台でもbuild、配置、post-deploy検証に失敗すると、そのtransactionで触れた全対象を元へ戻し、live切替後なら`rollback_commands`で稼働プロセスも旧構成へ戻します。rollback自体が失敗した場合、stateは`rollback-failed`になります。
@@ -312,7 +331,7 @@ python3 scripts/isuxportal-bench.py probe --portal https://portal.example --targ
 - `make discover`が生成する`.isuscope/config.toml`のnode、role、SSH設定は生成物なので、直す場合はprovider入力とdraftを直して再生成する。roleは複数指定でき、collectorの対象nodeを選ぶtagとして使う
 - 負荷を担う少数のsystemd unitだけを`ISUSCOPE_SERVICE_UNITS`へ指定する。アクセスログとslow logのpathと形式（時刻、匿名化session、method、URIなど時系列に使うfield）を実環境へ合わせる
 - app binaryや単一の設定fileのpathを`isuscope_fingerprint_paths`へ指定すると、`fingerprint.sh`と一緒に各nodeへ冪等に配置される
-- 標準のlog collectorは`.1`〜`.5`と各`.gz`から開始時のlogを照合し、保持世代を越えたrotationや欠落は壊れた差分を返さず`unavailable`になる。非空logをalp/slpが1件も解析できない場合は設定不一致として`failed`になる
+- 標準のlog collectorは`.1`〜`.5`と各`.gz`から開始時のlogを照合し、保持世代を越えたrotationや欠落は壊れた差分を返さず`unavailable`になる。非空logをisuscope-node・slpが1件も解析できない場合は設定不一致として`failed`になる
 - `.isuscope/routes.toml`は1規則から固定のcanonical routeへ置換し、patternにcomma、replaceに`$1`などのcaptureを使わない。初回runで動的URLが残ったら`isuscope routes suggest <run-id> --output .local/route-suggestions.toml`の候補を確認して移す
 - 会話履歴とrunを紐付ける`[context.agent]`を使う場合は、新しいセッションを開始する前に共通hook（`~/.agent-history/agent_history.py`）を有効にしておく
 - remote変更は既存fileのbackup、設定検証、atomicな配置、必要最小限のreloadで行い、package導入や常駐agentは既存機能で代替できない場合だけ使う
