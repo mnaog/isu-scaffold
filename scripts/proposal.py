@@ -12,6 +12,7 @@ main only:
   proposal.py sync [BRANCH ...]            bring the waiting proposals up to main's branch; stops at a conflict
   proposal.py hold BRANCH --until TEXT [--note TEXT]   out of the queue until the constraint moves there
   proposal.py unhold BRANCH                back into the queue
+  proposal.py requeue [BRANCH ...]         measuring back to waiting, after a benchmark that did not measure them
   proposal.py decide BRANCH accepted|rejected|deferred [--run ID] [--note TEXT]
   proposal.py freeze [--off] [--note TEXT] stop improve's proposals before the end
 
@@ -67,7 +68,7 @@ FROZEN_EXIT = 4
 WAIT_INTERVAL_SECONDS = 2
 HINT = ('worktreeからの投稿です（mainのbranchへ衝突なく入ることを確かめ済み）。ベンチを待つ間に読み、'
         '次に測るものを選んだら`git merge --no-ff <branch>`して`make build`しておく。'
-        '互いに独立した投稿は1回のベンチでまとめて測ってよい（仮説に投稿ごとの期待を並べ、'
+        '何をどの順で、どう組み合わせて測るかはmainが決める（まとめたら、仮説に投稿ごとの期待を並べ、'
         '`isuscope analyze`を投稿ごとに`--change <branch>`で記録する）。測らずに返してもよい。採否は'
         '`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID> --note "理由"`'
         'で投稿者へ返す（isuscopeの`analyze --change`とは別に記録する）。')
@@ -416,6 +417,25 @@ def unhold(root, branch):
     return f'{branch}をキューへ戻した。'
 
 
+def requeue(root, branches=None):
+    """Measuring proposals back to the queue, when the benchmark did not start or did not measure them."""
+    base = main_session.main_branch(root)
+    back = []
+    for data in load_all(root):
+        if data.get('status') != 'measuring' or (branches and data['branch'] not in branches):
+            continue
+        status = 'merged' if is_ancestor(root, data['commit'], base) else (
+            'delivered' if data.get('delivered') else 'submitted')
+        data.update(status=status)
+        data.pop('measuring_since', None)
+        save(root, data)
+        back.append(data['branch'])
+    if not back:
+        raise Refused('測定中の投稿は無い。' if not branches else f'{", ".join(branches)}は測定中ではない。')
+    progress(root, 'requeued', ', '.join(back))
+    return f'キューへ戻した: {", ".join(back)}'
+
+
 def withdraw(root, branch):
     data = load(root, branch)
     if not data:
@@ -615,6 +635,8 @@ def main():
     p.add_argument('--note')
     p = sub.add_parser('unhold')
     p.add_argument('branch')
+    p = sub.add_parser('requeue')
+    p.add_argument('branches', nargs='*')
     p = sub.add_parser('decide')
     p.add_argument('branch')
     p.add_argument('decision', choices=DECISIONS)
@@ -629,7 +651,7 @@ def main():
     root = main_session.root_repo()
     _, session = main_session.current_session()
     try:
-        if args.action in ('pending', 'sync', 'hold', 'unhold', 'decide', 'freeze') \
+        if args.action in ('pending', 'sync', 'hold', 'unhold', 'requeue', 'decide', 'freeze') \
                 and main_session.is_main(root, session) is False:
             raise Refused('これはmain（/mainで宣言したセッション）の操作。')
         if args.action == 'submit':
@@ -642,6 +664,8 @@ def main():
             print(hold(root, args.branch, args.until, args.note))
         elif args.action == 'unhold':
             print(unhold(root, args.branch))
+        elif args.action == 'requeue':
+            print(requeue(root, args.branches))
         elif args.action == 'sync':
             print(sync(root, args.branches))
         elif args.action == 'wait':

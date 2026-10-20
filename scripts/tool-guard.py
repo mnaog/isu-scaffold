@@ -365,7 +365,7 @@ class Guard:
             raise Denied(MAIN_HINT)  # scripts/scout/main.py
         # Measuring and deciding a proposal is main's; improve and people submit and read.
         if script == 'proposal.py' and operands[:1] and operands[0] in {'decide', 'pending', 'sync', 'hold', 'unhold',
-                                                                         'freeze'}:
+                                                                         'requeue', 'freeze'}:
             raise Denied(MAIN_HINT)
         if program == 'make' and any(a in MAIN_MAKE_TARGETS for a in operands):
             raise Denied(MAIN_HINT)

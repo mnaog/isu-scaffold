@@ -23,7 +23,8 @@ allowed-tools: Bash(git rev-parse:*), Bash(python3 scripts/progress.py path), Ba
 
 投稿はmainのベンチを待つキューに入る。**improveが投稿できるのは、キュー全体の待ちが1件以下のときだけ**（人間など他の投稿は制限しない）。待ちが多いほど、投稿の前提にしたrunが古くなるため。
 
-- 待ちが2件以上なら`submit`は終了コード3で断る。そのときは`python3 scripts/proposal.py wait`を`run_in_background`で起動し、終わりの通知が来たら投稿する。待つ間も次の変更を進める。
+- 待ちが2件以上なら`submit`は終了コード3で断る。そのときは`python3 scripts/proposal.py wait`を`run_in_background`で起動し、終わりの通知が来たら投稿する。待つ間は、深掘り（次の制約や、予想と違った動きの調査）、時間のかかる実装、ただ待つ、のどれでもよい。
+- mainは投稿を好きな順で選び、まとめて測ることもある。キューの並びは測る順ではない。
 - 投稿したbranchは、採否が出るまでmainのもの。commitも投稿し直しもしない。mainがベンチを待つ間に、mainのbranchへ追従させ、衝突も解消する。直したくなったら新しいbranchで作り、古い方は`python3 scripts/proposal.py withdraw <branch>`で取り下げる。
 - キューと、保留（mainが「この制約が最大になったら測る」と寝かせたもの）は、`make proposals`とboardの上部で見える。
 - mainの`main freeze`（終了前の固定）の後は、`submit`も`wait`も終了コード4で止まる。新しい変更は作らない。
@@ -73,7 +74,7 @@ scoutと人間の報告は、rootの`.local/scout/reports.md`にある（上の4
    ```
 
    終了コード3（キューが埋まっている）なら、上の「キュー」のとおり`wait`をbackgroundで起動する。
-6. **すぐ次へ**: 投稿したbranchから離れ（次のbranchを切る）、採否を待たずに次の候補を進める。
+6. **次へ**: 投稿したbranchから離れる（次のbranchを切るか、`git switch --detach`）。採否を待たずに次の候補を進めてよい。調整の続きのように直前の結果を見ないと作れない変更は、結果を待つか、その間に別の制約を調べる。
 7. **返事を読む**: `rejected`・`deferred`は、mainの分析とrunで理由を確かめて次の案に活かす。採用された変更の上で、最大の制約がどこへ動いたかを見て次を選ぶ。
 
 ### kickoffの間

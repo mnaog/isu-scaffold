@@ -202,7 +202,7 @@ class MainSessionTest(unittest.TestCase):
         self.assertIn('main', refused.stderr)
         pulled = self.script('proposal.py', 'pending', session='S-main').stdout
         self.assertIn('### idea/cache', pulled)
-        self.assertIn('まとめて測ってよい', pulled)
+        self.assertIn('どう組み合わせて測るか', pulled)
         # Pulled once per commit, like the hook: the next benchmark does not hand it again.
         self.assertIn('新しい投稿は無い', self.script('proposal.py', 'pending', session='S-main').stdout)
         self.assertNotIn('idea/cache', self.deliver('S-main'))
@@ -295,7 +295,7 @@ class MainSessionTest(unittest.TestCase):
         self.change(improve, 'b.txt', 'b\n', 'Improve b')
         self.assertEqual(self.submit_from(improve, 'S-improve').returncode, 4)
         # Only main runs the queue.
-        for action in (['pending'], ['sync'], ['hold', 'human-3', '--until', 'x'], ['unhold', 'human-2'],
+        for action in (['pending'], ['sync'], ['hold', 'human-3', '--until', 'x'], ['unhold', 'human-2'], ['requeue'],
                        ['decide', 'human-3', 'accepted'], ['freeze', '--off']):
             with self.subTest(action=action):
                 refused = self.script('proposal.py', *action, cwd=improve, session='S-improve', check=False)
@@ -320,6 +320,13 @@ class MainSessionTest(unittest.TestCase):
         self.assertEqual(self.status('idea/cache'), 'measuring')
         self.assertIn(['proposal', 'measuring'], [line[:2] for line in self.progress()])
         self.assertIn('キューの待ち: 1件', self.script('proposal.py', 'list').stdout)
+        # The benchmark did not measure it (refused, aborted): main puts it back, still merged for the next one.
+        self.assertIn('idea/cache', self.script('proposal.py', 'requeue', session='S-main').stdout)
+        self.assertEqual(self.status('idea/cache'), 'merged')
+        self.assertIn(['proposal', 'requeued'], [line[:2] for line in self.progress()])
+        self.assertEqual(self.script('proposal.py', 'requeue', session='S-main', check=False).returncode, 1)
+        self.deliver('S-main')
+        self.assertEqual(self.status('idea/cache'), 'measuring')
         self.script('proposal.py', 'decide', 'idea/cache', 'rejected', '--run', 'ab12cd34', session='S-main')
         self.assertEqual(self.status('idea/stacked'), 'deferred')
         self.assertIn('idea/cache', self.script('proposal.py', 'show', 'idea/stacked').stdout)
