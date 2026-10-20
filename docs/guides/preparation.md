@@ -61,7 +61,7 @@
 ## 人間の作業場所
 
 - 開始用repoで`make worktree BRANCH=human PURPOSE="人間の作業場所"`を作っておく。人間は競技中ずっとここを触り、mainの作業ツリーには触れない。
-- 意見は`python3 scripts/scout/main.py post human "<本文>"`（急ぎは`--emergency`）、コードの変更は投稿（`scripts/proposal.py submit`）でmainへ渡す（[scout](../roles/scout.md)の「人間（human）」）。開始前にworktree `human`から`post human "接続確認（意見はまだない）"`を1回流し、`.local/scout/reports.md`に`## human`が出ることを確かめる。この報告は最初のベンチでmainに渡るので、渡っても困らない文面にしておく。
+- 意見は`python3 scripts/scout/main.py post human "<本文>"`（急ぎは`--emergency`）、コードの変更は投稿（`scripts/proposal.py submit`）でmainへ渡す。投稿は変更ごとのbranch（`git switch -c human-<名前> <mainのbranch>`）から行い、投稿したら別のbranchへ移る（投稿したbranchは、採否が出るまでmainが追従させる）（[scout](../roles/scout.md)の「人間（human）」）。開始前にworktree `human`から`post human "接続確認（意見はまだない）"`を1回流し、`.local/scout/reports.md`に`## human`が出ることを確かめる。この報告は最初のベンチでmainに渡るので、渡っても困らない文面にしておく。
 
 ## 開始後へ残すもの
 

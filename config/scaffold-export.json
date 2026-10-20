@@ -161,6 +161,7 @@
     "docs/roles/scout.md",
     "docs/roles/scout-prompt.txt",
     "scripts/board/scout.py",
+    "scripts/board/proposals.py",
     "scripts/bench-hook.py",
     "tests/test_bench_hook.py",
     "scripts/main-session.py",

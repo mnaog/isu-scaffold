@@ -233,6 +233,146 @@ class MainSessionTest(unittest.TestCase):
                 self.assertEqual(refused.returncode, 2)
                 self.assertIn('reads runs only', refused.stderr)
 
+    def add_worktree(self, name, branch=None):
+        path = Path(self.tmp.name) / f'repo-{name}'
+        self.git('worktree', 'add', '-q', '-b', branch or name, str(path))
+        return path
+
+    def change(self, path, file, text, message):
+        (path / file).write_text(text)
+        self.git('add', file, cwd=path)
+        self.git('commit', '-qm', message, cwd=path)
+
+    def submit_from(self, path, session, *extra):
+        return self.script('proposal.py', 'submit', '--hypothesis', f'{path.name}の仮説', '--expect', 'x',
+                           '--verified', 'y', *extra, cwd=path, session=session, check=False)
+
+    def status(self, branch):
+        return json.loads((self.repo / '.local/proposals' / (branch.replace('/', '__') + '.json')).read_text())['status']
+
+    def test_improve_adds_only_while_at_most_one_waits_and_waits_for_room(self):
+        self.script('main-session.py', 'claim', session='S-main')
+        improve = self.add_worktree('improve')
+        refused = self.script('proposal.py', 'improve', session='S-improve', check=False)
+        self.assertNotEqual(refused.returncode, 0)  # the root is main's
+        self.assertIn('improve', self.script('proposal.py', 'improve', cwd=improve, session='S-improve').stdout)
+        self.assertIn(['improve', 'started'], [line[:2] for line in self.progress()])
+        human = self.add_worktree('human')
+        for number in (1, 2):
+            self.git('switch', '-q', '-c', f'human-{number}', 'main', cwd=human)
+            self.change(human, f'h{number}.txt', 'h\n', f'Human {number}')
+            self.assertEqual(self.submit_from(human, 'S-human').returncode, 0)
+        # Two wait in the whole queue: improve may not add, people may.
+        self.git('switch', '-q', '-c', 'improve-a', 'main', cwd=improve)
+        self.change(improve, 'a.txt', 'a\n', 'Improve a')
+        full = self.submit_from(improve, 'S-improve')
+        self.assertEqual(full.returncode, 3, full.stderr)
+        self.assertIn('wait', full.stderr)
+        self.git('switch', '-q', '-c', 'human-3', 'main', cwd=human)
+        self.change(human, 'h3.txt', 'h\n', 'Human 3')
+        self.assertEqual(self.submit_from(human, 'S-human').returncode, 0)
+        timed_out = self.script('proposal.py', 'wait', '--timeout', '0', cwd=improve, session='S-improve', check=False)
+        self.assertEqual(timed_out.returncode, 2)
+        # main sends two back without measuring them; a held one does not count either.
+        self.assertIn('ベンチにかけずに', self.script('proposal.py', 'decide', 'human-1', 'rejected', '--note', '効かない',
+                                                 session='S-main').stdout)
+        self.script('proposal.py', 'hold', 'human-2', '--until', 'DBが最大の制約になったら', session='S-main')
+        self.assertEqual(self.status('human-2'), 'held')
+        self.assertIn('1件', self.script('proposal.py', 'wait', '--timeout', '0', cwd=improve, session='S-improve').stdout)
+        self.assertEqual(self.submit_from(improve, 'S-improve').returncode, 0)
+        submitted = json.loads((self.repo / '.local/proposals/improve-a.json').read_text())
+        self.assertEqual(submitted['author']['role'], 'improve')
+        # Now two wait again; replacing improve's own waiting proposal adds nothing, so it goes through.
+        self.change(improve, 'a.txt', 'a2\n', 'Improve a again')
+        self.assertEqual(self.submit_from(improve, 'S-improve').returncode, 0)
+        self.script('proposal.py', 'unhold', 'human-2', session='S-main')
+        self.assertIn('キューの待ち: 3件', self.script('proposal.py', 'list').stdout)
+        # Before the end main freezes: improve's proposals and its wait stop, people are still heard.
+        self.script('proposal.py', 'freeze', '--note', 'final', session='S-main')
+        self.assertIn(['main', 'freeze'], [line[:2] for line in self.progress()])
+        self.assertEqual(self.script('proposal.py', 'wait', cwd=improve, session='S-improve', check=False).returncode, 4)
+        self.git('switch', '-q', '-c', 'improve-b', 'main', cwd=improve)
+        self.change(improve, 'b.txt', 'b\n', 'Improve b')
+        self.assertEqual(self.submit_from(improve, 'S-improve').returncode, 4)
+        # Only main runs the queue.
+        for action in (['pending'], ['sync'], ['hold', 'human-3', '--until', 'x'], ['unhold', 'human-2'],
+                       ['decide', 'human-3', 'accepted'], ['freeze', '--off']):
+            with self.subTest(action=action):
+                refused = self.script('proposal.py', *action, cwd=improve, session='S-improve', check=False)
+                self.assertEqual(refused.returncode, 1)
+                self.assertIn('main', refused.stderr)
+                self.assertIn('mainのセッション', self.guard('python3 scripts/proposal.py ' + ' '.join(action), 'S-improve'))
+        self.assertIsNone(self.guard('python3 scripts/proposal.py wait', 'S-improve'))
+
+    def test_merged_proposals_are_measuring_from_the_benchmark_and_dependents_fall_with_their_base(self):
+        self.script('main-session.py', 'claim', session='S-main')
+        self.commit_in_worktree()
+        self.assertEqual(self.submit().returncode, 0)
+        # A proposal built on idea/cache before main takes it stands or falls with it.
+        stacked = Path(self.tmp.name) / 'repo-stacked'
+        self.git('worktree', 'add', '-q', '-b', 'idea/stacked', str(stacked), 'idea/cache')
+        self.change(stacked, 'more.txt', 'more\n', 'Stack on cache')
+        self.assertEqual(self.submit_from(stacked, 'S-worker').returncode, 0)
+        stored = json.loads((self.repo / '.local/proposals/idea__stacked.json').read_text())
+        self.assertEqual(stored['depends_on'], ['idea/cache'])
+        self.git('merge', '-q', '--no-ff', '-m', 'Take idea/cache', 'idea/cache')
+        self.assertIn('idea/cache', self.deliver('S-main'))
+        self.assertEqual(self.status('idea/cache'), 'measuring')
+        self.assertIn(['proposal', 'measuring'], [line[:2] for line in self.progress()])
+        self.assertIn('キューの待ち: 1件', self.script('proposal.py', 'list').stdout)
+        self.script('proposal.py', 'decide', 'idea/cache', 'rejected', '--run', 'ab12cd34', session='S-main')
+        self.assertEqual(self.status('idea/stacked'), 'deferred')
+        self.assertIn('idea/cache', self.script('proposal.py', 'show', 'idea/stacked').stdout)
+
+    def test_main_brings_waiting_proposals_up_to_its_branch_and_resolves_a_conflict(self):
+        self.script('main-session.py', 'claim', session='S-main')
+        self.commit_in_worktree()  # changes line b
+        self.assertEqual(self.submit().returncode, 0)
+        other = self.add_worktree('other', 'idea/other')
+        self.change(other, 'other.txt', 'o\n', 'Other file')
+        self.assertEqual(self.submit_from(other, 'S-worker').returncode, 0)
+        for path in (self.worktree, other):  # the authors move on; the branches are main's now
+            self.git('switch', '-q', '--detach', cwd=path)
+        (self.repo / 'app.txt').write_text('a\nbee\nc\n')
+        self.git('commit', '-qam', 'Main changes b too')
+        self.deliver('S-main')
+        self.assertEqual(self.status('idea/cache'), 'needs-sync')
+        busy = self.script('proposal.py', 'sync', session='S-main').stdout
+        self.assertIn('idea/other: main', busy)  # merged main into idea/other
+        self.assertIn('衝突', busy)
+        work = self.repo / '.local/proposal-sync'
+        self.assertIn('<<<<<<<', (work / 'app.txt').read_text())
+        refused = self.script('proposal.py', 'sync', session='S-main', check=False)
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn('解消中', refused.stderr)
+        (work / 'app.txt').write_text('a\nBEE\nc\n')
+        self.git('add', 'app.txt', cwd=work)
+        done = self.script('proposal.py', 'sync', session='S-main').stdout
+        self.assertIn('idea/cache: mainを取り込んだ', done)
+        # A conflicting proposal was not handed over before; now it merges cleanly, main reads it once.
+        self.assertEqual(self.status('idea/cache'), 'submitted')
+        stored = json.loads((self.repo / '.local/proposals/idea__cache.json').read_text())
+        self.assertEqual(stored['commit'], self.git('rev-parse', 'idea/cache').strip())
+        self.assertIn('### idea/cache', self.deliver('S-main'))
+        # One main had read keeps that mark across the sync: main made the merge, it is not news.
+        stored = json.loads((self.repo / '.local/proposals/idea__other.json').read_text())
+        self.assertEqual(stored['delivered']['S-main'], stored['commit'])
+        self.assertEqual(stored['commit'], self.git('rev-parse', 'idea/other').strip())
+        self.assertEqual(self.deliver('S-main'), '')
+        self.assertIn('最新', self.script('proposal.py', 'sync', session='S-main').stdout)
+        self.git('merge', '-q', '--no-ff', '-m', 'Take idea/cache', 'idea/cache')
+        self.assertEqual(self.git('show', 'main:app.txt'), 'a\nBEE\nc\n')
+        self.assertIn(['proposal', 'synced'], [line[:2] for line in self.progress()])
+
+    def test_a_branch_checked_out_by_its_author_is_left_alone(self):
+        self.script('main-session.py', 'claim', session='S-main')
+        self.commit_in_worktree('own.txt', 'own\n', 'Own file')
+        self.assertEqual(self.submit().returncode, 0)
+        (self.repo / 'main.txt').write_text('m\n')
+        self.git('add', 'main.txt')
+        self.git('commit', '-qm', 'Main moves on')
+        self.assertIn('checkoutされている', self.script('proposal.py', 'sync', session='S-main').stdout)
+
 
 if __name__ == '__main__':
     unittest.main()

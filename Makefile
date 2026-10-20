@@ -6,7 +6,7 @@ help:
 		'make kickoff                          コード先行回収・kickoff buildからdraft生成と検査まで進める' \
 		'make lanes                            claude -pのAI lane（indexes、local-env、scenarioなど）の状態を見る' \
 		'make worktree BRANCH=<name> PURPOSE="..."  目的つきで並行laneのworktreeを作る' \
-		'make proposals                        worktreeからmainへの投稿と、その状態を見る' \
+		'make proposals                        ベンチ待ちのキュー（worktreeからの投稿）と、その状態を見る' \
 		'CONFIRM_DRAFT=true make kickoff-apply  検査済みdraftを反映して完全importする' \
 		'make local-up / local-check / local-down  worktree専用のローカル実行環境を操作する' \
 		'make local-flow FLOW=<json> [FROM=<前のflow>]  決まった操作の列をローカルのアプリへ流す' \

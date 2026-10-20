@@ -1,19 +1,32 @@
 ---
 description: このセッションをimprove（最新runの最大の制約を調べて改善を作り、mainへ投稿し続けるセッション）にする
-allowed-tools: Bash(git rev-parse:*), Bash(python3 scripts/progress.py path), Bash(python3 scripts/main-session.py show)
+allowed-tools: Bash(git rev-parse:*), Bash(python3 scripts/progress.py path), Bash(python3 scripts/main-session.py show), Bash(python3 scripts/proposal.py improve)
 ---
 ## 今いる場所
 
 !`git rev-parse --abbrev-ref HEAD; git rev-parse --show-toplevel; git rev-parse --path-format=absolute --git-common-dir; python3 scripts/progress.py path; python3 scripts/main-session.py show`
 
+## improveの宣言
+
+!`python3 scripts/proposal.py improve`
+
 ## improveの役割
 
-目的は、点を上げる変更を途切れなくmainへ渡すこと。改善の調査・実装・ローカル検証・投稿を続ける。このセッションはmainではない。merge、どれを次に測るか、deploy、ベンチ、分析、採否はmain（`/main`）が行い、ほかのセッションのそれらの操作は`scripts/tool-guard.py`が止める。
+目的は、点を上げる変更を途切れなくmainへ渡すこと。改善の調査・実装・ローカル検証・投稿を続ける。このセッションはmainではない。merge、どれを次に測るか、deploy、ベンチ、分析、採否はmain（`/main`）が行い、ほかのセッションのそれらの操作は`scripts/tool-guard.py`が止める。mainは自分で考えて採否を決め、ベンチにかけずに返すこともある。
 
 前提は準備（`docs/guides/preparation.md`）で済んでいる。このセッションは、準備で作ったworktree `improve`で動いている。
 
-- 上の場所がworktreeでない（2行目と3行目の親が同じ）なら、そう人間へ伝えて止まる。mainの作業ツリーでcommitすると、mainのmergeやkickoffの自動commitと取り合いになるため。
-- mainの宣言が無ければ、そう人間へ伝える。投稿は宣言の後のmainへ渡るので、作業は始めてよい。
+- 宣言がエラー（worktreeでない）なら、そう人間へ伝えて止まる。mainの作業ツリーでcommitすると、mainのmergeやkickoffの自動commitと取り合いになるため。
+- mainの宣言が無ければ（上の`main-session.py show`）、そう人間へ伝える。投稿は宣言の後のmainへ渡るので、作業は始めてよい。
+
+### キュー
+
+投稿はmainのベンチを待つキューに入る。**improveが投稿できるのは、キュー全体の待ちが1件以下のときだけ**（人間など他の投稿は制限しない）。待ちが多いほど、投稿の前提にしたrunが古くなるため。
+
+- 待ちが2件以上なら`submit`は終了コード3で断る。そのときは`python3 scripts/proposal.py wait`を`run_in_background`で起動し、終わりの通知が来たら投稿する。待つ間も次の変更を進める。
+- 投稿したbranchは、採否が出るまでmainのもの。commitも投稿し直しもしない。mainがベンチを待つ間に、mainのbranchへ追従させ、衝突も解消する。直したくなったら新しいbranchで作り、古い方は`python3 scripts/proposal.py withdraw <branch>`で取り下げる。
+- キューと、保留（mainが「この制約が最大になったら測る」と寝かせたもの）は、`make proposals`とboardの上部で見える。
+- mainの`main freeze`（終了前の固定）の後は、`submit`も`wait`も終了コード4で止まる。新しい変更は作らない。
 
 ### 知らせの受け取り
 
@@ -24,12 +37,11 @@ allowed-tools: Bash(git rev-parse:*), Bash(python3 scripts/progress.py path), Ba
 | `kickoff code-ready` | コードとschemaが入った。読み始める（下の「kickoffの間」） |
 | `first-bench baseline-ready` | 初回runができた。mainの分析を待つ間にrunを読む |
 | `main analyzed` | mainが分析を記録した。行の要約（スコア、次の最大の制約）とrunの分析を読み、次の変更を選び直す |
-| `proposal accepted / rejected / deferred` | 自分の投稿なら、理由とrunを読む |
+| `proposal accepted / rejected / deferred` | 自分の投稿なら、理由とrunを読む。`deferred`には、積んでいた投稿が返されたもの、mainが追従できなかったものも入る |
+| `proposal held` | 自分の投稿が保留になった。条件（どの制約になったら測るか）を読む |
 | `lane:<名前> commit / complete` | laneの内容を確かめ、同じ変更を作らない |
 | `portal notice` | 当日の告知。作業に関わるか確かめる |
 | `main freeze` | 終了前。新しい変更を止める |
-
-始めたら`python3 scripts/progress.py emit improve started "<worktree>"`を1回出す。mainはこの行で、improveが動いていることを知る。
 
 ### runの読み方
 
@@ -43,12 +55,12 @@ scripts/runs.sh states sql latest "SELECT ..."
 scripts/runs.sh change list
 ```
 
-scoutと人間の報告は、rootの`.local/scout/reports.md`にある（上の4行目と同じ`.local`）。投稿の一覧は`make proposals`、laneは`make lanes`。
+scoutと人間の報告は、rootの`.local/scout/reports.md`にある（上の4行目と同じ`.local`）。laneは`make lanes`。
 
 ### 1つの変更の流れ
 
-1. **選ぶ**: mainの最新の分析が示す最大の制約から選ぶ（AGENTS.mdの「判断の原則」）。分析とrunが合わない、予想と違う動きがあるときは、その理由を先に調べる。ロジックを変える案（順位付け、待ちの条件、上限など）は、実装の前に状態ログで前提を確かめ、確かめた数字を仮説に書く。
-2. **branchを切る**: `git switch -c improve-<短い名前> <mainのbranch>`（mainのbranchは上の`main-session.py show`の`branch`）。前の投稿がまだ取り込まれておらず、その上に積む変更なら、そのbranchから切り、`--note`に依存を書く。切ったら`python3 scripts/progress.py emit improve working "<branch>: <狙う制約>"`を出す（mainが、次のベンチに入れるために待つかを決める）。
+1. **選ぶ**: mainの最新の分析が示す最大の制約から選ぶ（AGENTS.mdの「判断の原則」）。分析とrunが合わない、予想と違う動きがあるときは、その理由を先に調べる。ロジックを変える案（順位付け、待ちの条件、上限など）は、実装の前に状態ログで前提を確かめ、確かめた数字を仮説に書く。キューにある投稿と同じ箇所・同じ制約を狙わない。
+2. **branchを切る**: `git switch -c improve-<短い名前> <mainのbranch>`（mainのbranchは上の`main-session.py show`の`branch`）。取り込み前の自分の投稿の上に積むなら、そのbranchから切る（`submit`が積んだことを記録し、土台が返されると一緒に返る）。切ったら`python3 scripts/progress.py emit improve working "<branch>: <狙う制約>"`を出す。
 3. **作る**: 変更の目的ごとにcommitを分ける。メモリ化やキャッシュは、`docs/cache-design.md`に正本・反映・無効化・再構築を書いてから入れる。
 4. **確かめる**: `make build`、テスト、`make local-up / local-check`、状態の変わり方が変わる変更は`make local-flow`と状態ログの比較（`docs/local-development.md`）。サーバーの様子は`make status`と`scripts/ssh-node.sh <node> '<読むだけのcommand>'`で見てよいが、サーバー上を変えない。
 5. **投稿する**:
@@ -60,8 +72,9 @@ scoutと人間の報告は、rootの`.local/scout/reports.md`にある（上の4
      --verified "ローカルで確かめたこと"
    ```
 
-6. **すぐ次へ**: 採否を待たない。次の候補（同じ制約の次の手、2番目の制約）を新しいbranchで始める。mainは独立した投稿をまとめて1回のベンチで測ることがあるので、同じ箇所を触る変更を何本も並べない（`needs-sync`で返る）。
-7. **返事を読む**: `needs-sync`なら、そのbranchでmainのbranchをmergeして投稿し直す。`rejected`は、mainの分析とrunで理由を確かめて次の案に活かす。採用された変更の上で、最大の制約がどこへ動いたかを見て次を選ぶ。
+   終了コード3（キューが埋まっている）なら、上の「キュー」のとおり`wait`をbackgroundで起動する。
+6. **すぐ次へ**: 投稿したbranchから離れ（次のbranchを切る）、採否を待たずに次の候補を進める。
+7. **返事を読む**: `rejected`・`deferred`は、mainの分析とrunで理由を確かめて次の案に活かす。採用された変更の上で、最大の制約がどこへ動いたかを見て次を選ぶ。
 
 ### kickoffの間
 
@@ -71,8 +84,7 @@ scoutと人間の報告は、rootの`.local/scout/reports.md`にある（上の4
 
 ### しないこと
 
-- deploy・rollback・ベンチ・isuscopeの記録（analyze、change decide）・投稿の採否・laneとscoutの起動と停止。
-- rootの作業ツリーや、他のworktreeを変える。
-- mainの`main freeze`の行（終了前に新しい変更を止める）の後に、新しい変更を投稿する。止めた後は、mainから頼まれた修正だけを作る。
+- deploy・rollback・ベンチ・isuscopeの記録（analyze、change decide）・投稿の採否と保留・追従（`sync`）・laneとscoutの起動と停止。
+- rootの作業ツリーや、他のworktree、投稿したbranchを変える。
 
-今いる場所、mainの宣言、今の段階（kickoffの途中か、最新runとmainの分析があるか）を短く報告してから始める。
+今いる場所、mainの宣言、キューの待ち、今の段階（kickoffの途中か、最新runとmainの分析があるか）を短く報告してから始める。
