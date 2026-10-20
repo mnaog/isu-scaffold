@@ -61,8 +61,8 @@ LANE_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-
                 'status.sh', 'switch-language-service.sh', 'sync-check.sh', 'benchmark.sh',
                 'benchmark-prepare.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'kickoff-build.py',
                 'lane.py', 'review-draft.py', 'check-deployed-commit.sh', 'first-bench.sh',
-                'benchmark-markers.py', 'deploy-plan.py'}
-LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap',
+                'benchmark-markers.py', 'deploy-plan.py', 'final-verification.py'}
+LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'final-check', 'final-reboot', 'final-db-late', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap',
                      'bench-check', 'first-bench', 'tare', 'practice-check', 'practice-create', 'practice-status',
                      'practice-delete'}
 # Read-only isuscope commands; everything else records, benchmarks or reaches nodes.
@@ -75,8 +75,9 @@ MAIN_HINT = ('この操作はmainのセッション（/mainで宣言したセッ
 MAIN_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-apply.sh', 'bootstrap.sh',
                 'bootstrap-ssh.sh', 'configure-apply.sh', 'bench-check.sh', 'quick-import-code.sh',
                 'run-ansible-playbook.sh', 'switch-language-service.sh', 'benchmark.sh', 'benchmark-prepare.sh',
-                'benchmark-stop.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'first-bench.sh'}
-MAIN_MAKE_TARGETS = {'deploy', 'rollback', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap', 'bench-check',
+                'benchmark-stop.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'first-bench.sh',
+                'final-verification.py'}
+MAIN_MAKE_TARGETS = {'deploy', 'rollback', 'final-reboot', 'final-db-late', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap', 'bench-check',
                      'first-bench', 'tare', 'scout-start', 'scout-stop', 'practice-create', 'practice-delete'}
 LOCAL_URL = re.compile(r'^(?:https?://)?(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:/|$)')
 
@@ -350,7 +351,8 @@ class Guard:
             operands = operands[1:]
         # The adapter's --check and --probe never start a benchmark: the portal session (/portal)
         # builds the connection with them while main runs kickoff.
-        checking = script == 'benchmark.sh' and script_args[:1] in (['--check'], ['--probe'])
+        checking = ((script == 'benchmark.sh' and script_args[:1] in (['--check'], ['--probe']))
+                    or (script == 'final-verification.py' and script_args[:1] == ['check']))
         if ((script in MAIN_SCRIPTS and not checking) or program in {'ansible', 'ansible-playbook'}
                 or any('operation.lock' in a for a in args)):
             raise Denied(MAIN_HINT)

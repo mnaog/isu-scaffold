@@ -84,6 +84,8 @@
     "tests/test_benchmark_adapter.py",
     "scripts/ssh-node.sh",
     "scripts/status.sh",
+    "scripts/final-verification.py",
+    "tests/test_final_verification.py",
     "tests/test_status.py",
     "scripts/tool-guard.py",
     "tests/test_tool_guard.py",

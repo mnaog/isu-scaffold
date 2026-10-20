@@ -27,7 +27,7 @@
 | 準備（開始前） | 問題に依存しない道具・認証・検証を済ませる。chrome-debugでのポータルのログインと、worktree `portal`・`human`も作っておく | [準備](docs/guides/preparation.md) |
 | kickoff | portalのセッションがサーバーの情報とベンチ接続を作る間に、`make kickoff`をbackgroundで始めて`.local/progress.log`を追い、サーバーの起動、portalのmergeとlane `scenario`の起動、draftの判断を進める。完全importをcommitしたら、人間の確認を待たずに`make first-bench`で初回baselineを取る。laneのcommitを観測と照合して取り込み、`state-log`と`local-env`を取り込んだらlane `full-memory`で全メモリ化を並行させる | [kickoff](docs/guides/kickoff.md) |
 | 改善 | 観測された最大の制約から順に、継続的に構成を含めて変える | このファイルの「判断の原則」 |
-| 終了前 | 開始時に決めた時刻になったら新しい変更を止め、最終構成を固定し、確認のベンチを3回行う。時刻が決まっていなければ開始時に人間に確認する | [終了前](docs/guides/finish.md) |
+| 終了前 | 開始時に決めた時刻になったら新しい変更を止め、最終構成を固定し、確認のベンチを3回行う。追試で落ちる原因は`make final-check`・`make final-db-late`・`make final-reboot`で確かめる。時刻が決まっていなければ開始時に人間に確認する | [終了前](docs/guides/finish.md) |
 
 コマンドと各段階の契約（kickoff、deploy、rollback、import、ベンチ接続、isuscopeの設定）は[自動化の仕様](docs/reference/automation.md)を正とする。isuscopeの読み方は[isuscopeの使い方](docs/reference/isuscope.md)にある。
 

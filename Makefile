@@ -1,4 +1,4 @@
-.PHONY: help discover kickoff kickoff-apply build deploy rollback status bench-check first-bench tare lanes proposals builder-images isuscope-node
+.PHONY: help discover kickoff kickoff-apply build deploy rollback status bench-check first-bench tare lanes proposals builder-images isuscope-node final-check final-reboot final-db-late
 
 help:
 	@printf '%s\n' \
@@ -17,6 +17,9 @@ help:
 		'make deploy                           commit済みのlocal状態を全nodeへ反映する' \
 		'make rollback RELEASE=<id>            deploy前のremote状態へ戻す' \
 		'make status                           全nodeを並列に検査する（様子とstatus_commands、20秒で打ち切り）' \
+		'make final-check                      終了前: 再起動せずに追試で落ちる原因を確かめる' \
+		'make final-reboot                     終了前: 全台を再起動し、戻った後と数分後を確かめる' \
+		'make final-db-late                    終了前: DBが後から起動してもアプリが立ち直るか確かめる' \
 		'make bench-check                      ベンチ前の全node・isuscope検査を行う' \
 		'make first-bench                      import commit後にbench-check・初回survey-run・deployを続けて行う' \
 		'make tare                             baseline後に接続・fdの上限を上げる1 commitを作る' \
@@ -63,6 +66,15 @@ rollback:
 
 status:
 	@./scripts/status.sh
+
+final-check:
+	@python3 scripts/final-verification.py check
+
+final-reboot:
+	@python3 scripts/final-verification.py reboot --yes
+
+final-db-late:
+	@python3 scripts/final-verification.py db-late --yes
 
 tare:
 	@python3 scripts/tare.py
