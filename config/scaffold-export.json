@@ -67,6 +67,7 @@
     "ansible/roles/observability/tasks/tools.yml",
     ".gitattributes",
     "scripts/fetch-observability-tools.sh",
+    "scripts/build-isuscope-node.sh",
     "ansible/roles/observability/files/vendor/README.md",
     "ansible/roles/observability/files/vendor/SHA256SUMS",
     "ansible/roles/observability/files/vendor/alp_v1.0.21_linux_amd64.tar.gz",

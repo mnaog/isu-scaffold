@@ -114,6 +114,27 @@
         msg: "Measurement tools could not be installed"
       when: observability_tools_strict | bool
 
+# 準備で./scripts/build-isuscope-node.shが.local/isuscope-nodeへ作った静的binary。isuscopeのalp
+# collectorはこれでaccess logを集計し、無いか違うbuildならawkとalpで集計する（約15倍遅い）。
+- name: Install isuscope-node built while preparing
+  ansible.builtin.copy:
+    src: "{{ observability_isuscope_node_directory }}/isuscope-node-linux-{{ observability_go_arch[ansible_facts.architecture] }}"
+    dest: /usr/local/bin/isuscope-node
+    owner: root
+    group: root
+    mode: '0755'
+  when: (observability_isuscope_node_directory ~ '/isuscope-node-linux-' ~ observability_go_arch[ansible_facts.architecture]) is file
+  tags: [observability_isuscope_node]
+
+- name: Report that the alp collector falls back to awk and alp
+  ansible.builtin.debug:
+    msg: >-
+      isuscope-node is not built in {{ observability_isuscope_node_directory }}; the alp collector
+      aggregates with awk and alp (about 15x slower). Run ./scripts/build-isuscope-node.sh, then
+      ./scripts/run-ansible-playbook.sh bootstrap.yml --tags observability_isuscope_node.
+  when: not ((observability_isuscope_node_directory ~ '/isuscope-node-linux-' ~ observability_go_arch[ansible_facts.architecture]) is file)
+  tags: [observability_isuscope_node]
+
 - name: Allow system-wide perf sampling with kernel symbols
   ansible.builtin.copy:
     dest: /etc/sysctl.d/60-isuscope-perf.conf

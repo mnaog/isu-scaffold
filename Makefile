@@ -1,4 +1,4 @@
-.PHONY: help discover kickoff kickoff-apply build deploy rollback status bench-check first-bench tare lanes proposals builder-images
+.PHONY: help discover kickoff kickoff-apply build deploy rollback status bench-check first-bench tare lanes proposals builder-images isuscope-node
 
 help:
 	@printf '%s\n' \
@@ -13,6 +13,7 @@ help:
 		'make local-state-log NAME=<名前>       ローカルのアプリから状態ログを取り出す' \
 		'make build                            ローカルでLinux向けRust成果物を準備する' \
 		'make builder-images                   準備: 候補baseのRust builder imageを事前に作る' \
+		'make isuscope-node                    準備: nodeでaccess logを集計するisuscope-nodeをbuildする' \
 		'make deploy                           commit済みのlocal状態を全nodeへ反映する' \
 		'make rollback RELEASE=<id>            deploy前のremote状態へ戻す' \
 		'make status                           全application nodeを検査する' \
@@ -38,6 +39,9 @@ proposals:
 
 builder-images:
 	@python3 scripts/local-build.py prepare-images
+
+isuscope-node:
+	@./scripts/build-isuscope-node.sh
 
 worktree:
 	@test -n "$(BRANCH)" || { echo 'BRANCH=<name>を指定してください' >&2; exit 2; }

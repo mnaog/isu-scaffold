@@ -31,6 +31,8 @@ observability_probe_commands:
   - stackcollapse-perf.pl
   - flamegraph.pl
   - offcputime-bpfcc
+  # 準備でbuildしたaccess logの集計binary。無ければalp collectorはawkとalpで集計する。
+  - isuscope-node
 observability_required_commands: [sar, perf, alp, slp]
 
 # 事前に.local/toolsへ用意したbinary/scriptを全application nodeへ配置できます。
