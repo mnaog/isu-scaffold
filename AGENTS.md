@@ -19,7 +19,7 @@
 - メモリ化やキャッシュは、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築を`docs/cache-design.md`へ書いてから入れる。
 - これまでの履歴、差分から、最大の制約をよく調査して考える。予想と反する事象や、説明のつかない動きは、急所である可能性が高いためよく調査する。
 - ロジックを変える案（順位付け、待ちの条件、上限など）は、実装の前に状態ログ（`brief`の`states`欄、`isuscope states`）で前提を確かめ、確かめた数字を仮説に書く。状態についての疑問のために、計測を足すrunを回さない。
-- 採否はスコアで決める。スコアが下がった変更を処理指標や状態ログ上の改善を理由に残すことは許容するが、原則的には不採用とする。同じ構成でもスコアは振れる。振れ幅はmainが空き時間に最新の採用構成で測っておき、投稿のrunは1回で、その幅（`python3 scripts/spread.py`）と比べて決める。幅の内側の差は点の差として扱わず、狙った観測値と害の有無で決める。本質をよく考える。
+- 採否はスコアで決める。スコアが下がった変更を処理指標や状態ログ上の改善を理由に残すことは許容するが、原則的には不採用とする。同じ構成でもスコアは振れるので、振れ幅はmainが空き時間に最新の採用構成で測っておき、投稿は1回のrunで決める。本質をよく考える。
 
 ## 流れ
 | 段階 | すること | 手順書 |
@@ -49,7 +49,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 - 待つ間に、hookが渡す見取り図（`docs/benchmark-scenario.md`）とworktreeからの投稿を読み、今回の仮説と次の候補が得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめる。ベンチの仕様について観測と食い違う記述があれば、該当箇所を直す（runの結果や改善の効果は書かない）。次に測るものを選んだら、投稿なら`git merge --no-ff <branch>`し、`make build`しておく。sleepやpollingで待たない。
 - Monitorで`.local/progress.log`を追う。`benchmark slow`が出たら、アプリ・nginxのerror logとnodeの負荷を確かめ、止まっていれば`scripts/benchmark-stop.sh`で止める。
 - nodeの異常（deploy後にアプリが立ち上がらない、nodeが応答しない、ベンチが止まる）は、手打ちのsshより先に`make status`で全nodeを見る。全nodeを並列に20秒で打ち切り、応答しないnode、メモリ・load・失敗したunit・待ち受けport・直近のOOMとerror・MySQLの実行中のSQLを1回で返す。手でsshするときも`scripts/ssh-node.sh <node> '<command>'`を使い、待つloopには回数の上限を付ける。
-- 同じ構成はisuscopeが測り直さない。測り直す（`--repeat "理由"`）のは、mainが空き時間に最新の採用構成の振れ幅を調べるときと、終了前の確認だけ。投稿やlaneの変更は1回のrunで、`python3 scripts/spread.py --base <基準> --score <得点>`の振れ幅と比べて決め、2度回さない。
+- 同じ構成はisuscopeが測り直さない。測り直す（`--repeat "理由"`）のは、mainが空き時間に最新の採用構成の振れ幅を調べるときと、終了前の確認だけ。投稿やlaneの変更は1回のrunで決め、2度回さない。
 - 最後にdeployしたcommitとHEADがずれていると、ベンチは始まらない。commitして`make deploy`するか、HEADを戻す。
 
 ### isuscopeで読む・比べる

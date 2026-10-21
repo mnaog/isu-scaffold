@@ -16,9 +16,9 @@ mainは、ベンチを止めずに回し、その結果を正しく読む。改�
 - **次に測るものの判断**: 下の「キュー」。何をまとめて測るか、測らずに返すか、保留にするかをmainが決める。
 - **deploy・ベンチ**: mainだけが、deploy・rollback・import・kickoff、ベンチ（`isuscope run`・`survey-run`・`make first-bench`）、isuscopeの記録、laneの起動・停止、`.local/operation.lock`を使う。ほかのセッションからの同じ操作は`scripts/tool-guard.py`が止める。
 - **分析と採否**: runを分析し、最大の制約を特定して`isuscope analyze`に書く。improveはこの分析から次の変更を選ぶので、根拠（run ID、node別の観測値、状態ログの数字）と、次の最大の制約をはっきり書く。
-- **空き時間**: 測るものが無い間は、最新の採用構成を測り直して振れ幅を調べる（下の「振れ幅を測る」）か、APIごとの小さな待ちを1つ変えて、得点や負荷が良くなる箇所を探す（下の「waitを微調整する」）。どちらに使うかは、そのときの状況で決める。投稿は振れ幅と比べて1回のrunで決め、2度は回さない。
+- **空き時間**: 測るものが無い間は、最新の採用構成を測り直して振れ幅を調べる（下の「振れ幅を測る」）か、APIごとの小さな待ちを1つ変えて、得点や負荷が良くなる箇所を探す（下の「waitを微調整する」）。どちらに使うかは、そのときの状況で決める。投稿は1回のrunで決め、2度は回さない。
 
-improveが動いているかは、`.local/progress.log`の`improve started`（`/improve`が宣言すると出る）・`improve working`の行と、ボードの「作業中」で分かる。improveが動いていない（人間が起動していない、止まっている）間も、mainは実装しない。人間に`/improve`の起動を頼み、その間は振れ幅を測る。
+improveが動いているかは、`.local/progress.log`の`improve started`（`/improve`が宣言すると出る）・`improve working`の行と、ボードの「作業中」で分かる。improveが動いていない（人間が起動していない、止まっている）間も、mainは実装しない。人間に`/improve`の起動を頼み、その間のベンチは空き時間と同じように使う。
 
 ### キュー
 
@@ -37,7 +37,7 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 
 - **測らずに返す**: 前提が崩れた、最新の分析と合わない、確かめが足りない（ローカルでbuild・checkしていない、`docs/cache-design.md`を書かずにメモリ化している）なら、`python3 scripts/proposal.py decide <branch> rejected|deferred --note "理由"`（`--run`なし）で返す。積んでいた投稿も一緒に返る。
 - **保留にする**: 今の最大の制約ではない場所を速くする変更は、今測ると効かないと出やすい。未mergeの投稿を`python3 scripts/proposal.py hold <branch> --until "<この制約が最大になったら>"`で寝かせ、分析で制約がそこへ移ったら`unhold`で戻して先に測る。取り込み済み・測定中の投稿はholdできない。採否を決め、必要ならコードをrevertする。
-- **まとめる**: 好きな組み合わせで1回のベンチにまとめてよい。投稿ごとの期待する観測値で、それぞれに採否を付けられるかを目安にする。整合性や永続化の時機を変える投稿や、同じ制約を狙う投稿を一緒にすると、落ちたときにどれが原因か分かりにくい（seventhでは、FxHashと待ち時間の戻しを一緒に入れて落ち、戻すのに3 runかかった）。
+- **まとめる**: 好きな組み合わせで1回のベンチにまとめてよい。投稿ごとの期待する観測値で、それぞれに採否を付けられるかを目安にする。整合性や永続化の時機を変える投稿や、同じ制約を狙う投稿を一緒にすると、落ちたときにどれが原因か分かりにくい。
 - **FAIL・整合性エラーの修正**: 土台が揺れていると、ほかの測定が信用できない。早めに入れる。
 
 ### ベンチの1周
@@ -48,7 +48,7 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
    - hookが渡す見取り図・新しい投稿を読む。
    - `python3 scripts/proposal.py sync`で、待っている投稿と保留をmainのbranchへ追従させる（`.local/proposal-sync`のworktreeで、各branchへmainのbranchをmergeする）。衝突すると、そこで止まって衝突を残す。解消して`git add`し、もう一度`sync`する。処理の意味がぶつかる（同じ処理を別々に変えている）なら、`git merge --abort`して投稿者へ返す。投稿者のworktreeでcheckoutされたままのbranchは追従できないので、投稿者に離れてもらう。
    - キューを見直し、次に測るものを決めておく。
-4. 終わったら分析する。いつもの回は短く（スコア、効いた・効かなかった観測、次の最大の制約）、予想と違った回だけ深く掘る。採否は、`python3 scripts/spread.py --base <基準の構成のrunの短縮ID> --score <得点>`で、基準の構成の平均と振れ幅に照らして1回で決める。振れ幅より上なら採用、下なら不採用。振れの内側なら点の差としては扱わず、投稿の期待した観測値が狙いどおりに動き、ほかの指標に害が無ければ採用、そうでなければ不採用にする。同じ投稿を2度測らない。スコアが予想と違う方向に動いた回（速くしたのに下がった、FAILした）は、採否を決める前に`isuscope query RUN --base BASE --view transitions`でベンチ側の動きの変化（どの遷移の割合・間隔が変わったか）を見る。分かったベンチの仕様は、見取り図の該当する節へ書く。seventhでは分析がベンチ以外で一番長く（60 runで52分）、改善の周回を決めていた。投稿ごとに`isuscope analyze RUN <判定> --analysis "..." --change <branch> --decision ...`を記録し（同じrunへ追記できる）、`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID> --note "理由"`で返す。不採用は`git revert -m 1 <mergeのcommit>`で戻す。ベンチが起動できなかった、中断した、ベンチの外の原因で落ちたときは、`python3 scripts/proposal.py requeue`で測定中の投稿を待ちへ戻す（投稿が原因で落ちたなら、戻さずに`rejected`で返す）。
+4. 終わったら分析し、採否を決める。同じ投稿を2度測らない。スコアが予想と違う方向に動いた回（速くしたのに下がった、FAILした）は、採否を決める前に`isuscope query RUN --base BASE --view transitions`でベンチ側の動きの変化（どの遷移の割合・間隔が変わったか）を見る。分かったベンチの仕様は、見取り図の該当する節へ書く。投稿ごとに`isuscope analyze RUN <判定> --analysis "..." --change <branch> --decision ...`を記録し（同じrunへ追記できる）、`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID> --note "理由"`で返す。不採用は`git revert -m 1 <mergeのcommit>`で戻す。ベンチが起動できなかった、中断した、ベンチの外の原因で落ちたときは、`python3 scripts/proposal.py requeue`で測定中の投稿を待ちへ戻す（投稿が原因で落ちたなら、戻さずに`rejected`で返す）。
 5. 分析を記録したら、キューの残り（待ちと保留）の前提がまだ成り立つかを見直し、返す・保留にする・保留から戻すを決める。そのうえでimproveへ知らせる。
 
    ```bash
@@ -59,27 +59,27 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 
 ### 振れ幅を測る
 
-同じ構成でも点は振れる（ninthでは同じ構成の3回で643388〜720355、平均から−7%〜+4%）。投稿のrunを2回ずつ回すと周回が倍になるので、振れ幅は、ベンチが空いている時間に、最新の採用構成で先に測っておく。
+同じ構成でも点は振れる。投稿のrunを2回ずつ回すと周回が倍になるので、振れ幅は、ベンチが空いている時間に、最新の採用構成で先に測っておく。
 
 - 測る構成: 最後に採否を決めた後のHEAD（測定中・merge済みで未測定の投稿が無い状態）。不採用をrevertした後なら、deployが最良構成へ戻っていることを確かめる。
 - 起動: `isuscope run --repeat "振れ幅: <基準の短縮ID>と同じ構成" --hypothesis "振れ幅を測る（同じ構成のn回目）"`を`run_in_background`で。終わったら`isuscope analyze RUN skipped --analysis "振れ幅: ..."`を短く記録する（`--change`は付けない）。
 - 回数: 決めない。
-- 読み方: `python3 scripts/spread.py`がHEADの構成の回数・平均・平均からのずれと、判定の目安を出す。その構成をまだ測り直していない間は、直近に測り直した構成の振れ幅を借りる。
+- 読み方: `python3 scripts/spread.py`（`--base <短縮ID>`でそのrunの構成）が、同じ構成の得点・平均・平均からのずれを出す。その構成をまだ測り直していない間は、直近に2回以上測った構成も並べる。
 - 測り直しは、この振れ幅のためと終了前の確認（`docs/guides/finish.md`）だけにする。投稿・laneの変更は1回で決める。
 
 ### waitを微調整する
 
 応答の中身を変えずに、APIごとに少しだけ待たせる。ベンチの利用者は応答を待ってから次の要求を出すので、点にならない要求（空振りのpolling、繰り返しの一覧取得）が減り、ベンチとサーバーの手が点になる処理へ回ることがある。効くかどうかは構成ごとに変わるので、投稿が無いときに1回に1つずつ試し、結果をisuscopeに残して次の判断に使う。
 
-- **仕組み**: lane `waits`がアプリに口を入れる（`config/waits/waits.rs`。表が空なら何もしない）。表は環境変数`ISUCON_WAITS`で、アプリのunitが読むEnvironmentFileに置く。起動時に1度だけ読むので、deploy（buildなし、アプリの再起動）で変わり、OSの再起動・主催者の追試でも同じ表で動く。1つの規則は2000msまで。
+- **仕組み**: lane `waits`がアプリに口を入れる（`config/waits/waits.rs`。表が空なら何もしない）。表は環境変数`ISUCON_WAITS`で、アプリのunitが読むEnvironmentFileに置く。起動時に1度だけ読むので、deploy（buildなし、アプリの再起動）で変わり、OSの再起動・主催者の追試でも同じ表で動く。
 - **前に試したこと**: `python3 scripts/waits.py history`で、前に試した値と結果を読める。
 - **1回の手順**:
-  1. `python3 scripts/waits.py set GET /api/... --after 30`（routeはisuscopeのroute名をそのまま書ける）
+  1. `python3 scripts/waits.py set GET /api/... --after <ms>`（routeはisuscopeのroute名をそのまま書ける）
   2. commitして`make deploy`
-  3. `isuscope run --tag wait --tag "wait:GET /api/..." --hypothesis "wait: GET /api/... after 0→30ms。基準 <短縮ID>（平均、±x%）。期待: このrouteの回数が減り、<点になる処理>が増える"`をbackgroundで起動する
-- **採否**: 投稿と同じく、`python3 scripts/spread.py --base <基準> --score <得点>`と照らして1回で決める。不採用なら`git revert`で前の値へ戻す。
+  3. `isuscope run --tag wait --tag "wait:GET /api/..." --hypothesis "wait: GET /api/... after <前>→<後>ms。基準 <短縮ID>。期待: ..."`をbackgroundで起動する
+- **採否**: 投稿と同じく1回で決める。不採用なら`git revert`で前の値へ戻す。
   - 分析は`isuscope analyze RUN supported|rejected --change <waits.py setが出すwait-...のID> --decision accepted|rejected`で記録する。
-  - 本文には、基準の平均からの差、振れ幅の上・内側・下、そのrouteと点になるrouteの回数の変化（`isuscope query RUN --base BASE --view http --label route=...`）、`--view transitions`で変わった遷移を書く。後で`waits.py history`と`isuscope change list`で読み返すので、構成（基準の短縮ID）と値を必ず入れる。
+  - 本文には、基準からの得点の差、そのrouteと点になるrouteの回数の変化（`isuscope query RUN --base BASE --view http --label route=...`）、`--view transitions`で変わった遷移を書く。後で`waits.py history`と`isuscope change list`で読み返すので、構成（基準の短縮ID）と値を必ず入れる。
 - **終了前**: 表は最終構成の一部で、計測ではないので外さない。`docs/guides/finish.md`の手順で、最後のrunの`identity.waits`と`waits.py show`が採用した表と一致することを確かめる。
 
 ### kickoffの間
