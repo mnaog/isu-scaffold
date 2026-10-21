@@ -55,10 +55,12 @@ proposals' own hypothesis and expected observation, so the run reads as the queu
 """
 import argparse
 import contextlib
+from datetime import datetime
 import importlib.util
 import io
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -83,8 +85,8 @@ HINT = ('worktreeからの投稿です（mainのbranchへ衝突なく入るこ�
         '何をどの順で、どう組み合わせて測るかはmainが決める（まとめたら、仮説に投稿ごとの期待を並べ、'
         '`isuscope analyze`を投稿ごとに`--change <branch>`で記録する）。測るまでもなく棄却できるなら測らずに棄却してよい。'
         '取り込んでbuild・deployが通らなければmainが直し、直せなければ棄却する（投稿者へ戻さない）。採否は'
-        '`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID> --note "理由"`'
-        'で記録する（isuscopeの`analyze --change`とは別に記録する）。判断はmainへ取り込んで測ったcommitに付く。')
+        '`isuscope analyze RUN ... --change <branch> --decision accepted|rejected|deferred`で記録し、hookが投稿へ写す'
+        '（runの無い判断だけ`python3 scripts/proposal.py decide`）。判断はmainへ取り込んで測ったcommitに付く。')
 GROUPS = {'measuring': '測定中', 'merged': '次のベンチ', 'delivered': '待ち', 'submitted': '待ち（未読）',
           'needs-sync': '待ち（衝突）', 'held': '保留'}
 
@@ -387,6 +389,94 @@ def refresh(root, data, base=None):
     return data
 
 
+def change_id(branch):
+    """The isuscope change a proposal is recorded under: `analyze --change <this>`."""
+    return re.sub(r'[^A-Za-z0-9_-]', '-', branch)[:100]
+
+
+def instant(stamp):
+    """A time from this script (local, %z) or from isuscope (UTC, fractions, Z)."""
+    try:
+        return datetime.strptime(stamp, '%Y-%m-%dT%H:%M:%S%z')
+    except (TypeError, ValueError):
+        pass
+    try:
+        return datetime.fromisoformat(re.sub(r'\.(\d{6})\d*', r'.\1', stamp.replace('Z', '+00:00')))
+    except (AttributeError, ValueError):
+        return None
+
+
+def latest_change_decision(root, branch):
+    found = []
+    for path in (Path(root) / 'isuscope-data/changes' / change_id(branch) / 'decisions').glob('*.json'):
+        try:
+            record = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        if instant(record.get('created_at')):
+            found.append(record)
+    return max(found, key=lambda record: instant(record['created_at'])) if found else None
+
+
+def adopt_decisions(root):
+    """Copy what main decided with `isuscope analyze --change <branch> --decision ...` onto the proposals
+    being measured, so main writes each decision once. A provisional change keeps its code: accepted."""
+    adopted = []
+    for data in load_all(root):
+        if data.get('status') != 'measuring':
+            continue
+        record = latest_change_decision(root, data['branch'])
+        since = instant(data.get('measuring_since'))
+        if not record or (since and instant(record['created_at']) < since):
+            continue
+        decision = 'accepted' if record.get('status') == 'provisional' else record.get('status')
+        if decision not in DECISIONS:
+            continue
+        run = next((e.get('run_id', '')[-8:] for e in record.get('evidence') or []), '')
+        decide(root, data['branch'], decision, run=run or None, note=record.get('reason') or '')
+        adopted.append(f'{data["branch"]} {decision}')
+    return adopted
+
+
+def latest_analysis(root):
+    """The run analyzed last and that analysis, from isuscope's run records."""
+    best = None
+    for path in (Path(root) / 'isuscope-data/runs').glob('*/run.json'):
+        try:
+            run = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        analysis = (run.get('analyses') or [None])[-1]
+        at = instant((analysis or {}).get('created_at'))
+        if at and (best is None or at > best[0]):
+            best = (at, run, analysis)
+    return best[1:] if best else (None, None)
+
+
+def after_analysis(root):
+    """After main records an analysis: the decisions reach the proposals, and once nothing measured waits
+    for one, improve hears of the analysis (`main analyzed`) without main writing it again."""
+    lines = []
+    if adopted := adopt_decisions(root):
+        lines.append('isuscopeの採否を投稿へ写した: ' + ', '.join(adopted))
+    if waiting := [data['branch'] for data in load_all(root) if data.get('status') == 'measuring']:
+        lines.append(f'まだ採否の無い測定中の投稿: {", ".join(waiting)}（`isuscope analyze RUN ... --change '
+                     f'{change_id(waiting[0])} --decision ...`で記録する）。')
+        return '\n'.join(lines)
+    run, analysis = latest_analysis(root)
+    if not run:
+        return '\n'.join(lines)
+    state = state_dir(root) / 'analyzed.json'
+    told = read_json(state) or {}
+    if told.get('analysis') != analysis.get('id'):
+        score = (run.get('benchmark') or {}).get('score')
+        body = ' '.join((analysis.get('body') or '').split())
+        progress_emit(root, 'main', 'analyzed', f'{run["id"][-8:]} score {score}: {body[:300]}')
+        write_json(state, {'analysis': analysis.get('id'), 'run': run['id']})
+        lines.append(f'improveへ`main analyzed`（run {run["id"][-8:]}の分析の冒頭）を出した。')
+    return '\n'.join(lines)
+
+
 def start_measuring(root):
     """At a benchmark's start: the proposals main merged leave the queue and wait for the decision."""
     base = main_session.main_branch(root)
@@ -529,7 +619,7 @@ def decide(root, branch, decision, run=None, note=None, commit=None):
     entry = data if target == data['commit'] else next(e for e in data['history'] if e['commit'] == target)
     entry.update(status=decision, decision=record)
     save(root, data)
-    progress(root, decision, f'{branch} {target[:8]} run {run or "-"}: {note or ""}')
+    progress(root, decision, f'{branch} {target[:8]} run {run or "-"}: {(note or "")[:200]}')
     if entry is not data:
         return (f'{branch}の{target[:8]}（{base}へ取り込んだcommit）を{decision}にした。'
                 f'今の投稿{data["commit"][:8]}はその後に出たもので、判断は付けていない。')
@@ -803,6 +893,7 @@ def main():
     p.add_argument('--run')
     p.add_argument('--note')
     p.add_argument('--commit', help='判断を付けるcommit（既定は、mainへ取り込んだ未判断のcommit）')
+    sub.add_parser('adopt')
     p = sub.add_parser('freeze')
     p.add_argument('--off', action='store_true')
     p.add_argument('--note')
@@ -841,6 +932,8 @@ def main():
             print(freeze(root, args.off, args.note))
         elif args.action == 'working':
             print(working(root, args.what, args.done))
+        elif args.action == 'adopt':
+            print(after_analysis(root) or 'measuring中の投稿も、新しい分析も無い。')
         elif args.action == 'hypothesis':
             print(run_hypothesis(root))
         elif args.action == 'withdraw':

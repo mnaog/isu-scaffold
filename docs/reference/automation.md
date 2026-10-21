@@ -81,6 +81,7 @@ python3 scripts/proposal.py pending                                     # main�
 python3 scripts/proposal.py sync [<branch> ...]                         # mainが、待っている投稿をmainのbranchへ追従させる
 python3 scripts/proposal.py hold <branch> --until "条件" / unhold <branch>   # mainが、条件付きで寝かせる・戻す
 python3 scripts/proposal.py requeue [<branch> ...]                      # mainが、測れなかったベンチの測定中を待ちへ戻す
+python3 scripts/proposal.py adopt                                       # isuscope analyzeの採否を投稿へ写す（通常はhookが行う）
 python3 scripts/proposal.py decide <branch> accepted|rejected|deferred [--run <短縮ID>] --note "理由"   # mainが
 python3 scripts/proposal.py freeze [--off] --note "..."                  # mainが、終了前にimproveの投稿を止める
 scripts/runs.sh brief latest                    # worktreeから、rootのrunを読む（isuscopeの読み取りだけ）
@@ -94,7 +95,7 @@ python3 scripts/proposal.py withdraw [<branch>]
 - **追従**: 投稿したbranchは採否が出るまでmainのものです。`sync`は`.local/proposal-sync`のworktree（detached）で、待っている投稿と保留の各branchへmainのbranchを`--no-ff`でmergeし、投稿の`commit`をそのmergeへ進めます（mainが読んだ印も移すので、追従しただけでは渡し直しません）。衝突しないものから順に行い、衝突したら衝突をworktreeに残して止まります。解消して`git add`し、もう一度`sync`するとcommitして続けます。投稿の後にbranchが動いたもの、どこかのworktreeでcheckoutされているものは飛ばして理由を出します（`submit`は投稿者のworktreeをbranchから外すので、通常は起きません）。
 - **積み重ね**: 取り込み前の投稿の上に積んだ投稿は、`submit`が`depends_on`に記録します。土台が`rejected`・`deferred`・取り下げになると、積んだ投稿も`deferred`でキューから外れます。
 - **投稿者へ戻さない**: mainは、取り込めない投稿（衝突、取り込んで通らなくなったbuild・deploy）を直せるなら直し、直せないなら棄却します。`decide rejected`は`--run`なしでも使えるので、測るまでもなく棄却できる投稿はベンチにかけずに棄却します。
-- **知らせ**: `submit`・`sync`・`hold`・`unhold`・`requeue`・`decide`・`withdraw`とhookは`proposal <submitted|synced|held|unheld|requeued|measuring|accepted|rejected|deferred|withdrawn>`、`improve`は`improve started`、`freeze`は`main freeze`の行を`.local/progress.log`へ書きます。mainは分析の後に`main analyzed`を`scripts/progress.py emit`で書きます。`working`は`improve working`（improve）か`worktree working`（それ以外）を書きます。両者はMonitorでこのfileを追い、pollingしません。
+- **知らせ**: `submit`・`sync`・`hold`・`unhold`・`requeue`・`decide`・`withdraw`とhookは`proposal <submitted|synced|held|unheld|requeued|measuring|accepted|rejected|deferred|withdrawn>`、`improve`は`improve started`、`freeze`は`main freeze`の行を`.local/progress.log`へ書きます。`main analyzed`は、mainの`isuscope analyze`の後にhook（`bench-hook.py --post`）が書きます。hookはまず、測定中の投稿ごとに、isuscopeのchange（IDはbranch名。`/`などは`-`に置き換える）に測定の開始より後に記録された採否を`decide`で写します（`provisional`はコードを残すので`accepted`）。測定中の投稿が残っていなければ、最後に記録された分析のrun・得点・冒頭を1回だけ書きます。測らずに棄却する、終了前に`deferred`にするなど、runの無い判断だけ`decide`を直接使います。`working`は`improve working`（improve）か`worktree working`（それ以外）を書きます。両者はMonitorでこのfileを追い、pollingしません。
 - **作業中**: worktree（improve・human・`make worktree`）は、作り始めたら`working "<狙う制約と変更>"`で`.local/proposal-state/working/<worktree名>.json`（名前は、repo名-の後ろ。`human`など）へ書き、ボードの「作業中」に出します。`submit`で消え、`working --done`でも消せます。worktreeが無くなったものは出しません。rootからは書けません（mainは実装しない）。
 - **仮説**: `hypothesis`は、次のベンチへ取り込んだ（`merged`の）投稿の仮説と期待する観測値を`<branch>: <仮説> 期待: <観測値>`で並べます。mainは`isuscope run --hypothesis "$(python3 scripts/proposal.py hypothesis)"`で使い、runの仮説をベンチ待ちに出ていた文と同じにします。
 - **runの読み取り**: isuscopeの設定（`.isuscope/config.toml`、discoverが書き、Gitに入れない）とrunはrootにしかありません。`scripts/runs.sh`はisuscopeの読み取り（`list`・`brief`・`query`・`sql`・`series`・`states`・`change list / show`）だけをrootで実行し、worktreeから同じrunを読めるようにします。

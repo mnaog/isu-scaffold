@@ -37,7 +37,7 @@ allowed-tools: Bash(git rev-parse:*), Bash(python3 scripts/progress.py path), Ba
 | --- | --- |
 | `kickoff code-ready` | コードとschemaが入った。読み始める（下の「kickoffの間」） |
 | `first-bench baseline-ready` | 初回runができた。mainの分析を待つ間にrunを読む |
-| `main analyzed` | mainが分析を記録した。行の要約（スコア、次の最大の制約）とrunの分析を読み、次の変更を選び直す |
+| `main analyzed` | mainが分析を記録した。行（run・スコア・分析の冒頭）とrunの分析を読み、次の変更を選び直す |
 | `proposal accepted / rejected / deferred` | 自分の投稿なら、理由とrunを読む。`deferred`には、積んでいた投稿が棄却・取り下げになって一緒に外れたものも入る |
 | `proposal held` | 自分の投稿が保留になった。条件（どの制約になったら測るか）を読む |
 | `lane:<名前> commit / complete` | laneの内容を確かめ、同じ変更を作らない |

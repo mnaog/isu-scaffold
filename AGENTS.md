@@ -45,7 +45,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 - ベンチ（`isuscope run`・`survey-run`・`make first-bench`）は、Bashの`run_in_background`で起動する。foregroundの起動はhookが止める。`kickoff`・`bootstrap`・`bench-check`・laneからは起動しない。
 - PASSしたrunは、分析を記録するまで次のベンチを始められない。仮説の判定（`supported`・`rejected`・`inconclusive`・`skipped`）と変更の採否（`accepted`・`provisional`・`rejected`・`deferred`）は別に記録する。
 - 何をどの順で測るか、どう組み合わせるかはmainが決める。まとめて測るときは、仮説に変更ごとの期待を並べ、`analyze`を変更ごとに`--change`で同じrunへ記録する。整合性や永続化の時機を変える変更、同じ制約を狙う変更を一緒にすると、落ちたときに原因を切り分けにくい。
-- 分析を記録したら、`python3 scripts/progress.py emit main analyzed "<短縮ID> score <n>。次の最大の制約: ..."`でimproveへ知らせる。
+- 投稿の採否は`analyze --change <branch> --decision ...`だけで記録する。hookがそれを投稿へ写し、採否がそろうと分析の冒頭を`main analyzed`の行でimproveへ知らせる。
 - 待つ間に、hookが渡す見取り図（`docs/benchmark-scenario.md`）とworktreeからの投稿を読み、今回の仮説と次の候補が得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめる。ベンチの仕様について観測と食い違う記述があれば、該当箇所を直す（runの結果や改善の効果は書かない）。次に測るものを選んだら、投稿なら`git merge --no-ff <branch>`し、`make build`しておく。sleepやpollingで待たない。
 - Monitorで`.local/progress.log`を追う。`benchmark slow`が出たら、アプリ・nginxのerror logとnodeの負荷を確かめ、止まっていれば`scripts/benchmark-stop.sh`で止める。
 - nodeの異常（deploy後にアプリが立ち上がらない、nodeが応答しない、ベンチが止まる）は、手打ちのsshより先に`make status`で全nodeを見る。全nodeを並列に20秒で打ち切り、応答しないnode、メモリ・load・失敗したunit・待ち受けport・直近のOOMとerror・MySQLの実行中のSQLを1回で返す。手でsshするときも`scripts/ssh-node.sh <node> '<command>'`を使い、待つloopには回数の上限を付ける。

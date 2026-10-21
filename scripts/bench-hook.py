@@ -13,6 +13,10 @@ Bash call. Heredoc bodies and `bash -n` syntax checks do not count as starting o
   merge into main's branch cleanly, so main picks and builds the next candidate while the
   benchmark runs. While a main is declared (/main) only main gets them. The proposals main merged
   for this benchmark leave the queue as measuring. It prints nothing while there is neither.
+- `--post` after `isuscope analyze` copies the decisions main recorded there (`--change <branch>
+  --decision ...`) onto the proposals being measured, and once none waits for a decision, writes
+  `main analyzed` for improve from that analysis (scripts/proposal.py after_analysis), so main
+  writes each decision and each analysis once.
 - When a benchmark starts, it also drops the state-log caches of all but the latest runs and keeps
   isuscope-data out of Spotlight and Time Machine (scripts/isuscope-prune.py).
 
@@ -71,26 +75,48 @@ class BenchmarkFinder(tool_guard.Guard):
         self.lane = None
         self.drop_heredocs = True
         self.benchmarks = []
+        self.analyses = []
 
     def seen(self, program, args):
         if is_benchmark(program, args):
             self.benchmarks.append(program)
+        elif program == 'isuscope' and args[:1] == ['analyze'] and not {'-h', '--help'} & set(args):
+            self.analyses.append(program)
 
 
-def starts_benchmark(root, payload):
-    """True when this Bash call starts a benchmark, and whether it runs in the background."""
+def find(root, payload):
+    """The benchmarks and analyses a Bash call runs, or None for any other call."""
     tool_input = payload.get('tool_input')
     if payload.get('tool_name') != 'Bash' or not isinstance(tool_input, dict):
-        return False, False
+        return None
     command = tool_guard.command_of(tool_input)
     if not isinstance(command, str):
-        return False, False
+        return None
     finder = BenchmarkFinder(root)
     try:
         finder.check_shell(command)
     except tool_guard.Denied:
-        pass  # tool-guard decides on its own rules; only the benchmarks matter here
-    return bool(finder.benchmarks), tool_input.get('run_in_background') is True
+        pass  # tool-guard decides on its own rules; only what runs matters here
+    return finder
+
+
+def starts_benchmark(root, payload):
+    """True when this Bash call starts a benchmark, and whether it runs in the background."""
+    finder = find(root, payload)
+    if finder is None:
+        return False, False
+    return bool(finder.benchmarks), payload['tool_input'].get('run_in_background') is True
+
+
+def analyzed(root, payload):
+    """After `isuscope analyze` by main: decisions onto the proposals, and `main analyzed` for improve."""
+    finder = find(root, payload)
+    if finder is None or not finder.analyses:
+        return None
+    repo = main_worktree(root)
+    if proposal.main_session.is_main(repo, str(payload.get('session_id') or '')) is False:
+        return None
+    return proposal.after_analysis(repo) or None
 
 
 def main_worktree(root):
@@ -147,6 +173,9 @@ def main():
         root = Path(os.environ.get('TOOL_GUARD_ROOT') or ROOT)
         benchmark, background = starts_benchmark(root, payload)
         if not benchmark:
+            if '--post' in sys.argv and (context := analyzed(root, payload)):
+                print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUse', 'additionalContext': context}},
+                                 ensure_ascii=False))
             return 0
         if '--pre' in sys.argv and not background:
             output = {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',

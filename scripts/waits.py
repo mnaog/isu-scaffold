@@ -197,10 +197,29 @@ def set_rule(root, args):
     print(f'  後: "{after}"')
     route = f'{args.method.upper()} {args.path}'
     record = change_id(changed) if changed and changed['ms'] else f'wait-{re.sub(r"[^a-z0-9]+", "-", route.lower()).strip("-")}-off'
+    phase = 'before' if args.before is not None else 'after'
+    what = 'off' if args.off else f'{phase} {phase_ms(before, args, phase)}→{phase_ms(after, args, phase)}ms'
+    base = latest_run(root_repo())
     print('次:')
     print(f'  git commit -am "Wait {route}: {describe(changed) if changed and changed["ms"] else "off"}" && make deploy')
-    print(f'  isuscope run --tag wait --tag "wait:{route}" --hypothesis "wait: {route} ..."（run_in_background）')
+    print(f'  isuscope run --tag wait --tag "wait:{route}" --hypothesis "wait: {route} {what}。'
+          f'基準 {base or "<短縮ID>"}。期待: "（run_in_background。期待だけを書き足す）')
     print(f'  isuscope analyze RUN ... --change {record[:100]} --decision accepted|rejected')
+
+
+def phase_ms(spec, args, phase):
+    """The ms the route waits in that phase, in a table spec (0 when it has no rule there)."""
+    key = (args.method.upper(), path_key(args.path), phase)
+    for rule in parse(spec):
+        if (rule['method'], path_key(rule['path']), rule['phase']) == key:
+            return rule['ms']
+    return 0
+
+
+def latest_run(root):
+    """The last finished run: the configuration a wait is tried against."""
+    runs = [run for run in load_runs(root) if run['passed']]
+    return runs[-1]['short'] if runs else None
 
 
 def load_runs(root):

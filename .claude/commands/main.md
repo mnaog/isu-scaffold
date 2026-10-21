@@ -47,12 +47,8 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
    - hookが渡す見取り図・新しい投稿を読む。
    - `python3 scripts/proposal.py sync`で、待っている投稿と保留をmainのbranchへ追従させる（`.local/proposal-sync`のworktreeで、各branchへmainのbranchをmergeする）。衝突すると、そこで止まって衝突を残す。解消して`git add`し、もう一度`sync`する。処理の意味がぶつかる（同じ処理を別々に変えている）ときも、両方の意図を残して解く。解けないなら`git merge --abort`して棄却する。投稿したbranchは`submit`が投稿者のworktreeから外すので、そのまま追従できる。
    - キューを見直し、次に測るものを決めておく。
-4. 終わったら分析し、採否を決める。同じ投稿を2度測らない。スコアが予想と違う方向に動いた回（速くしたのに下がった、FAILした）は、採否を決める前に`isuscope query RUN --base BASE --view transitions`でベンチ側の動きの変化（どの遷移の割合・間隔が変わったか）を見る。分かったベンチの仕様は、見取り図の該当する節へ書く。投稿ごとに`isuscope analyze RUN <判定> --analysis "..." --change <branch> --decision ...`を記録し（同じrunへ追記できる）、`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID> --note "理由"`で記録する。不採用は`git revert -m 1 <mergeのcommit>`で戻す。ベンチが起動できなかった、中断した、ベンチの外の原因で落ちたときは、`python3 scripts/proposal.py requeue`で測定中の投稿を待ちへ戻す（投稿が原因で落ちたなら、直せるなら直して測り、直せないなら`rejected`にする）。
-5. 分析を記録したら、キューの残り（待ちと保留）の前提がまだ成り立つかを見直し、棄却する・保留にする・保留を解くを決める。そのうえでimproveへ知らせる。
-
-   ```bash
-   python3 scripts/progress.py emit main analyzed "<短縮ID> score <n>（<base>比 ±x%）。次の最大の制約: <node・処理・数字>"
-   ```
+4. 終わったら分析し、採否を決める。同じ投稿を2度測らない。スコアが予想と違う方向に動いた回（速くしたのに下がった、FAILした）は、採否を決める前に`isuscope query RUN --base BASE --view transitions`でベンチ側の動きの変化（どの遷移の割合・間隔が変わったか）を見る。分かったベンチの仕様は、見取り図の該当する節へ書く。採否は投稿ごとに`isuscope analyze RUN <判定> --analysis "..." --change <branch> --decision ...`で記録する（同じrunへ追記できる）。mainが書くのはこれだけで、hookがその採否・理由・runを投稿へ写す。不採用は`git revert -m 1 <mergeのcommit>`で戻す。ベンチが起動できなかった、中断した、ベンチの外の原因で落ちたときは、`python3 scripts/proposal.py requeue`で測定中の投稿を待ちへ戻す（投稿が原因で落ちたなら、直せるなら直して測り、直せないなら`rejected`にする）。
+5. 分析を記録したら、キューの残り（待ちと保留）の前提がまだ成り立つかを見直し、棄却する・保留にする・保留を解くを決める。測定中の投稿の採否がそろうと、hookが最後の分析の冒頭を`main analyzed`の行でimproveへ知らせる。improveはまずこの行を読むので、分析の冒頭に次の最大の制約が分かるように書く。
 
 6. すぐ1へ戻る。待っている投稿が無ければ`python3 scripts/proposal.py pending`で確かめ、それでも無ければ、振れ幅の測り直しかwaitの微調整のどちらかにベンチを使う（どちらにするかはそのときの状況で決める）。`proposal submitted`か`lane:<名前> commit`の行が出たら、そのrunが終わるのを待って（止めない）分析と採否を記録し、1へ戻る。sleepやpollingで待たない。`improve working`・`worktree working`の行とボードの「作業中」で、もうすぐ届く投稿が分かる。
 
@@ -75,7 +71,7 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 - **1回の手順**:
   1. `python3 scripts/waits.py set GET /api/... --after <ms>`（routeはisuscopeのroute名をそのまま書ける）
   2. commitして`make deploy`
-  3. `isuscope run --tag wait --tag "wait:GET /api/..." --hypothesis "wait: GET /api/... after <前>→<後>ms。基準 <短縮ID>。期待: ..."`をbackgroundで起動する
+  3. `waits.py set`が出す`isuscope run`（tagと、変えた値・基準を埋めた仮説）に期待を書き足し、backgroundで起動する
 - **採否**: 投稿と同じく1回で決める。不採用なら`git revert`で前の値へ戻す。
   - 分析は`isuscope analyze RUN supported|rejected --change <waits.py setが出すwait-...のID> --decision accepted|rejected`で記録する。
   - 本文は、後で`waits.py history`と`isuscope change list`から読み返したときに、何を変えて何が起きたかが分かり、次に試す値を決められるように書く。

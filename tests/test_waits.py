@@ -54,13 +54,14 @@ class WaitsScriptTests(unittest.TestCase):
         self.assertNotIn('waits', self.identity())  # no table, no field
         out = self.waits('set', 'GET', '/api/app/nearby-chairs', '--after', '30').stdout
         self.assertIn('--change wait-get-api-app-nearby-chairs-after-30', out)
+        self.assertIn('--hypothesis "wait: GET /api/app/nearby-chairs after 0→30ms。基準 <短縮ID>。期待: "', out)
         env = (self.repo / 'config/app/env.sh').read_text()
         self.assertIn('ISUCON_DB_HOST=127.0.0.1\n', env)
         self.assertIn('ISUCON_WAITS="GET /api/app/nearby-chairs after 30"', env)
         # The same route and phase is replaced, a placeholder spelled differently is the same route.
         self.waits('set', 'POST', '/api/app/rides/:ride_id/evaluation', '--before', '5')
         self.waits('set', 'post', '/api/app/rides/{id}/evaluation', '--before', '10')
-        self.waits('set', 'GET', '/api/app/nearby-chairs', '--after', '100')
+        self.assertIn('after 30→100ms', self.waits('set', 'GET', '/api/app/nearby-chairs', '--after', '100').stdout)
         self.assertEqual((self.repo / 'config/app/env.sh').read_text().count('ISUCON_WAITS='), 1)
         line = [l for l in (self.repo / 'config/app/env.sh').read_text().splitlines() if l.startswith('ISUCON_WAITS=')]
         self.assertEqual(line, ['ISUCON_WAITS="POST /api/app/rides/{id}/evaluation before 10;GET /api/app/nearby-chairs after 100"'])

@@ -122,6 +122,44 @@ class ProposalDecisionTest(unittest.TestCase):
         self.assertIn(later[:8], self.decide('accepted', '--run', 'cccc3333').stdout)
         self.assertNotIn('採否を記録していない', self.deliver())
 
+    def analyze(self):
+        payload = {'tool_name': 'Bash', 'session_id': 'S-main', 'cwd': str(self.repo),
+                   'tool_input': {'command': 'isuscope analyze 0000aaaa supported --analysis x --change human --decision accepted'}}
+        result = subprocess.run(['python3', str(HOOK), '--post'], input=json.dumps(payload), text=True,
+                                capture_output=True, env=dict(self.env, TOOL_GUARD_ROOT=str(self.repo)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)['hookSpecificOutput']['additionalContext'] if result.stdout.strip() else ''
+
+    def test_the_decision_main_records_in_isuscope_reaches_the_proposal_and_improve_hears_once(self):
+        self.commit_and_submit('insert.txt', '座標をまとめてINSERTする')
+        self.deliver()
+        self.git('merge', '-q', '--no-ff', '-m', 'Take human', 'human')
+        self.deliver()  # the benchmark starts: human is measured
+        self.assertEqual(json.loads((self.repo / '.local/proposals/human.json').read_text())['status'], 'measuring')
+        run_id = '01a15900-0000-7000-8000-00000000aaaa'
+        run = self.repo / 'isuscope-data/runs' / run_id
+        run.mkdir(parents=True)
+        (run / 'run.json').write_text(json.dumps({'id': run_id, 'benchmark': {'score': 720000}, 'analyses': [
+            {'id': 'an-1', 'created_at': '2999-01-01T00:00:00.123456789Z', 'verdict': 'supported',
+             'body': '次の最大の制約: POST /coordinate のDB書き込み。\nINSERTが1/5に減った。'}]}))
+        decisions = self.repo / 'isuscope-data/changes/human/decisions'
+        decisions.mkdir(parents=True)
+        (decisions / 'd.json').write_text(json.dumps({
+            'id': 'd1', 'change_id': 'human', 'created_at': '2999-01-01T00:00:00.123456789Z', 'status': 'accepted',
+            'reason': 'INSERTが1/5に減り、score +12%', 'evidence': [{'run_id': run_id}]}))
+
+        told = self.analyze()
+        self.assertIn('human accepted', told)
+        self.assertIn('main analyzed', told)
+        data = json.loads((self.repo / '.local/proposals/human.json').read_text())
+        self.assertEqual((data['status'], data['decision']['run']), ('accepted', '0000aaaa'))
+        self.assertIn('score +12%', data['decision']['note'])
+        lines = (self.repo / '.local/progress.log').read_text().splitlines()
+        analyzed = [line for line in lines if '\tmain\tanalyzed\t' in line]
+        self.assertEqual(len(analyzed), 1)
+        self.assertIn('0000aaaa score 720000: 次の最大の制約: POST /coordinate', analyzed[0])
+        self.assertEqual(self.analyze(), '')  # the same analysis again: nothing new to copy or tell
+
 
 if __name__ == '__main__':
     unittest.main()
