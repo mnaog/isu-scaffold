@@ -83,7 +83,7 @@
       "timeout_minutes": 30
     },
     "full-memory": {
-      "purpose": "全メモリ化: 状態をすべてメモリに置き、読み取りと判定をメモリで行い、書き込みはDBに残す書き換えを作り、最後に最新のmainを1度だけ取り込む（先行回収と同時に始まり、state-log・local-envが終わったら自分で取り込んで確かめる。その後にmainへ入った変更はmainが戻してimproveへ返す）",
+      "purpose": "全メモリ化: 状態をすべてメモリに置き、読み取りと判定をメモリで行い、書き込みはDBに残す書き換えを作り、最後に最新のmainを1度だけ取り込む（先行回収と同時に始まり、state-log・local-envが終わったら自分で取り込んで確かめる。その後にmainへ入った変更はmainが取り込むときに移す）",
       "prompt": "config/lanes/full-memory.md",
       "joins": [
         "state-log",

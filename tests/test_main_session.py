@@ -206,7 +206,7 @@ class MainSessionTest(unittest.TestCase):
         self.assertIn('DBの読み取り', queue['working'][0]['what'])
         self.assertIn('worktree\tworking\tidea idea/cache', (self.repo / '.local/progress.log').read_text())
         self.commit_in_worktree()
-        self.submit()
+        self.assertNotIn('宣言していなかった', self.submit().stdout)
         self.assertFalse((self.repo / '.local/proposal-state/working/idea.json').exists())
         # The run's hypothesis is the merged proposal's own.
         self.assertNotEqual(self.script('proposal.py', 'hypothesis', check=False).returncode, 0)
@@ -214,6 +214,9 @@ class MainSessionTest(unittest.TestCase):
         out = self.script('proposal.py', 'hypothesis').stdout.strip()
         self.assertTrue(out.startswith('idea/cache: bを大文字にすると速い'), out)
         self.assertIn('期待: ', out)
+        # Submitting without having said so first is reminded to say so next time.
+        self.commit_in_worktree(text='a\nB\nC\n', message='Change c')
+        self.assertIn('宣言していなかった', self.submit().stdout)
         self.script('proposal.py', 'working', 'もう1つ', cwd=self.worktree, session='S-worker')
         self.script('proposal.py', 'working', '--done', cwd=self.worktree, session='S-worker')
         self.assertFalse((self.repo / '.local/proposal-state/working/idea.json').exists())

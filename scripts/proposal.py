@@ -326,12 +326,17 @@ def submit(root, hypothesis, expect, verified, note=None, cwd=None, based_on=Non
     save(root, data)
     progress(root, 'submitted', f'{branch} {commit[:8]}: {hypothesis[:120]}')
     # Submitted, it shows in the queue; it no longer needs saying what this worktree works on.
-    (working_dir(root) / f'{worktree_name(root, here)}.json').unlink(missing_ok=True)
+    declared = working_dir(root) / f'{worktree_name(root, here)}.json'
+    was_working = declared.is_file()
+    declared.unlink(missing_ok=True)
     waiting = queue_count(root)
     lines = [f'{branch}（{commit[:8]}）を投稿した。キューの待ちは{waiting}件。mainが次にベンチを起動したときに渡る。'
              '状態は`python3 scripts/proposal.py show`。投稿したbranchは採否が出るまでmainのもの（commitしない）。']
     if depends_on:
         lines.append(f'取り込まれていない投稿の上に積んでいる: {", ".join(depends_on)}（それが返されると一緒に返る）。')
+    if not was_working:
+        lines.append('作り始めたときに`python3 scripts/proposal.py working "<狙う制約と変更>"`で宣言していなかった。'
+                     '次の変更からは、作り始めたら宣言する（ボードの「作業中」に出て、誰が何をしているか分かる）。')
     return '\n'.join(lines)
 
 

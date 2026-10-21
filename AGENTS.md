@@ -25,7 +25,7 @@
 | 段階 | すること | 手順書 |
 | --- | --- | --- |
 | 準備（開始前） | 問題に依存しない道具・認証・検証を済ませる。chrome-debugでのポータルのログインと、worktree `portal`・`improve`・`human`も作っておく | [準備](docs/guides/preparation.md) |
-| kickoff | 開始と同時に、人間がroot（`/main`）・worktree `portal`（`/portal`）・worktree `improve`（`/improve`）でセッションを起動する。portalのセッションがサーバーの情報とベンチ接続を作る間に、`make kickoff`をbackgroundで始めて`.local/progress.log`を追い、サーバーの起動、portalのmergeとlane `scenario`の起動、draftの判断を進める。完全importをcommitしたら、人間の確認を待たずに`make first-bench`で初回baselineを取る。laneのcommitを観測と照合して取り込む。lane `full-memory`も先行回収と同時に全メモリ化を始め、`state-log`・`local-env`が終わったら自分で取り込んで確かめる。その間もimproveは全メモリ化が書き換えない所（設定・node分割など）の改善を止めない。laneが取り込んだ後にmainへ入った変更で全メモリ化の形へ移す必要があるものは、mainが戻してimproveへ作り直しを頼む | [kickoff](docs/guides/kickoff.md) |
+| kickoff | 開始と同時に、人間がroot（`/main`）・worktree `portal`（`/portal`）・worktree `improve`（`/improve`）でセッションを起動する。portalのセッションがサーバーの情報とベンチ接続を作る間に、`make kickoff`をbackgroundで始めて`.local/progress.log`を追い、サーバーの起動、portalのmergeとlane `scenario`の起動、draftの判断を進める。完全importをcommitしたら、人間の確認を待たずに`make first-bench`で初回baselineを取る。laneのcommitを観測と照合して取り込む。lane `full-memory`も先行回収と同時に全メモリ化を始め、`state-log`・`local-env`が終わったら自分で取り込んで確かめる。その間もimproveは全メモリ化が書き換えない所（設定・node分割など）の改善を止めない。laneを取り込むとき、laneが取り込んだ後にmainへ入った変更は、mainがベンチを待つ間に自分でmergeして全メモリ化の形へ移す | [kickoff](docs/guides/kickoff.md) |
 | 改善 | 観測された最大の制約から順に、継続的に構成を含めて変える。improveが作って投稿し、mainが測って分析し、採否を返す | このファイルの「判断の原則」、`/main`・`/improve`（`.claude/commands/`） |
 | 終了前 | 開始時に決めた時刻になったら新しい変更を止め、最終構成を固定し、確認のベンチを3回行う。追試で落ちる原因は`make final-check`・`make final-db-late`・`make final-reboot`で確かめる。時刻が決まっていなければ開始時に人間に確認する | [終了前](docs/guides/finish.md) |
 

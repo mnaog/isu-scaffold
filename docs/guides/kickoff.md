@@ -57,8 +57,8 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
     （次のrunからbriefのstates欄が埋まり、状態についての問いに計測を足さずに答えられる）
   → lane indexes・obvious-fixesのcommitをbaselineの観測と照合して選んで取り込む（laneの途中でもcommit単位で取り込める）
   → 全メモリ化の間もimproveは全メモリ化が書き換えない所の改善を止めない。lane full-memoryが終わったら（mainを1度だけ取り込み済み）、
-    laneが取り込んだ後にmainへ入ったwebapp/の変更をrevertしてからmainへmergeし、次のベンチで最優先に測る。
-    revertした変更は、全メモリ化の形で作り直すようimproveへ頼む
+    mainへmergeし、laneが取り込んだ後にmainへ入ったwebapp/の変更をベンチを待つ間に全メモリ化の形へ移し、
+    確かめてからdeployして次のベンチで最優先に測る
   → deployし、通常のisuscope runでbaselineと比較して、仮説の判定と変更の採否を記録する。障害があれば原因調査から修正・再評価まで続ける
 ```
 
@@ -86,7 +86,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 - `make kickoff`が起動するlaneは`config/lanes.json`の`kickoff`（既定は`full-memory`、`indexes`、`n-plus-one`、`obvious-fixes`、`local-env`、`state-log`、`waits`）。`KICKOFF_LANES=`で止め、`KICKOFF_LANES="indexes"`のように選べる。
 - `scenario`は公式資料が要るので、mainが`docs/official/`をcommitした直後に`python3 scripts/lane.py start scenario`で起動する。
 - `full-memory`（全メモリ化）は、先行回収の直後に他のkickoffのlaneと同時に始まる。序盤の点の大半はDBの読み取りで決まり、全メモリ化がそれを解くので、他のlaneの終わりを待たせない（ninthでは`state-log`・`local-env`・`n-plus-one`を待って15分遅れて始まり、測れるまで先行回収から55分かかった）。`config/lanes.json`の`joins`にある`state-log`・`local-env`は、laneが書き換えを済ませた後に、終わったかを`lane.py status`で見て自分で取り込み、書き換える前と後の状態ログを比べる。`n-plus-one`などの読み取りの修正は、mainが取り込んだ分を「最新のmainを取り込む」で受け取る。
-- 全メモリ化の間も、improveは全メモリ化が書き換えない所（設定・node分割・nginx・MySQLの設定など）の改善を止めない。laneは終わる前に最新のmainを1度だけ自分のbranchへmergeして確かめ直し、取り込んだmainのhashを最後の回答に書く。mainは自分では移さない。`git log <そのhash>..`のうち`webapp/`を変えたcommitを`git revert`で戻してから`git merge lane/full-memory`で取り込み、戻した変更を全メモリ化の形（SELECTはstoreから読む、書き込みは変更を確定する関数を通す、cacheやメモリ化はstoreへまとめる。`docs/cache-design.md`に正本と関数の場所がある）で作り直すよう、`main analyzed`の行でimproveへ頼む。
+- 全メモリ化の間も、improveは全メモリ化が書き換えない所（設定・node分割・nginx・MySQLの設定など）の改善を止めない。laneは終わる前に最新のmainを1度だけ自分のbranchへmergeして確かめ直し、取り込んだmainのhashを最後の回答に書く。mainは`git merge lane/full-memory`で取り込み、`git log <そのhash>..`のうち`webapp/`を変えたcommitを、ベンチを待つ間に自分で全メモリ化の形へ移す（SELECTはstoreから読む、書き込みは変更を確定する関数を通す、cacheやメモリ化はstoreへまとめる。`docs/cache-design.md`に正本と関数の場所がある）。移したら`make local-flow`と`make local-state-log`、`scripts/state-log-compare.py`で状態の変化が漏れていないことを確かめてからdeployする。移す手間より測った改善が小さいcommitは、移さずに捨ててよい。
 - baseline後に並行させたい調査や実装は、promptを書いて`python3 scripts/lane.py start <名前> --prompt-file <path> --purpose "..."`で起動する。進行は`make lanes`で見る。
 - `scenario`は文書だけ、`local-env`はローカル環境の構成と文書だけなので、結果を読んで終わり次第mainへmergeしてよい。
 - `state-log`は書き手のmoduleと呼び出しを2つのcommitにする。baselineの後の最初のdeployで、他のlaneより先に`git merge --no-ff lane/state-log`で取り込む（全メモリ化も同じbranchをmergeしているので、cherry-pickにしない）。取り込む前に、`docs/state-log.md`と最後の回答で、lockの中に残した呼び出しや`entered`にした箇所を確かめる。
