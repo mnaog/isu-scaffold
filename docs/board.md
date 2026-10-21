@@ -7,7 +7,7 @@
 - スコアの推移と、選んだrunのスコア・仮説・分析・採否
 - 比較元とのHTTP・SQLの比較、ホスト別の負荷、負荷走行の時系列、MySQL、APIの流れ
 - 共有操作（ベンチ・deploy）の実行状況
-- ベンチ待ち（mainのベンチを待つ投稿のキュー）。ページの一番上
+- 作業中（main以外のimprove・human・worktreeが、いま作っているもの）と、ベンチ待ち（mainのベンチを待つ投稿のキュー）。ページの一番上
 - 必ず残す記録（`config/records.json`の一覧と中身）
 
 実装は`scripts/board/`、テストは`tests/test_board.py`と`tests/board-*.test.js`です。isuscopeはPATHの`isuscope`を使います。
@@ -52,6 +52,10 @@ HTTP・SQLは合計時間順の表を基本とし、重複する並べ替えボ�
 時間軸のサーバー凡例は各図の右上に置く。時間軸はカーソルまたは左右矢印で同じ経過秒を照合する。表示bucketの半幅より離れた値・欠測値は未取得とする。時間範囲での再集計は行わない。ベンチ走行履歴では状態と分析を別列にし、PASSは緑、FAIL・中断は赤で表示する。文章の列は見出しと本文を左揃えにし、終了runを選択して詳細を確認する。シナリオ群別のセッション集計、cache HIT/MISS、詳細flamegraphは今回追加していない。
 
 HTTP・SQLの合計時間と差分を視覚的に強調する。差分の色は増減のみを表し、改善・悪化を自動判定しない。未取得グラフはコンパクトに表示し、取得値のあるグラフの面積を確保する。
+
+## 作業中
+
+ページの一番上に、main以外（improve・human・`make worktree`）が`python3 scripts/proposal.py working "..."`で宣言した作業を、始めた順に並べる。各行に、worktreeの名前（improveならimprove）・branch・何をしているか・始めてからの時間を出す。投稿（`submit`）か`working --done`で消え、worktreeが無くなったものは出さない。`.local/proposal-state/working/`を読むだけ（`scripts/board/proposals.py`）。
 
 ## ベンチ待ち
 

@@ -7,6 +7,8 @@
   proposal.py wait [--timeout SECONDS]     improve: return once the queue has room for its next proposal
   proposal.py improve                      declare this worktree session improve (/improve)
   proposal.py withdraw [BRANCH]
+  proposal.py working TEXT | --done        show on the board what this worktree is building now
+  proposal.py hypothesis                   the run hypothesis for the proposals merged for the next benchmark
 main only:
   proposal.py pending                      the proposals not handed to main yet, as the benchmark hook does
   proposal.py sync [BRANCH ...]            bring the waiting proposals up to main's branch; stops at a conflict
@@ -43,6 +45,11 @@ line to .local/progress.log (`proposal <state>`), which main and improve follow 
 
 A decision belongs to the commit main merged and measured, including earlier submissions in history.
 Acceptance requires a run; merged and measuring proposals remain owed a decision.
+
+Before there is anything to submit, a worktree (improve, a person in worktree `human`) says what it
+is building with `working`; the board shows who works on what until it submits (which clears it) or
+says `working --done`. `hypothesis` writes the hypothesis main gives `isuscope run` from the merged
+proposals' own hypothesis and expected observation, so the run reads as the queue entry did.
 """
 import argparse
 import contextlib
@@ -208,6 +215,59 @@ def freeze(root, off=False, note=None):
     return 'improveの新しい投稿を止めた（`wait`も止まる）。人間の投稿は受け付ける。'
 
 
+def working_dir(root):
+    return state_dir(root) / 'working'
+
+
+def worktree_name(root, here):
+    """`human` for <repo>-human: the worktrees sit next to the root repository, named after it."""
+    name = Path(here).name
+    prefix = Path(root).resolve().name + '-'
+    return name[len(prefix):] if name.startswith(prefix) and len(name) > len(prefix) else name
+
+
+def working(root, what=None, done=False, cwd=None):
+    here = main_session.toplevel(cwd)
+    if here is None or here == Path(root).resolve():
+        raise Refused('作業中の宣言はworktree（improve、human、make worktree）から行う。mainは実装しない。')
+    name = worktree_name(root, here)
+    path = working_dir(root) / f'{name}.json'
+    agent, session = main_session.current_session()
+    role = 'improve' if is_improve(root, session, here) else 'worktree'
+    if done:
+        path.unlink(missing_ok=True)
+        progress_emit(root, role if role == 'improve' else 'worktree', 'idle', name)
+        return f'{name}の作業中の表示を消した。'
+    if not what:
+        raise Refused('何をしているか（狙う制約と変更）を書く。')
+    write_json(path, {'name': name, 'role': role, 'agent': agent, 'session': session, 'worktree': str(here),
+                      'branch': current_branch(cwd), 'what': what, 'started_at': now()})
+    progress_emit(root, role if role == 'improve' else 'worktree', 'working', f'{name} {current_branch(cwd)}: {what}')
+    return f'{name}の作業中にした（ボードの上部に出る。投稿すると消える）: {what}'
+
+
+def working_now(root):
+    """Who builds what now, oldest first; a worktree that is gone no longer works on anything."""
+    entries = []
+    for path in sorted(working_dir(root).glob('*.json')) if working_dir(root).is_dir() else []:
+        data = read_json(path)
+        if data and Path(data.get('worktree') or '').is_dir():
+            entries.append({key: data.get(key) for key in ('name', 'role', 'agent', 'branch', 'what', 'started_at')})
+    return sorted(entries, key=lambda entry: entry.get('started_at') or '')
+
+
+def run_hypothesis(root):
+    """The hypothesis for `isuscope run`, from the proposals main merged for the next benchmark."""
+    base = main_session.main_branch(root)
+    merged = [data for data in (refresh(root, data, base) for data in load_all(root)) if data.get('status') == 'merged']
+    if not merged:
+        raise Refused('次のベンチへ取り込んだ投稿が無い（`git merge --no-ff <branch>`の後に使う）。')
+    merged.sort(key=lambda data: data.get('first_submitted_at') or '')
+    parts = [f'{data["branch"]}: {data.get("hypothesis") or ""}' + (f' 期待: {data["expect"]}' if data.get('expect') else '')
+             for data in merged]
+    return ' / '.join(parts)
+
+
 def queue_count(root, items=None, without=None):
     items = load_all(root) if items is None else items
     return sum(1 for data in items if data.get('status') in WAITING and data.get('branch') != without)
@@ -265,6 +325,8 @@ def submit(root, hypothesis, expect, verified, note=None, cwd=None, based_on=Non
                                 'decision': previous.get('decision')})
     save(root, data)
     progress(root, 'submitted', f'{branch} {commit[:8]}: {hypothesis[:120]}')
+    # Submitted, it shows in the queue; it no longer needs saying what this worktree works on.
+    (working_dir(root) / f'{worktree_name(root, here)}.json').unlink(missing_ok=True)
     waiting = queue_count(root)
     lines = [f'{branch}（{commit[:8]}）を投稿した。キューの待ちは{waiting}件。mainが次にベンチを起動したときに渡る。'
              '状態は`python3 scripts/proposal.py show`。投稿したbranchは採否が出るまでmainのもの（commitしない）。']
@@ -632,7 +694,7 @@ def queue(root):
                    key=lambda data: (order[data['status']], data.get('first_submitted_at') or ''))
     fields = ('branch', 'status', 'commit', 'hypothesis', 'expect', 'based_on', 'depends_on', 'note',
               'first_submitted_at', 'submitted_at', 'measuring_since', 'conflicts', 'hold', 'files')
-    return {'waiting': queue_count(root, items), 'room': IMPROVE_ROOM, 'frozen': frozen(root),
+    return {'waiting': queue_count(root, items), 'room': IMPROVE_ROOM, 'frozen': frozen(root), 'working': working_now(root),
             'items': [{**{key: data.get(key) for key in fields}, 'group': GROUPS[data['status']],
                        'author': (data.get('author') or {}).get('role') or 'worktree',
                        'agent': (data.get('author') or {}).get('agent') or ''} for data in shown]}
@@ -723,6 +785,10 @@ def main():
     p.add_argument('--note')
     p = sub.add_parser('withdraw')
     p.add_argument('branch', nargs='?')
+    p = sub.add_parser('working')
+    p.add_argument('what', nargs='?', help='何をしているか（狙う制約と変更）')
+    p.add_argument('--done', action='store_true')
+    sub.add_parser('hypothesis')
     args = parser.parse_args()
     root = main_session.root_repo()
     _, session = main_session.current_session()
@@ -750,6 +816,10 @@ def main():
             print(claim_improve(root))
         elif args.action == 'freeze':
             print(freeze(root, args.off, args.note))
+        elif args.action == 'working':
+            print(working(root, args.what, args.done))
+        elif args.action == 'hypothesis':
+            print(run_hypothesis(root))
         elif args.action == 'withdraw':
             print(withdraw(root, args.branch or current_branch()))
         elif args.action == 'show':

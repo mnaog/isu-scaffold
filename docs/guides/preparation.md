@@ -60,7 +60,7 @@
 ## 人間の作業場所
 
 - 開始用repoで`make worktree BRANCH=human PURPOSE="人間の作業場所"`を作っておく。人間は競技中ずっとここを触り、mainの作業ツリーには触れない。
-- コードの変更は投稿（`scripts/proposal.py submit`）でmainへ渡す。投稿は変更ごとのbranch（`git switch -c human-<名前> <mainのbranch>`）から行い、投稿したら別のbranchへ移る（投稿したbranchは、採否が出るまでmainが追従させる）。
+- 作り始めたら`python3 scripts/proposal.py working "<狙う制約と変更>"`でボードの「作業中」に出す。コードの変更は投稿（`scripts/proposal.py submit`）でmainへ渡す（投稿すると作業中の表示は消える）。投稿は変更ごとのbranch（`git switch -c human-<名前> <mainのbranch>`）から行い、投稿したら別のbranchへ移る（投稿したbranchは、採否が出るまでmainが追従させる）。
 
 ## 開始後へ残すもの
 

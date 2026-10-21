@@ -66,6 +66,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 - portal: kickoffの間、準備で作ったworktree `portal`で起動したセッションが`/portal`で、サーバーの起動に要る情報、ベンチ接続、当日マニュアルの保存の順に進め、`.local/progress.log`へ`portal environment / bench / official / notice`を書く。mainはその行を見て`git merge --no-ff portal`する（[kickoff](docs/guides/kickoff.md)）。
 - 人間: 準備で作ったworktree `human`で作業し（投稿は変更ごとのbranchから行い、投稿したら別のbranchへ移る）、コードは投稿で届く。
 - 人間や手で動かすClaude Codeは、`make worktree BRANCH=<name> PURPOSE="..."`のworktreeで調査・実装・ローカル検証をし、変更目的ごとにcommitを分ける。ローカル環境は各worktreeで`make local-up / local-check / local-down`で使える（[ローカル実行環境](docs/local-development.md)）。
+- main以外（improve・human・worktree）は、作り始めたら`python3 scripts/proposal.py working "<狙う制約と変更>"`でボードの「作業中」に出し、誰が何をしているかを一目で分かるようにする（投稿すると消える）。
 - worktreeの変更は`python3 scripts/proposal.py submit --hypothesis ... --expect ... --verified ... --based-on <run>`で投稿し、mainのベンチを待つキューに入れる（`make proposals`、boardの上部）。投稿したbranchは採否が出るまでmainのもので、mainがベンチを待つ間に`proposal.py sync`でmainのbranchへ追従させ、衝突も解消する。mainは、何をまとめて測るか、測らずに返すか、条件付きで保留（`hold --until`）にするかを自分で決め、`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred [--run <短縮ID>]`で返す。ベンチが空いているときは、mainが`pending`で新しい投稿を受け取る。終了前は`proposal.py freeze`でimproveの投稿を止める。
 - remote変更・deploy・ベンチ・`.local/operation.lock`を使う操作はmainだけが行う（mainの宣言がある間はhookが止める）。実行中のlockは手で消さず、別の操作の終了を待つ。status・checkなどの読み取りは並行してよい。作業中の他worktreeを変更・削除しない。
 

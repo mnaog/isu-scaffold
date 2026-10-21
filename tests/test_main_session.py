@@ -192,6 +192,32 @@ class MainSessionTest(unittest.TestCase):
         self.assertTrue(lines[0][2].startswith('idea/cache '), lines)
         self.assertIn('ab12cd34', lines[-1][2])
 
+    def test_a_worktree_says_what_it_builds_until_it_submits(self):
+        refused = self.script('proposal.py', 'working', '索引', session='S-main', check=False)
+        self.assertNotEqual(refused.returncode, 0)  # main does not implement
+        self.script('proposal.py', 'working', 'app.txtのbを大文字にする（DBの読み取りが最大の制約）',
+                    cwd=self.worktree, session='S-worker')
+        queue = json.loads(subprocess.run(['python3', '-c', 'import importlib.util,json,sys;'
+                                           's=importlib.util.spec_from_file_location("p",sys.argv[1]);m=importlib.util.module_from_spec(s);'
+                                           's.loader.exec_module(m);print(json.dumps(m.queue(sys.argv[2])))',
+                                           str(self.repo / 'scripts/proposal.py'), str(self.repo)],
+                                          capture_output=True, text=True, check=True).stdout)
+        self.assertEqual([(w['name'], w['role'], w['branch']) for w in queue['working']], [('idea', 'worktree', 'idea/cache')])
+        self.assertIn('DBの読み取り', queue['working'][0]['what'])
+        self.assertIn('worktree\tworking\tidea idea/cache', (self.repo / '.local/progress.log').read_text())
+        self.commit_in_worktree()
+        self.submit()
+        self.assertFalse((self.repo / '.local/proposal-state/working/idea.json').exists())
+        # The run's hypothesis is the merged proposal's own.
+        self.assertNotEqual(self.script('proposal.py', 'hypothesis', check=False).returncode, 0)
+        self.git('merge', '--no-ff', '-q', 'idea/cache', '-m', 'Merge idea/cache')
+        out = self.script('proposal.py', 'hypothesis').stdout.strip()
+        self.assertTrue(out.startswith('idea/cache: bを大文字にすると速い'), out)
+        self.assertIn('期待: ', out)
+        self.script('proposal.py', 'working', 'もう1つ', cwd=self.worktree, session='S-worker')
+        self.script('proposal.py', 'working', '--done', cwd=self.worktree, session='S-worker')
+        self.assertFalse((self.repo / '.local/proposal-state/working/idea.json').exists())
+
     def test_a_conflicting_proposal_waits_for_its_author_and_a_merged_one_closes(self):
         self.commit_in_worktree()
         self.assertEqual(self.submit().returncode, 0)

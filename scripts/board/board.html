@@ -26,7 +26,7 @@
 .score-pass{color:var(--green)}.score-fail{color:var(--red)}.score-unknown{color:var(--muted)}.result-pass{background:#33493d;color:var(--green)}.result-fail{background:#503e3e;color:var(--red)}.stat-sub{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.history-table th,.history-table td{text-align:left;vertical-align:top}.history-table th:nth-child(5),.history-table td:nth-child(5){text-align:right}.history-table .history-hypothesis{max-width:480px;line-height:1.8}.score-point .score-selection{stroke:var(--ink);stroke-width:1.5}
 .overview-hypothesis{display:grid;gap:6px;margin-top:16px;font-size:12px;line-height:1.8}.overview-detail-label{font-size:11px;color:var(--muted)}.overview-hypothesis p{white-space:pre-wrap;overflow-wrap:anywhere}.overview-source{margin-top:12px;font-size:10px}.overview-source dl{margin-top:10px;grid-template-columns:55px minmax(0,1fr)}
 
-.queue-section{margin-bottom:28px}.queue{display:grid;gap:8px}.queue-item{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:12px 16px;display:grid;grid-template-columns:92px minmax(0,1fr);gap:14px;align-items:start}.queue-group{font-size:11px;font-weight:650;padding:3px 8px;border-radius:6px;border:1px solid var(--line);text-align:center;color:var(--muted)}.queue-group.measuring{color:var(--accent);border-color:var(--accent)}.queue-group.merged{color:var(--green);border-color:var(--green)}.queue-group.needs-sync{color:var(--red);border-color:var(--red)}.queue-group.held{opacity:.7}.queue-branch{font:12px var(--mono);font-weight:600}.queue-who{font-size:11px;color:var(--muted);margin-left:8px}.queue-text{margin-top:5px;line-height:1.5}.queue-expect{font-size:12px;color:var(--muted);margin-top:3px}.queue-meta{font-size:11px;color:var(--muted);margin-top:6px;display:flex;flex-wrap:wrap;gap:4px 14px}.queue-empty{color:var(--muted);font-size:12px;padding:6px 2px}@media(max-width:760px){.queue-item{grid-template-columns:1fr}}
+.queue-section{margin-bottom:28px}.queue{display:grid;gap:8px}.queue-item{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:12px 16px;display:grid;grid-template-columns:92px minmax(0,1fr);gap:14px;align-items:start}.queue-group{font-size:11px;font-weight:650;padding:3px 8px;border-radius:6px;border:1px solid var(--line);text-align:center;color:var(--muted)}.queue-group.measuring{color:var(--accent);border-color:var(--accent)}.queue-group.merged{color:var(--green);border-color:var(--green)}.queue-group.needs-sync{color:var(--red);border-color:var(--red)}.queue-group.held{opacity:.7}.queue-group.working{color:var(--accent);border-style:dashed}.queue-branch{font:12px var(--mono);font-weight:600}.queue-who{font-size:11px;color:var(--muted);margin-left:8px}.queue-text{margin-top:5px;line-height:1.5}.queue-expect{font-size:12px;color:var(--muted);margin-top:3px}.queue-meta{font-size:11px;color:var(--muted);margin-top:6px;display:flex;flex-wrap:wrap;gap:4px 14px}.queue-empty{color:var(--muted);font-size:12px;padding:6px 2px}@media(max-width:760px){.queue-item{grid-template-columns:1fr}}
 .bench-banner{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:center;gap:14px;padding:12px 4%;background:#3c4b43;color:var(--green);border-bottom:1px solid #4f6a59;font-size:15px;font-weight:700;letter-spacing:.04em}.bench-banner .dot{width:10px;height:10px}.bench-banner span:last-child{font:500 12px var(--mono);color:#b9d2c1;letter-spacing:0}@media(prefers-reduced-motion:no-preference){.bench-banner .dot{animation:bench-pulse 1.2s ease-in-out infinite}}@keyframes bench-pulse{50%{opacity:.25}}
 </style>
 </head>
@@ -36,7 +36,7 @@
 <main>
 
 <div id="connection-error" role="status"></div>
-<section class="queue-section" id="queue-section"><div class="section-title"><div><h2>ベンチ待ち</h2><span class="count" id="queue-count">—</span></div><span class="section-note" id="queue-note">mainのベンチを待っている投稿（scripts/proposal.py）</span></div><div id="queue" class="queue"></div></section>
+<section class="queue-section" id="working-section"><div class="section-title"><div><h2>作業中</h2><span class="count" id="working-count">—</span></div><span class="section-note">main以外（improve・human・worktree）が、いま作っているもの（scripts/proposal.py working）。投稿するとベンチ待ちへ移る</span></div><div id="working" class="queue"></div></section><section class="queue-section" id="queue-section"><div class="section-title"><div><h2>ベンチ待ち</h2><span class="count" id="queue-count">—</span></div><span class="section-note" id="queue-note">mainのベンチを待っている投稿（scripts/proposal.py）</span></div><div id="queue" class="queue"></div></section>
 <div class="overview" id="overview"></div>
 <section class="score-section"><div class="panel score-panel" id="score-history"></div></section>
 <div id="operation-status" class="operation-status" aria-live="polite"></div>
@@ -127,7 +127,21 @@ function table(parent,heads,rows){const scroll=el('div',null,'table-scroll'),t=e
 function metricPanel(title,context){const panel=el('div',null,'panel'),head=el('div',null,'metric-heading');head.append(el('h3',title),el('span',context,'mono'));panel.append(head);return panel}
 function stamp(t){if(!t)return null;const d=new Date(String(t).replace(/([+-]\d{2})(\d{2})$/,'$1:$2'));return isNaN(d)?null:d;}
 function ago(t){const d=stamp(t);if(!d)return '—';const m=Math.max(0,Math.round((Date.now()-d)/60000));return m<1?'たった今':`${m}分前`;}
+function renderWorking(q){
+ const root=document.querySelector('#working'),items=q.working||[];root.replaceChildren();
+ document.querySelector('#working-count').textContent=String(items.length).padStart(2,'0');
+ if(!items.length){root.append(el('p','いま作業中を宣言しているworktreeはありません。','queue-empty'));return;}
+ for(const w of items){
+  const item=el('div',null,'queue-item'),body=el('div'),head=el('div');
+  item.append(el('div',w.role==='improve'?'improve':w.name,'queue-group working'));
+  head.append(el('span',w.branch||'(branchなし)','queue-branch'),el('span',`${w.name}${w.agent?' · '+w.agent:''}`,'queue-who'));
+  body.append(head,el('div',w.what||'','queue-text'));
+  const meta=el('div',null,'queue-meta');meta.append(el('span',`開始 ${ago(w.started_at)}`));body.append(meta);
+  item.append(body);root.append(item);
+ }
+}
 function renderQueue(q){
+ renderWorking(q);
  const root=document.querySelector('#queue'),items=q.items||[];root.replaceChildren();
  document.querySelector('#queue-count').textContent=String(q.waiting??0).padStart(2,'0');
  document.querySelector('#queue-note').textContent=q.error?'キューを読めません。 '+q.error:
