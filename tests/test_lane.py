@@ -244,6 +244,39 @@ class LaneTests(unittest.TestCase):
         self.assertIn('lane/bは衝突したのでmergeしていない', prompt)
         self.assertIn('git merge --no-edit <branch>', prompt)
 
+    def test_a_lane_merges_the_lanes_it_joins_by_itself_and_their_commits_stay_theirs(self):
+        self.follow_up("f'docs/{name}.md'")
+        config = json.loads((self.repo / 'config/lanes.json').read_text())
+        config['lanes']['memory'] = dict(config['lanes']['a'], joins=['a'])
+        (self.repo / 'config/lanes.json').write_text(json.dumps(config))
+        self.claude.write_text(self.claude.read_text().replace(
+            "if os.environ.get('FAKE_AFTER_COMMIT') and",
+            "if os.environ.get('FAKE_JOIN'):\n"
+            "    subprocess.run(['git', 'merge', '--no-edit', '-q', os.environ['FAKE_JOIN']], check=True)\n"
+            "if os.environ.get('FAKE_AFTER_COMMIT') and", 1))
+        # It does not wait for a, and a branch that does not exist yet hides none of its commits.
+        self.assertEqual(self.lane('start', 'memory').returncode, 0)
+        status = self.wait_until_ended('memory')
+        self.assertIn('Work in memory', [c.split(' ', 1)[1] for c in status['commits']])
+        call = json.loads(self.record.read_text())
+        self.assertIn('同時に動いているlane aのbranch', call['prompt'])
+        allowed = call['argv'][call['argv'].index('--allowedTools') + 1].split(',')
+        self.assertIn('Bash(python3 scripts/lane.py status:*)', allowed)
+        self.assertIn('Bash(git merge:*)', allowed)
+        # Once a has ended the lane merges it; a's commits are not reported as the lane's.
+        self.assertEqual(self.lane('run', 'a').returncode, 0)
+        shutil.rmtree(self.repo / '.local/lanes/memory')
+        subprocess.run(['git', '-C', str(self.repo), 'worktree', 'remove', '--force', status['worktree']], check=True)
+        subprocess.run(['git', '-C', str(self.repo), 'branch', '-D', 'lane/memory'], check=True, capture_output=True)
+        self.assertEqual(self.lane('run', 'memory', FAKE_JOIN='lane/a').returncode, 0)
+        status = self.lane_status('memory')
+        worktree = Path(status['worktree'])
+        self.assertEqual((worktree / 'docs/a.md').read_text(), 'a\n')
+        subjects = [c.split(' ', 1)[1] for c in status['commits']]
+        self.assertIn('Work in memory', subjects)
+        self.assertNotIn('Work in a', subjects)
+        self.assertNotIn('Work in a (git cherry-pick', (self.repo / '.local/progress.log').read_text().split('lane:a\tcomplete')[1])
+
     def test_a_failed_lane_blocks_the_lanes_after_it_until_forced(self):
         self.follow_up("f'docs/{name}.md'")
         self.assertEqual(self.lane('run', 'a').returncode, 0)

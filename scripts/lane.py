@@ -20,7 +20,10 @@ that builds on earlier lanes cannot start before main has taken them in. A lane 
 `after`: lanes whose branches it builds on. It starts by itself when the last of them ends
 (complete, timeout or stopped), from main's branch with their branches merged in, without
 waiting for main to take them in; a branch that does not merge cleanly is left for the lane
-to merge first. Their commits are not reported as the lane's.
+to merge first. Their commits are not reported as the lane's. A lane may also list `joins`:
+lanes that start alongside it and whose branches it merges itself once they end (it reads their
+state with `lane.py status`), so it need not wait for them to begin; their commits are not
+reported as the lane's either.
 """
 import argparse
 import fcntl
@@ -91,6 +94,10 @@ def lane_settings(name, prompt_file=None, purpose=None):
     claude = dict(config.get('claude', {}))
     claude['timeout_minutes'] = defined.get('timeout_minutes', claude.get('timeout_minutes', 60))
     claude['allowed_tools'] = claude.get('allowed_tools', []) + defined.get('extra_allowed_tools', [])
+    if defined.get('joins'):
+        # The lane checks whether the lanes it joins have ended and merges their branches itself.
+        claude['allowed_tools'] += [tool for tool in ('Bash(python3 scripts/lane.py status:*)', 'Bash(git merge:*)')
+                                    if tool not in claude['allowed_tools']]
     return claude, Path(prompt), purpose
 
 
@@ -229,13 +236,17 @@ def create_worktree(name, purpose):
     return Path(path), branch, base, git('rev-parse', branch)
 
 
-def lane_prompt(name, prompt, worktree, branch, base, base_commit, merged=(), left=()):
+def lane_prompt(name, prompt, worktree, branch, base, base_commit, merged=(), left=(), joins=()):
     after = ''
     if merged:
         after += f'始める前に、lane.pyが{", ".join(merged)}をこのbranchへmergeした。'
     if left:
         after += (f'{", ".join(left)}は衝突したのでmergeしていない。最初に`git merge --no-edit <branch>`で取り込み、'
                   '両方の意図を残して衝突を解いてcommitする。')
+    if joins:
+        after += (f'同時に動いているlane {", ".join(joins)}のbranch（lane/<名前>）は、このlaneが自分で取り込む。'
+                  '終わったかは`python3 scripts/lane.py status <名前>`の`state`で見る（complete・timeout・stoppedなら終わり）。'
+                  '取り込む時機は下の指示に従う。')
     return (f'あなたはISUCONの並行lane「{name}」として、mainのセッションとは別に1回だけ動くClaude Codeです。\n'
             f'作業場所: {worktree}（branch {branch}、分岐元branch {base}、分岐元commit {base_commit[:12]}）。'
             '人間とmainのセッションは途中で返事をしない。確認を待たずに最後まで進め、判断が要るものは最後の回答に書く。\n'
@@ -262,8 +273,10 @@ def result_of(stream):
 
 def lane_commits(branch, base, base_commit, *options, built_on=()):
     """The lane's own commits: those the base branch already has (merged in by the lane) are main's,
-    and those of the lanes it was built on (`after`) are theirs."""
-    return git('log', *options, '--format=%h %s', branch, '--not', base_commit, base, *built_on,
+    and those of the lanes it was built on (`after`) or joins (`joins`) are theirs."""
+    # A joined lane's branch may not exist yet; git log refuses an unknown name in --not.
+    present = [ref for ref in built_on if git('rev-parse', '--verify', '--quiet', ref, check=False)]
+    return git('log', *options, '--format=%h %s', branch, '--not', base_commit, base, *present,
                check=False).splitlines()
 
 
@@ -311,10 +324,10 @@ def run(name, prompt_file, purpose):
         try:
             worktree, branch, base, base_commit = create_worktree(name, purpose)
             merged, left = merge_after(name, worktree)
-            # Not the lane's own: the merges above, and what the lanes it builds on committed.
-            built_on = [git('rev-parse', branch)] + [
-                f'lane/{lane}' for lane in load_config().get('lanes', {}).get(name, {}).get('after', [])
-                if git('rev-parse', '--verify', '--quiet', f'lane/{lane}', check=False)]
+            defined = load_config().get('lanes', {}).get(name, {})
+            joins = defined.get('joins', [])
+            # Not the lane's own: the merges above, and what the lanes it builds on or joins committed.
+            built_on = [git('rev-parse', branch)] + [f'lane/{lane}' for lane in defined.get('after', []) + joins]
             if merged or left:
                 progress.emit(source, 'merged', ', '.join(merged) + (f'; left for the lane: {", ".join(left)}' if left else ''),
                               root=ROOT)
@@ -323,7 +336,7 @@ def run(name, prompt_file, purpose):
                        '--permission-mode', claude.get('permission_mode', 'dontAsk'),
                        '--allowedTools', ','.join(claude.get('allowed_tools', []))]
             # --allowedTools takes several values, so the prompt goes through stdin, not argv.
-            text = lane_prompt(name, prompt, worktree, branch, base, base_commit, merged, left)
+            text = lane_prompt(name, prompt, worktree, branch, base, base_commit, merged, left, joins)
             environment = dict(os.environ, ISUCON_LANE=name, ISUCON_LANE_ROOT=str(root_repo()))
             # Started from a main session that is itself Claude Code: run as a fresh top-level session.
             for variable in ('ISUSCOPE_LOCK_HELD', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT'):

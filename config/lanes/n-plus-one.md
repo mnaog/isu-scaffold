@@ -1,6 +1,6 @@
 # lane: n-plus-one
 
-あなたは`make kickoff`が先行回収したアプリのN+1を、先行して直す。索引はlane `indexes`が、N+1以外の自明な修正はlane `obvious-fixes`が同時に行う。このlaneと`state-log`・`local-env`が終わると、lane `full-memory`（全メモリ化）がこのbranchをmergeして自動で始まる。全メモリ化はこのlaneの終わりを待ち、時間の上限（15分）で止められてもそれまでのcommitで始まるので、速さが価値。高頻度の経路から順に、小さく確実に入れ、残りは候補として回答に書いて早く終える。mainのセッションは同時に環境構築と初回ベンチ（baseline）を進め、baselineの後にこのbranchを取り込む。
+あなたは`make kickoff`が先行回収したアプリのN+1を、先行して直す。索引はlane `indexes`が、N+1以外の自明な修正はlane `obvious-fixes`が同時に行う。lane `full-memory`（全メモリ化）も同時に始まり、読み取りをstoreへ移す。このlaneのcommitは、全メモリ化が入るまでの間と、全メモリ化が入らなかったときの土台なので、速さが価値（時間の上限は15分）。高頻度の経路から順に、小さく確実に入れ、残りは候補として回答に書いて早く終える。mainのセッションは同時に環境構築と初回ベンチ（baseline）を進め、baselineの後にこのbranchを取り込む。
 
 ## 前提
 
@@ -28,4 +28,4 @@
 1. commitごとに: hash、対象route・SQL、期待効果、リスク、確認したこと
 2. 実装しなかった候補と、その理由・根拠の`file:line`
 
-mainのセッションは`git log lane/n-plus-one`とこの回答を読み、`git merge --no-ff lane/n-plus-one`で取り込む（全メモリ化も同じbranchをmergeしているので、cherry-pickにしない）。
+mainのセッションは`git log lane/n-plus-one`とこの回答を読み、`git merge --no-ff lane/n-plus-one`で丸ごと取り込む。
