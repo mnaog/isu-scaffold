@@ -25,7 +25,9 @@ class SpreadTests(unittest.TestCase):
         directory.mkdir(parents=True)
         (directory / 'run.json').write_text(json.dumps({
             'id': run_id, 'state': 'complete', 'started_at': f'2026-10-20T12:{self.minute:02d}:00Z',
-            'repeat': repeat, 'tags': list(tags), 'benchmark': {'score': score, 'passed': passed},
+            **({'repeat': {'base_run_id': 'x', 'changed': [], 'reason': '振れ幅'}} if repeat else
+               {'repeat': {'base_run_id': 'x', 'changed': ['identity.deployed_files']}}),
+            'tags': list(tags), 'benchmark': {'score': score, 'passed': passed},
             'identity': {'values': {'deployed_files': files}}}))
         return run_id
 
@@ -41,6 +43,7 @@ class SpreadTests(unittest.TestCase):
         self.assertAlmostEqual(swing['sigma'], (2 * (10000 / 710000) ** 2) ** 0.5, places=9)
         self.assertEqual((swing['groups'], swing['runs']), (1, 2))
         self.assertTrue(known['01a15900-0000-7000-8000-0000aaaa0002']['repeat'])
+        self.assertFalse(known[later]['repeat'])  # isuscope records `repeat` on every run; only --repeat has a reason
         self.assertTrue(known[later]['wait'])
         self.assertEqual(known[failed]['spread'], swing)
 

@@ -24,9 +24,11 @@ def load(repo):
         bench = run.get('benchmark') or {}
         values = (run.get('identity') or {}).get('values') or {'commit': (run.get('source') or {}).get('commit_hash')}
         runs.append({'id': run.get('id'), 'started_at': run.get('started_at') or '', 'score': bench.get('score'),
-                     'measured': run.get('state') == 'complete' and bool(bench.get('passed'))
+                     # A PASS with a collector missing (degraded) still measured the score.
+                     'measured': run.get('state') in ('complete', 'degraded') and bool(bench.get('passed'))
                      and bench.get('score') is not None and not bench.get('interrupted') and not bench.get('pending'),
-                     'config': json.dumps(values, sort_keys=True), 'repeat': bool(run.get('repeat')),
+                     # isuscope records `repeat` on every run; only a run started with --repeat has a reason.
+                     'config': json.dumps(values, sort_keys=True), 'repeat': bool((run.get('repeat') or {}).get('reason')),
                      'wait': 'wait' in (run.get('tags') or [])})
     return sorted((run for run in runs if run['id']), key=lambda run: run['started_at'])
 

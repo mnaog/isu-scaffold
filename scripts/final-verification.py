@@ -257,9 +257,11 @@ def final_runs(root=None):
             run = json.loads(path.read_text())
         except (OSError, ValueError):
             continue
-        if run.get('state') in ('aborted', 'running') or (run.get('benchmark') or {}).get('interrupted'):
-            continue
         bench = run.get('benchmark') or {}
+        # A run isuscope refused (a repeat without --repeat, a failed prepare) never benchmarked.
+        if (run.get('state') in ('aborted', 'running') or bench.get('interrupted')
+                or bench.get('mode') == 'not-started'):
+            continue
         runs.append({'id': run.get('id') or '', 'started_at': run.get('started_at') or '', 'score': bench.get('score'),
                      'passed': bool(bench.get('passed')),
                      'config': json.dumps((run.get('identity') or {}).get('values') or {}, sort_keys=True)})

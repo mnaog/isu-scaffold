@@ -236,7 +236,7 @@ def load_runs(root):
         except (OSError, ValueError):
             continue
         bench = run.get('benchmark') or {}
-        if run.get('state') != 'complete' or bench.get('score') is None:
+        if run.get('state') not in ('complete', 'degraded') or bench.get('score') is None:
             continue
         values = (run.get('identity') or {}).get('values') or {}
         runs.append({'short': run['id'][-8:], 'started_at': run.get('started_at') or '', 'score': bench['score'],
