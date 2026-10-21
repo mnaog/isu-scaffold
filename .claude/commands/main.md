@@ -64,7 +64,7 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 - 測る構成: 最後に採否を決めた後のHEAD（測定中・merge済みで未測定の投稿が無い状態）。不採用をrevertした後なら、deployが最良構成へ戻っていることを確かめる。
 - 起動: `isuscope run --repeat "振れ幅: <基準の短縮ID>と同じ構成" --hypothesis "振れ幅を測る（同じ構成のn回目）"`を`run_in_background`で。終わったら`isuscope analyze RUN skipped --analysis "振れ幅: ..."`を短く記録する（`--change`は付けない）。
 - 回数: 決めない。
-- 読み方: `python3 scripts/spread.py`（`--base <短縮ID>`でそのrunの構成）が、同じ構成の得点・平均・平均からのずれを出す。その構成をまだ測り直していない間は、直近に2回以上測った構成も並べる。
+- 読み方: 同じ構成で測ったrunの得点を見る。
 - 測り直しは、この振れ幅のためと終了前の確認（`docs/guides/finish.md`）だけにする。投稿・laneの変更は1回で決める。
 
 ### waitを微調整する

@@ -157,12 +157,10 @@
     "scripts/main-session.py",
     "scripts/proposal.py",
     "scripts/runs.sh",
-    "scripts/spread.py",
     "scripts/waits.py",
     "tests/test_waits.py",
     "config/waits/waits.rs",
     "config/lanes/waits.md",
-    "tests/test_spread.py",
     "tests/test_main_session.py",
     ".claude/commands/main.md",
     ".claude/commands/improve.md",
@@ -178,6 +176,8 @@
     ".claude/skills/isucon-main/types/index.d.ts"
   ],
   "remove_files": [
+    "scripts/spread.py",
+    "tests/test_spread.py",
     "docs/roles/operator.md",
     "docs/roles/worker.md",
     "scripts/worker-iterm.py",
