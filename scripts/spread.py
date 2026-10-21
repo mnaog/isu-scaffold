@@ -12,7 +12,7 @@ main measures the latest accepted configuration again while nothing waits to be 
 (`isuscope run --repeat "振れ幅: ..."`), so that a proposal is judged from one run: the swing is the
 largest distance of a run from the mean of its configuration, taken from the base configuration once
 it was measured more than once, otherwise from the most recent configuration that was. How many
-repeats are worth it is main's call: the output shows how much the last repeat moved the swing.
+repeats are worth it is main's call.
 --score places a proposal's score above, inside or below that band around the base configuration's mean.
 """
 import argparse
@@ -128,8 +128,6 @@ def main():
             latest = max(measured, key=lambda g: g[-1]['started_at'])
             source = (f'直近に測り直した構成（最後のrun {latest[-1]["short"]}）', latest)
     width = summary(source[1]) if source else None
-    # How much the last repeat moved the swing: main decides from this whether another repeat is worth a run.
-    moved = summary(source[1][:-1])['swing'] if source and len(source[1]) >= 3 else None
 
     verdict = None
     if args.score is not None and base and width:
@@ -139,7 +137,7 @@ def main():
 
     if args.json:
         print(json.dumps({'base': {'how': how, 'values': base_values, **(base or {'runs': 0})},
-                          'swing': None if not width else {'from': source[0], 'before_last': moved, **width},
+                          'swing': None if not width else {'from': source[0], **width},
                           'score': args.score, 'verdict': verdict}, ensure_ascii=False))
         return 0
 
@@ -152,8 +150,6 @@ def main():
         print('  この構成のPASSしたrunはまだ無い')
     if width:
         print(f'振れ幅: ±{width["swing"]:.1%}（{source[0]}、{width["runs"]}回）')
-        if moved is not None:
-            print(f'  最後の1回で±{moved:.1%}→±{width["swing"]:.1%}')
     else:
         print('振れ幅: まだ測っていない（測るものが無い間に、採用した構成を`isuscope run --repeat`で測り直す）')
     if base and width:

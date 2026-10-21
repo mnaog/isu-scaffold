@@ -42,7 +42,6 @@ class SpreadTests(unittest.TestCase):
         out = self.spread('--base', 'aaaa0002', '--score', '760000')
         self.assertIn('3回: 700000（aaaa0001） 720000（aaaa0002） 680000（aaaa0003）', out)
         self.assertIn('振れ幅: ±2.9%（基準の構成、3回）', out)
-        self.assertIn('最後の1回で±1.4%→±2.9%', out)  # 700000 and 720000 alone swing ±1.4%
         self.assertIn('得点 760000: 振れ幅より上', out)
         inside = json.loads(self.spread('--base', 'aaaa0001', '--score', '710000', '--json'))
         self.assertEqual(inside['verdict'], 'inside')
@@ -68,7 +67,6 @@ class SpreadTests(unittest.TestCase):
         self.run_record('cccc0002', 800000, 'cfg-c')
         out = self.spread('--base', 'cccc0001')
         self.assertIn('振れ幅: ±0.0%（基準の構成、2回）', out)  # no swing at all is an answer too
-        self.assertNotIn('最後の1回で', out)
 
     def test_nothing_measured_twice_yet_says_so(self):
         self.run_record('aaaa0001', 700000, 'cfg-a')
