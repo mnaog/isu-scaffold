@@ -8,7 +8,7 @@
 - このbranchは、先行回収したコードのcommitから分かれている。lane `state-log`（状態ログの呼び出し）と`local-env`（ローカル環境）は同時に動いていて、まだこのbranchに無い。取り込みは下の「state-logとlocal-envを取り込む」にある。終わった後に`docs/state-log.md`か`config/local/compose.yaml`が無ければ、そのlaneが失敗している。確かめられない範囲を最後の回答に書いて進める。
 - `indexes`・`n-plus-one`・`obvious-fixes`も同時に動いており、mainが取り込んだ分は「最新のmainを取り込む」で1度だけ受け取る。N+1や読み取りのSQLの修正は、全メモリ化で読み取りがstoreへ移れば要らなくなるので、衝突したらstoreの形を残す。
 - 読むもの: `docs/official/`（あれば。特に、更新の即時反映、整合性の検査、再起動の後に求められること）、`docs/benchmark-scenario.md`（あれば）、状態ログの書き手`config/state-log/state_log.rs`（lane `state-log`がこれを写す）。`docs/state-log.md`と`config/local/compose.yaml`の冒頭のコメント（ローカルで動くもの・動かないもの）は、取り込んだ後に読む。
-- 変えてよいもの: `webapp/`のアプリのコード、`docs/cache-design.md`、`config/local/flows/`（確かめるための操作の列）。schema、他の`config/`・`scripts/`・文書は変えない（mainを取り込んで入ってくる変更は別）。mainはこのlaneの間も別の改善を続けるので、変更はメモリ化に要る範囲に留め、衝突を小さくする。
+- 変えてよいもの: `webapp/`のアプリのコード、`docs/cache-design.md`、`config/local/flows/`（確かめるための操作の列）。schema、他の`config/`・`scripts/`・文書は変えない（mainを取り込んで入ってくる変更は別）。このlaneの間もimproveの投稿やlaneのcommitがmainへ入り続けるので、変更はメモリ化に要る範囲に留め、衝突を小さくする。
 
 ## 作るもの
 

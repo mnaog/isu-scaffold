@@ -10,7 +10,7 @@ allowed-tools: Bash(python3 scripts/main-session.py claim:*)
 
 上の結果がエラーなら、理由をそのまま人間へ伝えて止まる（mainはrepoのrootで動かす）。成功していれば、このセッションがmainになった。
 
-mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。**mainは改善を実装しない。** アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`）、laneとportalの取り込み（全メモリ化laneを取り込むときに、後から入った変更を全メモリ化の形へ移すことも含む）、投稿を取り込むための直し（衝突、取り込んで通らなくなったbuild・deploy）、APIごとの待ちの表（`ISUCON_WAITS`。`scripts/waits.py set`で変える）は実装に数えない。mainは次を受け持つ。
+mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。mainは改善を実装しない。 アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`）、laneとportalの取り込み（全メモリ化laneを取り込むときに、後から入った変更を全メモリ化の形へ移すことも含む）、投稿を取り込むための直し（衝突、取り込んで通らなくなったbuild・deploy）、APIごとの待ちの表（`ISUCON_WAITS`。`scripts/waits.py set`で変える）は実装に数えない。mainは次を受け持つ。
 
 - **merge**: improve・人間（worktree `human`）の投稿、laneのcommit、portalを取り込む。キューの追従と衝突の解消（両方の意図を残す）、取り込んだ変更の戻し（`git revert`）まで。投稿は投稿者へ戻さない。buildやdeployが通らない、衝突する投稿は、直せるならmainが直し、直せないなら棄却する。
 - **次に測るものの判断**: 下の「キュー」。何をまとめて測るか、測らずに棄却するか、保留にするかをmainが決める。
@@ -20,7 +20,7 @@ mainは、ベンチを止めずに回し、その結果を正しく読む。改�
 
 humanのセッションから届くメッセージは人間の意見として読み、反映するか、しない理由を返す。
 
-improveが動いているかは、`.local/progress.log`の`improve started`（`/improve`が宣言すると出る）・`improve working`の行と、ボードの「作業中」で分かる。improveが動いていない（人間が起動していない、止まっている）間も、mainは実装しない。人間に`/improve`の起動を頼み、その間のベンチは空き時間と同じように使う。
+improveが動いているかは、`improve started`の行（`/improve`が宣言すると`follow main`に出る）と、ボードの「作業中」で分かる。improveが動いていない（人間が起動していない、止まっている）間も、mainは実装しない。人間に`/improve`の起動を頼み、その間のベンチは空き時間と同じように使う。
 
 ### キュー
 
@@ -49,15 +49,15 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
    - hookが渡す見取り図・新しい投稿を読む。
    - `python3 scripts/proposal.py sync`で、待っている投稿と保留をmainのbranchへ追従させる（`.local/proposal-sync`のworktreeで、各branchへmainのbranchをmergeする）。衝突すると、そこで止まって衝突を残す。解消して`git add`し、もう一度`sync`する。処理の意味がぶつかる（同じ処理を別々に変えている）ときも、両方の意図を残して解く。解けないなら`git merge --abort`して棄却する。投稿したbranchは`submit`が投稿者のworktreeから外すので、そのまま追従できる。
    - キューを見直し、次に測るものを決めておく。
-4. 終わったら分析し、採否を決める。同じ投稿を2度測らない。スコアが予想と違う方向に動いた回（速くしたのに下がった、FAILした）は、採否を決める前に`isuscope query RUN --base BASE --view transitions`でベンチ側の動きの変化（どの遷移の割合・間隔が変わったか）を見る。分かったベンチの仕様は、見取り図の該当する節へ書く。採否は投稿ごとに`isuscope analyze RUN <判定> --analysis "..." --change <branch> --decision ...`で記録する（同じrunへ追記できる）。mainが書くのはこれだけで、hookがその採否・理由・runを投稿へ写す。不採用は`git revert -m 1 <mergeのcommit>`で戻す。ベンチが起動できなかった、中断した、ベンチの外の原因で落ちたときは、`python3 scripts/proposal.py requeue`で測定中の投稿を待ちへ戻す（投稿が原因で落ちたなら、直せるなら直して測り、直せないなら`rejected`にする）。
+4. 終わったら分析し、採否を決める。同じ投稿を2度測らない。スコアが予想と違う方向に動いた回（速くしたのに下がった、FAILした）は、採否を決める前に`isuscope query RUN --base BASE --view transitions`でベンチ側の動きの変化（どの遷移の割合・間隔が変わったか）を見る。分かったベンチの仕様は、見取り図の該当する節へ書く。採否は投稿ごとに`isuscope analyze RUN <判定> --analysis "..." --change <change ID> --decision ...`で記録する（同じrunへ追記できる。change IDは、ベンチを起動したときにhookが投稿ごとに示す）。mainが書くのはこれだけで、hookがその採否・理由・runを投稿へ写す。不採用は`git revert -m 1 <mergeのcommit>`で戻す。ベンチが起動できなかった、中断した、落ちたときの測定中の投稿は、次のベンチの起動時にhookが待ちへ戻して測り直す（すぐ戻すなら`python3 scripts/proposal.py requeue`。投稿が原因で落ちたなら、直せるなら直して測り、直せないなら`rejected`にする）。
 5. 分析を記録したら、キューの残り（待ちと保留）の前提がまだ成り立つかを見直し、棄却する・保留にする・保留を解くを決める。測定中の投稿の採否がそろうと、hookが最後の分析の冒頭を`main analyzed`の行でimproveへ知らせる。improveはまずこの行を読むので、分析の冒頭に次の最大の制約が分かるように書く。
 
-6. すぐ1へ戻る。待っている投稿が無ければ`python3 scripts/proposal.py pending`で確かめ、それでも無ければ、振れ幅の測り直しかwaitの微調整のどちらかにベンチを使う（どちらにするかはそのときの状況で決める）。`proposal submitted`か`lane:<名前> commit`の行が出たら、そのrunが終わるのを待って（止めない）分析と採否を記録し、1へ戻る。sleepやpollingで待たない。`improve working`・`worktree working`の行とボードの「作業中」で、もうすぐ届く投稿が分かる。
+6. すぐ1へ戻る。待っている投稿が無ければ`python3 scripts/proposal.py pending`で確かめ、それでも無ければ、上の「空き時間」のとおりベンチを使う。`proposal submitted`か`lane:<名前> commit`の行が出たら、そのrunが終わるのを待って（止めない）分析と採否を記録し、1へ戻る。sleepやpollingで待たない。もうすぐ届く投稿は、ボードの「作業中」で分かる。
 
 ### ベンチを回すときの決まり
 
 - ベンチ（`isuscope run`・`survey-run`・`make first-bench`）は、Bashの`run_in_background`で起動する（foregroundはhookが止める）。`kickoff`・`bootstrap`・`bench-check`・laneからは起動しない。
-- PASSしたrunは、分析を記録するまで次のベンチを始められない。FAILと中断のrunに分析は要らない。仮説の判定（`supported`・`rejected`・`inconclusive`・`skipped`）と変更の採否（`accepted`・`provisional`・`rejected`・`deferred`）は別に記録する。`provisional`には`--revisit`が要る。runの読み方は`docs/reference/isuscope.md`。
+- PASSしたrunは、分析を記録するまで次のベンチを始められない。分析・判定・採否の記録の仕方とrunの読み方は`docs/reference/isuscope.md`。
 - 最後にdeployしたcommitとHEADがずれていると、ベンチは始まらない。commitして`make deploy`するか、HEADを戻す。
 - Monitorで`python3 scripts/progress.py follow main`を追う。`.local/progress.log`のうちmain宛ての行（投稿、laneの結果、段階の失敗、`benchmark slow`など）だけが、何をするかの一言と一緒に出る（宛先と一言は`config/progress.json`）。
 - nodeの異常（deploy後にアプリが立ち上がらない、nodeが応答しない、ベンチが止まる）は、まず`make status`で全nodeを見る（応答しないnode、メモリ・load・失敗したunit・待ち受けport・直近のOOMとerror・MySQLの実行中のSQLを1回で返す）。手でsshするときも`scripts/ssh-node.sh <node> '<command>'`を使い、待つloopには回数の上限を付ける。

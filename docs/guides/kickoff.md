@@ -8,7 +8,7 @@
 
 SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を7本起動する。`full-memory`が全メモリ化（読み取りと状態の判定をメモリへ移す）を、`indexes`が索引を、`n-plus-one`がN+1を、`obvious-fixes`が索引とN+1以外の自明な修正のうち全メモリ化の後も残るもの（書き込みと、DBを読まない処理）を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書き、`waits`がAPIごとの待ちの口（表`ISUCON_WAITS`は空のまま。値はmainが空き時間に変える）を入れる。kickoffは、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。開始と同時に、worktree `portal`で起動したもう1つのセッションが`/portal`で、ポータルと当日マニュアルの保存、サーバーの起動に要る情報、ベンチ接続を作る。mainのセッションはその間にサーバーの起動、kickoff build設定、draftの判断を進め、portalの公式資料をmergeしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
 
-merge・次に測るものの判断・deploy・ベンチ・分析・採否の責任はmainのセッションが持ち、改善の調査・実装・ローカル検証はimproveのセッション（`/improve`）が持つ（mainは改善を実装しない。improveが動いていなければ人間に起動を頼み、その間は最新の採用構成の振れ幅を測る）。laneの成果は根拠を照合してからmergeする。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
+merge・次に測るものの判断・deploy・ベンチ・分析・採否の責任はmainのセッションが持ち、改善の調査・実装・ローカル検証はimproveのセッション（`/improve`）が持つ（mainは改善を実装しない。詳しくは`/main`）。laneの成果は根拠を照合してからmergeする。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
 
 ## 流れ
 
@@ -167,7 +167,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する（行動遷移と生のaccess logは以後の`run`でも毎回残る）。initializeと負荷走行の境界は、初回runより前に`.isuscope/routes.toml`の`[initialize]`で決めておく。コードに候補が1つだけならkickoffが書いてcommitする。`.local/progress.log`の`initialize-route`が`needs_choice`なら、`scripts/benchmark-markers.py suggest-route`の候補から選んで`set-route`する。完全importのcommit後に`make first-bench`で、人間の確認を待たずに実行する。
 
-最初のdeployの前は、サーバーが完全importと同じ内容（配布状態）で動いている。`make first-bench`は、HEADがimportしたdigestのままで（`scripts/imported-state.py`）、アプリのunitが全nodeで動いてlistenしていれば、そのcommitを稼働中として記録し（`.local/current-import-commit`）、ローカルbuildとdeployを待たずにbaselineを取る。その後に同じcommitをdeployし、deploy経路を最初の改善より前に確かめる。baselineの実行ファイルは配布されたbuild、2本目以降は自前のbuild（Rust 1.99.0）になるので、最初の改善runの比較にはその差が混ざり得る。配布サーバーのRust版（`.local/kickoff-build/environment.txt`）が大きく違う場合は初回runの分析に書き、小さな差の判定に注意する。配布状態で測れないとき（記録がない、importの後に配る対象を変えた、unitが動いていない、既にdeployした）は、deployしてから測る。`FIRST_BENCH_MODE=deploy`なら常にdeployが先になる。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[自動化の仕様](../reference/automation.md)の「ベンチ前gateと初回run」を参照する。
+最初のdeployの前は、配布状態のままbaselineを取り、その後に同じcommitをdeployする（配布状態で測れなければ先にdeployする。動きは[自動化の仕様](../reference/automation.md)の「ベンチ前gateと初回run」）。baselineは配布されたbuild、2本目以降は自前のbuildなので、最初の改善runとの比較にはその差が混ざり得る。
 
 確認するもの：
 
@@ -261,14 +261,4 @@ improveはこの分析から次の変更を選ぶ。どちらも根拠（run ID�
 
 ## 非同期buildの開始と確認
 
-`make kickoff`は先行回収・commit後、独立したkickoff build処理を開始して全台bootstrapを進める。
-
-build処理はremoteのCPU・glibc・OpenSSLと回収したCargo.toml・Cargo.lockから設定を提案し、`.local/kickoff-build/proposal.json`へ残す。判断できる場合は`config/kickoff-build.json`を書いてすぐbuildを始める（`configured`）。判断できる場合とは、単一binaryのpackageで、systemライブラリに依存する-sys crateがなく、`config/rust-builder/bases.json`にnodeのglibc以下（OpenSSLを使うならlibsslのmajorも一致）のbaseがあることを指す。自動生成された設定も内容を確認してcommitする。workspace、複数binary、`mysqlclient-sys`などのsystemライブラリ、合うbaseがない場合は理由を残して設定を待つ。`KICKOFF_BUILD_AUTO_CONFIG=0`なら常に待つ。
-
-全台準備を待たず、`.local/progress.log`の`kickoff-build`の行か`.local/kickoff-build/status.json`と`environment.txt`を確認する。`needs_configuration`なら`config/kickoff-build.example.json`を参考に、回収したCargo.toml・Cargo.lock・toolchain指定、remoteのCPU・OS・glibc・Rust版、追加Cライブラリを照合して`config/kickoff-build.json`を作る。対象は`base_image`・`target`・`binary`・`dockerfile`。未記入のexampleを実設定へコピーしたままにしない。完成内容を一時ファイルに書き、renameで一括配置する。操作者自身の判断でよく、人間への追加承認は不要。
-
-kickoff build処理は設定を最大30分待ち、設定完了後は既存の`local-build.py`を使って共有キャッシュへbuildする。設定が既にあれば調査・CPU照合後すぐbuildする。全台準備とbaselineはbuild処理の完了待ちを入れない。deployに必要なbuild完了は従来どおりdeployが保証する。
-
-`configure-draft`はこのkickoff build設定をそのまま`local_builds`へ取り込む。draft生成より後に設定した場合は、設定済みとなった後にdraftを再生成するか、同じ設定をdraftへ反映してからreviewする。異なるimage・Dockerfile・targetに変える場合はキャッシュが別になることを認識する。設定とDockerfileは通常のcommitへ含める。
-
-進行確認は`python3 scripts/kickoff-build.py status`、失敗後の再開は`python3 scripts/kickoff-build.py start`。ログは`.local/kickoff-build/build.log`。同時起動は専用lockで防ぐ。練習停止時は`python3 scripts/kickoff-build.py stop`でkickoff build処理も止める。停止してもソース・成果物・キャッシュは残す。ローカル検証用Composeはこのデプロイ用buildと別キャッシュであり、同時コンパイルによる端末の資源競合を避ける。
+`make kickoff`は先行回収・commit後に、kickoff build処理を独立して始める。`kickoff-build`の行が`configured`なら、生成された`config/kickoff-build.json`をcommitする。`needs_configuration`なら、`.local/kickoff-build/proposal.json`の理由を読み、`config/kickoff-build.example.json`を参考に`config/kickoff-build.json`を作ってcommitする（人間の承認は要らない）。処理の動きと設定の作り方は[自動化の仕様](../reference/automation.md)の「kickoff build」にある。

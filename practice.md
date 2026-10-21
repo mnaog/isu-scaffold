@@ -19,7 +19,7 @@
 - シナリオや得点構造の分析には、参加者向け公式文書、開始後に取得したアプリケーションコード・schema、参加者向けベンチ出力、アプリ側の計測を使う。
 - 運営向け出力は使わない。ISUCON12の`[ADMIN]`行を判断材料にもparserのmessageにも入れない。
 - 資料で確認できない内部条件は不明とし、観測からの推測と確認済みの事実を分ける。内部コードや過去の改善結果で補完しない。
-- モデル比較では閲覧可能な資料と開始時の入力を共通にする。laneの寄与（取り込んだcommit、使った地図）は分けて記録する。
+- モデル比較では閲覧可能な資料と開始時の入力を共通にする。laneの寄与（取り込んだcommit）は分けて記録する。
 - laneはWebを使えない（`dontAsk`で許可していない）。laneの最後の回答も、開始後の資料とコードから作られたものとして扱う。
 
 ## 本番でコードを読める時点
@@ -37,8 +37,8 @@
 3. 当日配布情報に相当する資料を保存し、provider・stack・SSH user/key・node分類を`.local/environment.env`へ設定する。具体的な練習環境の構築方式・AMI・stack名は開始時に確認し、前回の接続先を推測で流用しない。
 4. `make kickoff`を開始する。nodeを発見し、回収元のapplication node 1台のSSHを確立する。
 5. `quick-import-code.sh`がSSH経由でアプリをtar転送し、schemaと初期化scriptを先行回収する。既定の回収元は`/home/isucon/webapp/rust`と`/home/isucon/webapp/sql`、ローカルは`webapp/rust`と`webapp/sql`。これはscaffoldの既定値であり、本番の配置保証ではない。異なる場合は`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`等で指定する。大きな初期データはこの段階では回収しない。
-6. 回収範囲のcommit後、kickoffがkickoff buildとAI lane（`claude -p`のindexes、n-plus-one、obvious-fixes、local-env、state-log）を並行で起動する。公式資料をcommitしたらmainがlane scenarioを起動する。mainのセッションはbuild設定・ベンチ接続・draftを進める。
-7. draft確認・完全import・deploy・計測準備から初回baseline分析まで進め、観測に基づく修正・検証・評価を同じセッションで続ける。
+6. 回収範囲のcommit後、kickoffがkickoff buildとAI lane（`claude -p`。`config/lanes.json`の`kickoff`）を並行で起動する。公式資料をcommitしたらmainがlane scenarioを起動する。mainのセッションはbuild設定・ベンチ接続・draftを進める。
+7. draft確認・完全import・deploy・計測準備から初回baseline分析まで進め、その後は役割ごとに改善を続ける（`AGENTS.md`の「役割」）。
 
 現在の本番想定に合わせ、サーバー作成・起動の待ち時間も開始後の時間に含める。別の練習で「起動済み環境からの開始」を選ぶ場合は、その差を記録し、AMI公開から始めた本番相当の所要時間と混同しない。
 

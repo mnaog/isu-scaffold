@@ -30,4 +30,3 @@
 2. 表に書けるrouteの一覧（methodとpath。pathの変わる区切りは`:name`で書く）。isuscopeのroute名と違う書き方になる箇所があれば、その対応
 3. 確かめたこと、確かめられなかったこと、mainが取り込み時に気をつけること（他のlaneと触る行が重なりそうな箇所）
 
-mainのセッションは`git log lane/waits`とこの回答を読み、baselineの後の最初のdeployで取り込む。表は空のままなので、取り込みだけでは挙動は変わらない。

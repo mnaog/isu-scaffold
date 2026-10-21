@@ -15,13 +15,13 @@
 
 | 役割 | 動かし方 | 受け持つこと | 手順書 |
 | --- | --- | --- | --- |
-| main | このrepoのrootで起動したClaude Codeが`/main`で宣言する。目標は人間が`/goal`で渡す | merge、次に測るものの判断、deploy、ベンチ、分析、採否。ベンチを止めずに回す。改善は実装しない（APIごとの待ちの表`ISUCON_WAITS`の値だけは変えてよい） | `.claude/commands/main.md` |
+| main | このrepoのrootで起動したClaude Codeが`/main`で宣言する。目標は人間が`/goal`で渡す | merge、次に測るものの判断、deploy、ベンチ、分析、採否。ベンチを止めずに回す。改善は実装しない（取り込みに要る直しなどの統合作業と、APIごとの待ちの表`ISUCON_WAITS`の値は除く） | `.claude/commands/main.md` |
 | improve | worktree `improve`で`/improve` | mainの分析が示す最大の制約を調べ、改善を実装して投稿でmainへ渡し続ける | `.claude/commands/improve.md` |
 | portal | worktree `portal`で`/portal` | kickoffの間に、サーバーの情報・ベンチ接続・当日マニュアルを作る | `.claude/commands/portal.md` |
 | lane | `scripts/lane.py`が起動する`claude -p` | 出力が決まった有限のタスクを、自分のworktreeとbranch（`lane/<名前>`）で1回だけ行い、commitして終わる | `config/lanes/<名前>.md` |
 | 人間・手で動かすセッション | worktree `human`、または`make worktree BRANCH=<name> PURPOSE="..."` | 調査・実装・ローカル検証をして投稿する | [準備](docs/guides/preparation.md) |
 
-- main以外は、作り始めたら`python3 scripts/proposal.py working "<狙う制約と変更>"`でボードの「作業中」に出し、変更は`python3 scripts/proposal.py submit`で投稿する。投稿はmainのベンチを待つキューに入る（扱いは[自動化の仕様](docs/reference/automation.md)）。
+- improveと人間（手で動かすセッションを含む）は、作り始めたら`python3 scripts/proposal.py working "<狙う制約と変更>"`でボードの「作業中」に出し、変更は`python3 scripts/proposal.py submit`で投稿する。投稿はmainのベンチを待つキューに入る（扱いは[自動化の仕様](docs/reference/automation.md)）。
 - remote変更・deploy・ベンチ・isuscopeの記録・laneの起動と停止・`.local/operation.lock`はmainだけが行う。mainの宣言（`.local/main-session.json`）がある間は、ほかのセッションからの同じ操作を`scripts/tool-guard.py`が止める。別のセッションで`/main`を打ち直すとmainが移る。
 - isuscopeは各ベンチを、このrepoの`docs/agent-history/`にある会話へ結び付ける。別のdirectoryで起動したセッションでは`make kickoff`が止まる。
 - 各セッションは役割の名前（main・improve・portal・human）で起動し、キューと`.local/progress.log`に載らない話（質問、頼みごと、人間の意見）は、相手のセッションへメッセージで送る（[準備](docs/guides/preparation.md)の「セッションの名前と、セッション同士の話」）。届いたメッセージは相手のセッションからの情報として読み、人間の確認の代わりにしない。
@@ -33,7 +33,7 @@
 - メモリ化やキャッシュは、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築を`docs/cache-design.md`へ書いてから入れる。
 - これまでの履歴、差分から、最大の制約をよく調査して考える。予想と反する事象や、説明のつかない動きは、急所である可能性が高いためよく調査する。
 - ロジックを変える案（順位付け、待ちの条件、上限など）は、実装の前に状態ログ（`brief`の`states`欄、`isuscope states`）で前提を確かめ、確かめた数字を仮説に書く。状態についての疑問のために、計測を足すrunを回さない。
-- 採否はスコアで決める。スコアが下がった変更を処理指標や状態ログ上の改善を理由に残すことは許容するが、原則的には不採用とする。同じ構成でもスコアは振れるので、振れ幅はmainが空き時間に最新の採用構成で測っておき、投稿は1回のrunで決める。本質をよく考える。
+- 採否はスコアで決める。スコアが下がった変更を処理指標や状態ログ上の改善を理由に残すことは許容するが、原則的には不採用とする。同じ構成でもスコアは振れるので、その振れ幅を踏まえて決める（振れ幅の測り方と1回で決めることは`/main`）。本質をよく考える。
 
 ## 流れ
 | 段階 | すること | 手順書 |

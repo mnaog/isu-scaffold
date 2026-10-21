@@ -41,4 +41,3 @@ commit messageは英語で、1行目に変更、本文に対象の種類と状�
 2. 対象の種類ごとの状態と遷移の一覧（`entered`にした箇所はそう書く）
 3. 書かなかった状態の変化と理由、mainが取り込み時に気をつけること（lockの中に残した呼び出し、他のlaneと触る関数が重なりそうな箇所）
 
-mainのセッションは`git log lane/state-log`とこの回答を読み、baselineの後の最初のdeployで、他のlaneのcommitより先に取り込む。

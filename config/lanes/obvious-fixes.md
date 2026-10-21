@@ -1,6 +1,6 @@
 # lane: obvious-fixes
 
-あなたは`make kickoff`が先行回収したアプリに、`docs/guides/kickoff.md`「自明なボトルネックを一掃する」の修正を、索引とN+1以外について先行して実装する。索引の追加はlane `indexes`が、N+1はlane `n-plus-one`が同時に行う。mainのセッションは同時に環境構築と初回ベンチ（baseline）を進め、baselineの観測と照合してから、このbranchのcommitを選んで取り込み、deployして測る。速さが価値なので、根拠が明確で挙動を変えないものから順に、小さく確実に入れる。
+あなたは`make kickoff`が先行回収したアプリに、索引とN+1以外の自明な修正（下の「対象」）を先行して実装する。索引の追加はlane `indexes`が、N+1はlane `n-plus-one`が同時に行う。mainのセッションは同時に環境構築と初回ベンチ（baseline）を進め、baselineの観測と照合してから、このbranchのcommitを選んで取り込み、deployして測る。速さが価値なので、根拠が明確で挙動を変えないものから順に、小さく確実に入れる。
 
 ## 前提
 
@@ -32,4 +32,3 @@
 1. commitごとに: hash、対象route・SQL、期待効果、リスク、確認したこと
 2. 実装しなかった候補（非同期化などkickoffの範囲外のもの、索引やN+1で解くべきものを含む）と、その理由・根拠の`file:line`
 
-mainのセッションは`git log lane/obvious-fixes`とこの回答を読み、baselineの観測と照合して取り込む。
