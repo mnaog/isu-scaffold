@@ -69,19 +69,17 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 
 ### waitを微調整する
 
-応答の中身を変えずに、APIごとに少しだけ待たせる。ベンチの利用者は応答を待ってから次の要求を出すので、点にならない要求（空振りのpolling、繰り返しの一覧取得）が減り、ベンチとサーバーの手が点になる処理へ回ることがある（過去の練習でも、回数の多いAPIに数十〜100ms足して得点が上がった）。効くかどうかは構成ごとに変わるので、投稿が無いときに1回に1つずつ試し、結果をisuscopeに残して次の判断に使う。
+応答の中身を変えずに、APIごとに少しだけ待たせる。ベンチの利用者は応答を待ってから次の要求を出すので、点にならない要求（空振りのpolling、繰り返しの一覧取得）が減り、ベンチとサーバーの手が点になる処理へ回ることがある。効くかどうかは構成ごとに変わるので、投稿が無いときに1回に1つずつ試し、結果をisuscopeに残して次の判断に使う。
 
 - **仕組み**: lane `waits`がアプリに口を入れる（`config/waits/waits.rs`。表が空なら何もしない）。表は環境変数`ISUCON_WAITS`で、アプリのunitが読むEnvironmentFileに置く。起動時に1度だけ読むので、deploy（buildなし、アプリの再起動）で変わり、OSの再起動・主催者の追試でも同じ表で動く。1つの規則は2000msまで。
-- **どこを試すか**: 最新のrunの`isuscope query latest --view http`で回数の多いrouteのうち、点に直結しないもの（polling、一覧、見積もり）から。`python3 scripts/waits.py history`で、前に試した値と結果を先に見る。同じ構成で試して効かなかった値は繰り返さない。
-- **値の進め方**: `after 10` → `30` → `100`のように増やし、振れ幅より上が続く間だけ進める。空の応答だけを待たせるなら`--max-body <空の一覧のバイト数>`を付ける。
+- **前に試したこと**: `python3 scripts/waits.py history`で、前に試した値と結果を読める。
 - **1回の手順**:
   1. `python3 scripts/waits.py set GET /api/... --after 30`（routeはisuscopeのroute名をそのまま書ける）
   2. commitして`make deploy`
   3. `isuscope run --tag wait --tag "wait:GET /api/..." --hypothesis "wait: GET /api/... after 0→30ms。基準 <短縮ID>（平均、±x%）。期待: このrouteの回数が減り、<点になる処理>が増える"`をbackgroundで起動する
-- **採否**: `python3 scripts/spread.py --base <基準> --score <得点>`で、振れ幅より上なら採用して残す。内側か下なら`git revert`で前の値へ戻す（待ちは危険も持つので、内側では残さない）。
+- **採否**: 投稿と同じく、`python3 scripts/spread.py --base <基準> --score <得点>`と照らして1回で決める。不採用なら`git revert`で前の値へ戻す。
   - 分析は`isuscope analyze RUN supported|rejected --change <waits.py setが出すwait-...のID> --decision accepted|rejected`で記録する。
   - 本文には、基準の平均からの差、振れ幅の上・内側・下、そのrouteと点になるrouteの回数の変化（`isuscope query RUN --base BASE --view http --label route=...`）、`--view transitions`で変わった遷移を書く。後で`waits.py history`と`isuscope change list`で読み返すので、構成（基準の短縮ID）と値を必ず入れる。
-- **測り直す時機**: 投稿の採用で点が振れ幅を超えて動いたら、それまでに採用した待ちが今も効くとは限らない。次に空いたときに、採用済みの待ちを1つずつ`--off`にして測る（下がれば戻す）。
 - **終了前**: 表は最終構成の一部で、計測ではないので外さない。`docs/guides/finish.md`の手順で、最後のrunの`identity.waits`と`waits.py show`が採用した表と一致することを確かめる。
 
 ### kickoffの間
