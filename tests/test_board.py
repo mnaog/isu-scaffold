@@ -28,7 +28,7 @@ class BoardTests(unittest.TestCase):
         self.repo = Path(self.temp.name).resolve() / 'repo'
         self.repo.mkdir()
         shutil.copytree(SOURCE / 'scripts/board', self.repo / 'scripts/board')
-        for name in ('proposal.py', 'main-session.py', 'progress.py'):
+        for name in ('proposal.py', 'isuscope_sql.py', 'main-session.py', 'progress.py'):
             shutil.copy(SOURCE / 'scripts' / name, self.repo / 'scripts' / name)
         (self.repo / 'config').mkdir()
         shutil.copy(SOURCE / 'config/records.json', self.repo / 'config/records.json')
@@ -57,7 +57,7 @@ class BoardTests(unittest.TestCase):
         def fake(repo, argv):
             calls.append(argv)
             if 'list' in argv:
-                return {'runs': [{'id':'active','state':'running'}, {'id':'done','state':'complete','commit_hash':'abc'}]}
+                return {'runs': [{'run':'active','state':'running'}, {'run':'done','state':'complete','commit_hash':'abc'}]}
             if 'brief' in argv:
                 return {'run': argv[2], 'summary': {'state':'complete'}}
             return {'rows': []}
@@ -67,10 +67,10 @@ class BoardTests(unittest.TestCase):
         self.assertEqual([c[1] for c in calls], ['list', 'brief'])
 
     def test_score_history_keeps_failed_and_missing_scores_without_full_run_details(self):
-        runs=[{'id':'active','state':'running'},
-              {'id':'failed','state':'failed','score':None,'passed':False,'started_at':'2026-10-01T10:02:00Z'},
-              {'id':'zero','state':'complete','score':0,'passed':True,'started_at':'2026-10-01T10:01:00Z'},
-              {'id':'first','state':'complete','score':100,'passed':True,'started_at':'2026-10-01T10:00:00Z','hypothesis':'large text'}]
+        runs=[{'run':'active','state':'running'},
+              {'run':'failed','state':'failed','score':None,'passed':False,'started_at':'2026-10-01T10:02:00Z'},
+              {'run':'zero','state':'complete','score':0,'passed':True,'started_at':'2026-10-01T10:01:00Z'},
+              {'run':'first','state':'complete','score':100,'passed':True,'started_at':'2026-10-01T10:00:00Z','hypothesis':'large text'}]
         def fake(repo, argv):
             if 'list' in argv: return {'runs':runs}
             return {}
@@ -83,7 +83,7 @@ class BoardTests(unittest.TestCase):
         self.assertEqual(data['running'][0]['id'], 'active')
 
     def test_running_is_kept_before_first_completed_benchmark(self):
-        with patch.object(reads, 'command_json', return_value={'runs': [{'id': 'active', 'state': 'running'}]}):
+        with patch.object(reads, 'command_json', return_value={'runs': [{'run': 'active', 'state': 'running'}]}):
             data = reads.metrics(self.repo, self.cfg)
         self.assertEqual(data['running'][0]['id'], 'active')
         self.assertIsNone(data['latest'])

@@ -66,8 +66,10 @@ def limit_failures(failed):
             limits = table(isuscope('brief', run['id'][-8:]).get('limits'))
         except (RuntimeError, ValueError):
             continue
-        if limits:
-            found.append((run['id'][-8:], sorted({row['setting'] for row in limits})))
+        # brief lists every limit it read; one was hit only where a log or a counter says so.
+        hit = sorted({row['config_key'] for row in limits if row.get('evidence')})
+        if hit:
+            found.append((run['id'][-8:], hit))
     return found
 
 

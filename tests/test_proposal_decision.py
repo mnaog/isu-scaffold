@@ -3,11 +3,14 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'tests'))
+import isuscope_stub  # noqa: E402
 HOOK = ROOT / 'scripts/bench-hook.py'
 GIT_ENV = {'GIT_AUTHOR_NAME': 't', 'GIT_AUTHOR_EMAIL': 't@example.com',
            'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@example.com'}
@@ -20,7 +23,7 @@ class ProposalDecisionTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.repo = Path(self.tmp.name) / 'repo'
         (self.repo / 'scripts').mkdir(parents=True)
-        for name in ('main-session.py', 'proposal.py'):
+        for name in ('main-session.py', 'proposal.py', 'isuscope_sql.py'):
             shutil.copy(ROOT / 'scripts' / name, self.repo / 'scripts' / name)
         (self.repo / 'app.txt').write_text('a\nb\nc\n')
         (self.repo / '.gitignore').write_text('.local/\n')
@@ -139,16 +142,16 @@ class ProposalDecisionTest(unittest.TestCase):
         self.deliver()  # the benchmark starts: human is measured
         self.assertEqual(json.loads((self.repo / '.local/proposals/human.json').read_text())['status'], 'measuring')
         run_id = '01a15900-0000-7000-8000-00000000aaaa'
-        run = self.repo / 'isuscope-data/runs' / run_id
-        run.mkdir(parents=True)
-        (run / 'run.json').write_text(json.dumps({'id': run_id, 'benchmark': {'score': 720000}, 'analyses': [
-            {'id': 'an-1', 'created_at': '2999-01-01T00:00:00.123456789Z', 'verdict': 'supported',
-             'body': '次の最大の制約: POST /coordinate のDB書き込み。\nINSERTが1/5に減った。'}]}))
-        decisions = self.repo / 'isuscope-data/changes/human/decisions'
-        decisions.mkdir(parents=True)
-        (decisions / 'd.json').write_text(json.dumps({
-            'id': 'd1', 'change_id': 'human', 'created_at': '2999-01-01T00:00:00.123456789Z', 'status': 'accepted',
-            'reason': 'INSERTが1/5に減り、score +12%', 'evidence': [{'run_id': run_id}]}))
+        db, bin_dir = isuscope_stub.install(self.tmp.name)
+        db.execute("INSERT INTO runs (id, score, passed) VALUES (?, 720000, 1)", (run_id,))
+        db.execute("INSERT INTO run_analyses VALUES ('an-1', ?, '2999-01-01T00:00:00.123456789Z', 'supported', ?)",
+                   (run_id, '次の最大の制約: POST /coordinate のDB書き込み。\nINSERTが1/5に減った。'))
+        db.execute("INSERT INTO changes (id, created_at) VALUES ('human', '2999-01-01T00:00:00.123456789Z')")
+        db.execute("INSERT INTO change_decisions VALUES ('d1', 'human', '2999-01-01T00:00:00.123456789Z', 'accepted', "
+                   "'INSERTが1/5に減り、score +12%', NULL)")
+        db.execute("INSERT INTO change_decision_runs VALUES ('d1', ?)", (run_id,))
+        db.commit()
+        self.env['PATH'] = f'{bin_dir}:{self.env["PATH"]}'
 
         told = self.analyze()
         self.assertIn('human accepted', told)

@@ -15,7 +15,6 @@ cp "${source_repo}"/scripts/discover.sh \
   "${source_repo}"/scripts/discover-aws.sh \
   "${source_repo}"/scripts/apply-node-overrides.sh \
   "${source_repo}"/scripts/render-environment.sh \
-  "${source_repo}"/scripts/isuscope-policy.py \
   "${source_repo}"/scripts/ssh-node.sh \
   "${source_repo}"/scripts/timeout-command.py \
   "${source_repo}"/scripts/benchmark-http.sh \
@@ -43,13 +42,12 @@ cp "${source_repo}"/scripts/discover.sh \
   "${fixture_repo}/scripts/"
 mkdir -p "${fixture_repo}/scripts/board"
 # collectorの正本はisuscopeが配るので、fixtureにはbenchmark adapterだけを置く。
-cp "${source_repo}/.isuscope/benchmark.sh" "${fixture_repo}/.isuscope/"
+cp "${source_repo}/.isuscope/benchmark.sh" "${source_repo}/.isuscope/policy.toml" "${fixture_repo}/.isuscope/"
 cp "${source_repo}/config/environment.example.env" "${fixture_repo}/.local/environment.env"
 cp "${source_repo}/config/nodes.example.json" "${fixture_repo}/.local/nodes.json"
 cp "${source_repo}/tests/fixtures/sync.json" "${fixture_repo}/config/sync.json"
 cp "${source_repo}/config/sync.rust.example.json" "${fixture_repo}/config/sync.rust.example.json"
 cp "${source_repo}/config/ansible-vars.json" "${fixture_repo}/config/ansible-vars.json"
-cp "${source_repo}/config/isuscope-policy.json" "${fixture_repo}/config/isuscope-policy.json"
 cp "${source_repo}/config/application.env" "${fixture_repo}/config/application.env"
 jq '.[0] as $app1 | . + [$app1 + {name:"app2", host:"192.0.2.11"}]' \
   "${fixture_repo}/.local/nodes.json" >"${fixture_repo}/.local/nodes.json.tmp"

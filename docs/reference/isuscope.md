@@ -48,7 +48,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 ## ログの残し方
 
 - 各runの`logs/*.zst`（生のaccess log、状態ログ、ベンチ出力など）は、ベンチの反応を後から比べる証拠なので全runを手元に残す。`logs/`はGitに入れず、重要なrunだけ`git add -f isuscope-data/runs/<run-id>`で残す。生のaccess logは1 runで約12MB（2 node）。
-- 状態ログのcache（`runs/<id>/logs/.state-cache/`、`cache/states/`）は1 runで約200MBになる使い捨てのSQLiteで、消しても`states sql`・`timeline`が次に読むときに保存したログから作り直す。ベンチを起動するとhookが`scripts/isuscope-prune.py`で直近3 run以外のcacheを消し（10分以内に使ったものは残す）、`isuscope-data`をSpotlightとTime Machineの対象から外す。
+- 状態ログのcache（`cache/states/`）は使い捨てのSQLiteで、isuscopeが最近使ったrunの分だけ残し、無ければ保存したログから作り直す。ベンチを起動するとhookが`scripts/isuscope-prune.py`で古いisuscopeが残したrunごとのcache（`runs/<id>/logs/.state-cache/`）を消し、`isuscope-data`をSpotlightとTime Machineの対象から外す。
 
 ## 会話との紐付け
 

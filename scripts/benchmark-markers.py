@@ -16,12 +16,11 @@ The benchmark-output markers below remain for benchmarks that print clear lines.
 
 isuscope splits each run into initialize and load only when the benchmark prints the
 configured markers (initialize_start_marker / initialize_finish_marker); without them the
-host, client and SQL summaries mix initialize into the load. The defaults belong to one
-past contest, and practice second ran all 55 runs without a boundary. Set them once from
-the saved output of the first run (config/benchmark-sample.log):
+host, client and SQL summaries mix initialize into the load. Set them once from the saved
+output of the first run (config/benchmark-sample.log):
 
   benchmark-markers.py suggest            candidate lines (operator lines are never offered)
-  benchmark-markers.py set START FINISH   write both to config/isuscope-policy.json and apply
+  benchmark-markers.py set START FINISH   write both to .isuscope/policy.toml
   benchmark-markers.py check              exit 1 when the markers are unset or not in the sample
 
 Markers match as substrings of a line, so pass text without the timestamp.
@@ -31,11 +30,11 @@ import json
 import os
 from pathlib import Path
 import re
-import subprocess
 import sys
+import tomllib
 
 ROOT = Path(os.environ.get('REPO_DIR') or Path(__file__).resolve().parent.parent)
-POLICY = ROOT / 'config/isuscope-policy.json'
+POLICY = ROOT / '.isuscope/policy.toml'
 SAMPLE = ROOT / 'config/benchmark-sample.log'
 ROUTES = ROOT / '.isuscope/routes.toml'
 ROUTE_LITERAL = re.compile(r'"(/[A-Za-z0-9_/.-]*initiali[sz]e[A-Za-z0-9_/.-]*)"')
@@ -52,9 +51,18 @@ def participant_lines(policy):
     return [line for line in lines if not (pattern and pattern.search(line))]
 
 
+def set_benchmark_keys(text, **values):
+    """Write string keys into the [benchmark] table of policy.toml, replacing earlier values.
+    A JSON string is a valid TOML basic string."""
+    lines = text.splitlines()
+    lines = [line for line in lines if not re.match(r'^(' + '|'.join(values) + r')\s*=', line)]
+    header = lines.index('[benchmark]') + 1
+    lines[header:header] = [f'{key} = {json.dumps(value, ensure_ascii=False)}' for key, value in values.items()]
+    return '\n'.join(lines) + '\n'
+
+
 def initialize_route():
     try:
-        import tomllib
         return tomllib.loads(ROUTES.read_text()).get('initialize')
     except (OSError, ValueError):
         return None
@@ -120,7 +128,7 @@ def main():
             parser.error('set-route needs METHOD and PATH')
         set_route(*args.markers)
         return 0
-    policy = json.loads(POLICY.read_text())
+    policy = tomllib.loads(POLICY.read_text()).get('benchmark', {})
     if args.action == 'check' and initialize_route():
         route = initialize_route()
         print(f"initialize boundary from the access log: {route.get('method')} {route.get('path')}")
@@ -153,12 +161,9 @@ def main():
         sys.exit('each marker must appear in a participant line of config/benchmark-sample.log')
     if second < first:
         sys.exit('the finish marker must come after the start marker')
-    policy.update(initialize_start_marker=start, initialize_finish_marker=finish)
-    POLICY.write_text(json.dumps(policy, ensure_ascii=False, indent=2) + '\n')
-    config = ROOT / '.isuscope/config.toml'
-    if config.exists():
-        subprocess.run([sys.executable, str(ROOT / 'scripts/isuscope-policy.py'), str(config)], check=True)
-    print(f'markers set (lines {first + 1} and {second + 1}); commit config/isuscope-policy.json. '
+    POLICY.write_text(set_benchmark_keys(POLICY.read_text(), initialize_start_marker=start,
+                                         initialize_finish_marker=finish))
+    print(f'markers set (lines {first + 1} and {second + 1}); commit .isuscope/policy.toml. '
           'Runs from now on split initialize from load.')
     return 0
 

@@ -1,8 +1,10 @@
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'scripts/board'))
@@ -10,42 +12,31 @@ import variance  # noqa: E402
 
 
 class SpreadTests(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.repo = Path(self.tmp.name)
-        self.minute = 0
+    """The board takes the swing from `isuscope variance`, which owns the arithmetic."""
 
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def run_record(self, short, score, files, passed=True, repeat=False, tags=()):
-        self.minute += 1
-        run_id = f'01a15900-0000-7000-8000-0000{short}'
-        directory = self.repo / 'isuscope-data/runs' / run_id
-        directory.mkdir(parents=True)
-        (directory / 'run.json').write_text(json.dumps({
-            'id': run_id, 'state': 'complete', 'started_at': f'2026-10-20T12:{self.minute:02d}:00Z',
-            **({'repeat': {'base_run_id': 'x', 'changed': [], 'reason': '振れ幅'}} if repeat else
-               {'repeat': {'base_run_id': 'x', 'changed': ['identity.deployed_files']}}),
-            'tags': list(tags), 'benchmark': {'score': score, 'passed': passed},
-            'identity': {'values': {'deployed_files': files}}}))
-        return run_id
-
-    def test_each_run_carries_the_swing_known_when_it_started(self):
-        first = self.run_record('aaaa0001', 700000, 'cfg-a')
-        self.run_record('aaaa0002', 720000, 'cfg-a', repeat=True)
-        later = self.run_record('bbbb0001', 800000, 'cfg-b', tags=['wait', 'wait:GET /a'])
-        failed = self.run_record('bbbb0002', 100, 'cfg-b', passed=False)  # a FAIL counts for nothing
-        known = variance.spread(self.repo)
-        self.assertIsNone(known[first]['spread'])  # nothing measured twice yet
-        swing = known[later]['spread']
-        # 710000 ± 10000: each ±1/71, pooled over one degree of freedom
-        self.assertAlmostEqual(swing['sigma'], (2 * (10000 / 710000) ** 2) ** 0.5, places=9)
-        self.assertEqual((swing['groups'], swing['runs']), (1, 2))
-        self.assertTrue(known['01a15900-0000-7000-8000-0000aaaa0002']['repeat'])
-        self.assertFalse(known[later]['repeat'])  # isuscope records `repeat` on every run; only --repeat has a reason
-        self.assertTrue(known[later]['wait'])
-        self.assertEqual(known[failed]['spread'], swing)
+    def test_each_run_carries_the_swing_isuscope_knew_when_it_started(self):
+        rows = [
+            {'run': 'aaaa0001', 'config_key': 'a', 'score': 700000, 'passed': True, 'repeat': False,
+             'spread': None, 'spread_configs': 0, 'spread_runs': 0},
+            {'run': 'aaaa0002', 'config_key': 'a', 'score': 720000, 'passed': True, 'repeat': True,
+             'spread': None, 'spread_configs': 0, 'spread_runs': 0},
+            {'run': 'bbbb0001', 'config_key': 'b', 'score': 800000, 'passed': True, 'repeat': False,
+             'spread': 0.0199, 'spread_configs': 1, 'spread_runs': 2},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            bin_dir = Path(directory)
+            (bin_dir / 'isuscope').write_text(
+                '#!/bin/sh\n[ "$*" = "variance --json" ] || exit 2\ncat <<\'JSON\'\n'
+                + json.dumps({'schema_version': 2, 'runs': {'columns': list(rows[0]), 'total_count': len(rows),
+                                                           'truncated': False,
+                                                           'rows': [list(row.values()) for row in rows]}})
+                + '\nJSON\n')
+            (bin_dir / 'isuscope').chmod(0o755)
+            with mock.patch.dict(os.environ, {'PATH': f'{bin_dir}:{os.environ["PATH"]}'}):
+                known = variance.spread(directory)
+        self.assertIsNone(known['aaaa0001']['spread'])
+        self.assertTrue(known['aaaa0002']['repeat'])
+        self.assertEqual(known['bbbb0001'], {'repeat': False, 'spread': {'sigma': 0.0199, 'groups': 1, 'runs': 2}})
 
 
 if __name__ == '__main__':

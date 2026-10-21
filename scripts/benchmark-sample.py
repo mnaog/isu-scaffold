@@ -65,8 +65,8 @@ def run_output(run):
 
 def participant_lines(path):
     text = subprocess.run(['zstd', '-dcq', '--', str(path)], check=True, capture_output=True).stdout.decode(errors='replace')
-    pattern = env_values().get('BENCHMARK_EXCLUDE_REGEX') or json.loads(
-        (ROOT / 'config/isuscope-policy.json').read_text()).get('operator_line_pattern', '')
+    pattern = env_values().get('BENCHMARK_EXCLUDE_REGEX') or tomllib.loads(
+        (ROOT / '.isuscope/policy.toml').read_text()).get('benchmark', {}).get('operator_line_pattern', '')
     operator = re.compile(pattern) if pattern else None
     # The adapter's own result line is appended to the saved output; it is not the benchmark's.
     return [line for line in text.splitlines()

@@ -20,7 +20,11 @@ test -x "${venv_dir}/bin/ansible"
 test -f "${inventory_path}"
 test -z "$(git ls-files -- .local)" || { echo '.local contains tracked files' >&2; exit 1; }
 
-python3 "${script_dir}/isuscope-policy.py" "${repo_dir}/.isuscope/config.toml" --check
+python3 - "${repo_dir}/.isuscope/config.toml" <<'PY' || { echo 'run make discover: .isuscope/config.toml does not include .isuscope/policy.toml' >&2; exit 1; }
+import sys, tomllib
+with open(sys.argv[1], 'rb') as config:
+    sys.exit('.isuscope/policy.toml' not in tomllib.load(config).get('include', {}).get('config', []))
+PY
 
 export ANSIBLE_PYTHON_INTERPRETER=${ANSIBLE_PYTHON_INTERPRETER:-/usr/bin/python3}
 export ANSIBLE_CONFIG=${repo_dir}/ansible/ansible.cfg

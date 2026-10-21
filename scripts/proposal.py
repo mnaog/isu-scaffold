@@ -70,6 +70,9 @@ SCRIPTS = Path(__file__).resolve().parent
 _spec = importlib.util.spec_from_file_location('main_session', SCRIPTS / 'main-session.py')
 main_session = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(main_session)
+_spec = importlib.util.spec_from_file_location('isuscope_sql', SCRIPTS / 'isuscope_sql.py')
+isuscope_sql = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(isuscope_sql)
 
 # Waiting for a benchmark: what the queue counts.
 WAITING = ('submitted', 'delivered', 'needs-sync', 'merged')
@@ -411,15 +414,14 @@ def instant(stamp):
 
 
 def latest_change_decision(root, branch):
-    found = []
-    for path in (Path(root) / 'isuscope-data/changes' / change_id(branch) / 'decisions').glob('*.json'):
-        try:
-            record = json.loads(path.read_text())
-        except (OSError, ValueError):
-            continue
-        if instant(record.get('created_at')):
-            found.append(record)
-    return max(found, key=lambda record: instant(record['created_at'])) if found else None
+    """The last decision isuscope recorded for the proposal's change, with the first run it cites."""
+    # change_id leaves only [A-Za-z0-9_-], so it is safe inside the SQL string.
+    rows = isuscope_sql.rows(root, f"""
+        SELECT d.created_at, d.status, d.reason,
+               (SELECT run_id FROM change_decision_runs WHERE decision_id = d.id ORDER BY run_id LIMIT 1) AS run_id
+        FROM change_decisions d WHERE d.change_id = '{change_id(branch)}'
+        ORDER BY d.created_at DESC, d.id DESC LIMIT 1""")
+    return rows[0] if rows and instant(rows[0]['created_at']) else None
 
 
 def adopt_decisions(root):
@@ -436,48 +438,49 @@ def adopt_decisions(root):
         decision = 'accepted' if record.get('status') == 'provisional' else record.get('status')
         if decision not in DECISIONS:
             continue
-        run = next((e.get('run_id', '')[-8:] for e in record.get('evidence') or []), '')
+        run = (record.get('run_id') or '')[-8:]
         decide(root, data['branch'], decision, run=run or None, note=record.get('reason') or '')
         adopted.append(f'{data["branch"]} {decision}')
     return adopted
 
 
 def latest_analysis(root):
-    """The run analyzed last and that analysis, from isuscope's run records."""
-    best = None
-    for path in (Path(root) / 'isuscope-data/runs').glob('*/run.json'):
-        try:
-            run = json.loads(path.read_text())
-        except (OSError, ValueError):
-            continue
-        analysis = (run.get('analyses') or [None])[-1]
-        at = instant((analysis or {}).get('created_at'))
-        if at and (best is None or at > best[0]):
-            best = (at, run, analysis)
-    return best[1:] if best else (None, None)
+    """The analysis recorded last, with its run's ID and score, from isuscope's index."""
+    rows = isuscope_sql.rows(root, """
+        SELECT a.id, a.body, r.id AS run_id, r.score FROM run_analyses a JOIN runs r ON r.id = a.run_id
+        ORDER BY a.created_at DESC, a.id DESC LIMIT 1""")
+    return rows[0] if rows else None
 
 
 def after_analysis(root):
     """After main records an analysis: the decisions reach the proposals, and once nothing measured waits
     for one, improve hears of the analysis (`main analyzed`) without main writing it again."""
     lines = []
+    try:
+        return after_analysis_reading(root, lines)
+    except isuscope_sql.Unavailable as error:
+        lines.append(f'isuscopeの記録を読めなかった（{error}）。採否は`python3 scripts/proposal.py decide`で投稿へ返す。')
+        return '\n'.join(lines)
+
+
+def after_analysis_reading(root, lines):
     if adopted := adopt_decisions(root):
         lines.append('isuscopeの採否を投稿へ写した: ' + ', '.join(adopted))
     if waiting := [data['branch'] for data in load_all(root) if data.get('status') == 'measuring']:
         lines.append(f'まだ採否の無い測定中の投稿: {", ".join(waiting)}（`isuscope analyze RUN ... --change '
                      f'{change_id(waiting[0])} --decision ...`で記録する）。')
         return '\n'.join(lines)
-    run, analysis = latest_analysis(root)
-    if not run:
+    analysis = latest_analysis(root)
+    if not analysis:
         return '\n'.join(lines)
     state = state_dir(root) / 'analyzed.json'
     told = read_json(state) or {}
-    if told.get('analysis') != analysis.get('id'):
-        score = (run.get('benchmark') or {}).get('score')
-        body = ' '.join((analysis.get('body') or '').split())
-        progress_emit(root, 'main', 'analyzed', f'{run["id"][-8:]} score {score}: {body[:300]}')
-        write_json(state, {'analysis': analysis.get('id'), 'run': run['id']})
-        lines.append(f'improveへ`main analyzed`（run {run["id"][-8:]}の分析の冒頭）を出した。')
+    if told.get('analysis') != analysis['id']:
+        body = ' '.join((analysis['body'] or '').split())
+        run = analysis['run_id'][-8:]
+        progress_emit(root, 'main', 'analyzed', f'{run} score {analysis["score"]}: {body[:300]}')
+        write_json(state, {'analysis': analysis['id'], 'run': analysis['run_id']})
+        lines.append(f'improveへ`main analyzed`（run {run}の分析の冒頭）を出した。')
     return '\n'.join(lines)
 
 

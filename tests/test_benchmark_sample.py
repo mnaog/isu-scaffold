@@ -31,7 +31,7 @@ class BenchmarkSampleTest(unittest.TestCase):
             (self.root / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ROOT / name, self.root / name)
         (self.root / 'config').mkdir()
-        (self.root / 'config/isuscope-policy.json').write_text(json.dumps({'operator_line_pattern': '\\[ADMIN\\]'}))
+        shutil.copy(ROOT / '.isuscope/policy.toml', self.root / '.isuscope/policy.toml')
         # The scaffold's default patterns, with a local command the contract can review.
         env = (ROOT / 'config/benchmark.env').read_text()
         env = re.sub(r'^BENCHMARK_TRANSPORT=.*$', 'BENCHMARK_TRANSPORT=local', env, flags=re.M)

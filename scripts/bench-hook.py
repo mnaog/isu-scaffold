@@ -17,7 +17,7 @@ Bash call. Heredoc bodies and `bash -n` syntax checks do not count as starting o
   --decision ...`) onto the proposals being measured, and once none waits for a decision, writes
   `main analyzed` for improve from that analysis (scripts/proposal.py after_analysis), so main
   writes each decision and each analysis once.
-- When a benchmark starts, it also drops the state-log caches of all but the latest runs and keeps
+- When a benchmark starts, it also drops the state-log caches earlier isuscope versions left and keeps
   isuscope-data out of Spotlight and Time Machine (scripts/isuscope-prune.py).
 
 Internal errors let the call through, like tool-guard.

@@ -4,10 +4,13 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'tests'))
+import isuscope_stub  # noqa: E402
 
 UNIT = '[Service]\nEnvironmentFile=/home/isucon/env.sh\nExecStart=/home/isucon/webapp/rust/target/release/app\n'
 SYNC = {'items': [
@@ -21,7 +24,7 @@ class WaitsScriptTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.repo = Path(self.tmp.name)
         (self.repo / 'scripts').mkdir()
-        for name in ('waits.py', 'benchmark-identity.py'):
+        for name in ('waits.py', 'isuscope_sql.py', 'benchmark-identity.py'):
             shutil.copy(ROOT / 'scripts' / name, self.repo / 'scripts' / name)
         (self.repo / 'config/systemd').mkdir(parents=True)
         (self.repo / 'config/app').mkdir(parents=True)
@@ -94,29 +97,26 @@ class WaitsScriptTests(unittest.TestCase):
         self.assertNotIn('ISUCON_WAITS', (self.repo / 'config/app/env.sh').read_text())
 
     def test_history_reads_the_runs_and_the_wait_changes(self):
-        runs = self.repo / 'isuscope-data/runs'
+        db, bin_dir = isuscope_stub.install(self.tmp.name)
         for index, (score, waits, tags) in enumerate([(700000, None, []), (760000, 'GET /a after 30', ['wait', 'wait:GET /a']),
                                                       (755000, 'GET /a after 30', [])]):
             run_id = f'01a15900-0000-7000-8000-00000000000{index}'
-            (runs / run_id).mkdir(parents=True)
-            values = {'deployed_files': f'f{index}'}
+            db.execute("INSERT INTO runs (id, started_at, score, passed) VALUES (?, ?, ?, 1)",
+                       (run_id, f'2026-10-20T12:0{index}:00Z', score))
+            db.executemany('INSERT INTO run_tags VALUES (?, ?)', [(run_id, tag) for tag in tags])
             if waits:
-                values['waits'] = waits
-            (runs / run_id / 'run.json').write_text(json.dumps({
-                'id': run_id, 'state': 'complete', 'started_at': f'2026-10-20T12:0{index}:00Z', 'tags': tags,
-                'benchmark': {'score': score, 'passed': True}, 'identity': {'values': values}}))
-        change = self.repo / 'isuscope-data/changes/wait-get-a-after-30'
-        (change / 'decisions').mkdir(parents=True)
-        (change / 'change.json').write_text(json.dumps({'id': 'wait-get-a-after-30', 'created_at': '2026-10-20T12:02:00Z'}))
-        (change / 'decisions/d.json').write_text(json.dumps({
-            'created_at': '2026-10-20T12:02:00Z', 'status': 'accepted', 'reason': '空振りのpollingが減り、点になる処理が増えた',
-            'evidence': [{'run_id': '01a15900-0000-7000-8000-000000000001'}]}))
+                db.execute("INSERT INTO run_identity VALUES (?, 'waits', ?)", (run_id, waits))
+        db.execute("INSERT INTO changes (id, created_at) VALUES ('wait-get-a-after-30', '2026-10-20T12:02:00Z')")
+        db.execute("INSERT INTO change_decisions VALUES ('d1', 'wait-get-a-after-30', '2026-10-20T12:02:00Z', 'accepted', "
+                   "'空振りのpollingが減り、点になる処理が増えた', NULL)")
+        db.execute("INSERT INTO change_decision_runs VALUES ('d1', '01a15900-0000-7000-8000-000000000001')")
+        db.commit()
+        self.env['PATH'] = f'{bin_dir}:{self.env["PATH"]}'
         out = self.waits('history').stdout
         self.assertIn('00000001 PASS    760000  waits="GET /a after 30"', out)
         self.assertNotIn('00000002', out)  # same table, no tag
         self.assertIn('wait-get-a-after-30: accepted（run 00000001）', out)
         self.assertIn('空振りのpollingが減り', out)
-
 
 MAIN = r'''
 mod waits;

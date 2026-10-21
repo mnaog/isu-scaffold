@@ -44,7 +44,9 @@ def table_rows(value):
 
 def listed_runs(listing):
     """`list` rows, naming the short ID `short_id` as the board does for every run."""
-    return [{**run, 'short_id': run.get('run')} for run in table_rows(listing.get('runs'))]
+    # `list` names runs by short ID only; isuscope takes it wherever a run ID goes.
+    return [{**run, 'id': run.get('run'), 'short_id': run.get('run'), 'wait': 'wait' in (run.get('tags') or [])}
+            for run in table_rows(listing.get('runs'))]
 
 
 def brief_run(brief):
@@ -85,7 +87,8 @@ def metrics(repo, cfg, stop=None):
     if not completed:
         result['error'] = '直近100件に完了runがありません'
         return result
-    fields = ('id', 'short_id', 'started_at', 'score', 'passed', 'state', 'commit_hash', 'dirty', 'hypothesis', 'analysis_status')
+    fields = ('id', 'short_id', 'started_at', 'score', 'passed', 'state', 'commit_hash', 'dirty', 'hypothesis',
+              'analysis_status', 'wait')
     result['score_history'] = [{key: run.get(key) for key in fields} for run in reversed(completed)]
     try:
         known = spread(repo)

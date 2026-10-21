@@ -13,6 +13,7 @@
 """
 import argparse
 import concurrent.futures
+import importlib.util
 import json
 import os
 import re
@@ -24,6 +25,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location('isuscope_sql', Path(__file__).with_name('isuscope_sql.py'))
+isuscope_sql = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(isuscope_sql)
 LOCAL = ROOT / '.local'
 CONFIG = ROOT / 'config/final-check.json'
 SNAPSHOT = LOCAL / 'final-snapshot.json'
@@ -250,35 +254,27 @@ def check_local(report, config, nodes):
 
 
 def final_runs(root=None):
-    """Finished runs, oldest first, with the configuration isuscope recorded (identity values)."""
-    runs = []
-    for path in ((root or ROOT) / 'isuscope-data/runs').glob('*/run.json'):
-        try:
-            run = json.loads(path.read_text())
-        except (OSError, ValueError):
-            continue
-        bench = run.get('benchmark') or {}
-        # A run isuscope refused (a repeat without --repeat, a failed prepare) never benchmarked.
-        if (run.get('state') in ('aborted', 'running') or bench.get('interrupted')
-                or bench.get('mode') == 'not-started'):
-            continue
-        runs.append({'id': run.get('id') or '', 'started_at': run.get('started_at') or '', 'score': bench.get('score'),
-                     'passed': bool(bench.get('passed')),
-                     'config': json.dumps((run.get('identity') or {}).get('values') or {}, sort_keys=True)})
-    return sorted(runs, key=lambda run: run['started_at'])
+    """Runs whose benchmark started and finished, oldest first, with isuscope's configuration key."""
+    return isuscope_sql.rows(root or ROOT, "SELECT id, score, passed = 1 AS passed, config_key FROM runs "
+                             "WHERE benchmark_started = 1 AND state NOT IN ('running', 'aborted') "
+                             "ORDER BY started_at, id")
 
 
 def check_score(report, config):
     """The last run is the final score; the re-test is compared with it. The runs that count are those of
-    the last run's configuration (isuscope's identity), so committing run records after them changes nothing."""
-    runs = final_runs()
+    the last run's configuration (isuscope's config_key), so committing run records after them changes nothing."""
+    try:
+        runs = final_runs()
+    except isuscope_sql.Unavailable as error:
+        report.add('FAIL', 'isuscope', 'final runs', f'isuscope sql failed: {error}')
+        return
     if not runs:
         report.add('WARN', 'isuscope', 'final runs', 'no runs')
         return
     last = runs[-1]
     report.add('OK' if last['passed'] else 'FAIL', 'isuscope', 'last run',
                f'{"PASS" if last["passed"] else "FAIL"} score {last["score"]} (run {last["id"][-8:]})')
-    same = [run for run in runs if run['config'] == last['config'] and run['passed']]
+    same = [run for run in runs if run['config_key'] and run['config_key'] == last['config_key'] and run['passed']]
     if len(same) < 3:
         report.add('WARN', 'isuscope', 'runs of the final configuration',
                    f'{len(same)} passed runs of the last run\'s configuration; run 3 (the third after make final-reboot)')

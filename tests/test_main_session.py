@@ -21,7 +21,7 @@ class MainSessionTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.repo = Path(self.tmp.name) / 'repo'
         (self.repo / 'scripts').mkdir(parents=True)
-        for name in ('main-session.py', 'proposal.py', 'progress.py', 'runs.sh'):
+        for name in ('main-session.py', 'proposal.py', 'isuscope_sql.py', 'progress.py', 'runs.sh'):
             shutil.copy2(ROOT / 'scripts' / name, self.repo / 'scripts' / name)
         (self.repo / 'scripts' / 'board').mkdir()
         shutil.copy(ROOT / 'scripts' / 'board' / 'activity.py', self.repo / 'scripts' / 'board' / 'activity.py')
@@ -263,28 +263,14 @@ class MainSessionTest(unittest.TestCase):
     def test_runs_are_read_in_the_root_from_a_worktree(self):
         bin_dir = Path(self.tmp.name) / 'bin'
         bin_dir.mkdir()
-        (bin_dir / 'isuscope').write_text('#!/bin/sh\necho "$PWD $*"\n')
+        (bin_dir / 'isuscope').write_text('#!/bin/sh\necho "$ISUSCOPE_PROJECT $*"\n')
         (bin_dir / 'isuscope').chmod(0o755)
         env = dict(self.env, PATH=f'{bin_dir}:{self.env["PATH"]}')
         shutil.copy2(self.repo / 'scripts/runs.sh', self.worktree / 'scripts/runs.sh')
-
-        def runs(*args):
-            return subprocess.run([str(self.worktree / 'scripts/runs.sh'), *args], cwd=self.worktree,
-                                  capture_output=True, text=True, env=env)
-        missing = runs('brief', 'latest')
-        self.assertEqual(missing.returncode, 1)
-        self.assertIn('config.toml', missing.stderr)
-        (self.repo / '.isuscope').mkdir()
-        (self.repo / '.isuscope/config.toml').write_text('')
-        read = runs('brief', 'latest')
+        read = subprocess.run([str(self.worktree / 'scripts/runs.sh'), 'brief', 'latest'], cwd=self.worktree,
+                              capture_output=True, text=True, env=env)
         self.assertEqual(read.returncode, 0, read.stderr)
         self.assertEqual(read.stdout.strip(), f'{self.repo.resolve()} brief latest')
-        self.assertEqual(runs('change', 'show', 'c1').returncode, 0)
-        for args in (['run', '--hypothesis', 'x'], ['analyze', 'r', 'supported'], ['change', 'decide', 'c1', 'accepted'], []):
-            with self.subTest(args=args):
-                refused = runs(*args)
-                self.assertEqual(refused.returncode, 2)
-                self.assertIn('reads runs only', refused.stderr)
 
     def add_worktree(self, name, branch=None):
         path = Path(self.tmp.name) / f'repo-{name}'

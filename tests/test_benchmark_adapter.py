@@ -53,7 +53,8 @@ class AdapterTest(unittest.TestCase):
             (self.root / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, self.root / name)
         (self.root / 'config').mkdir(exist_ok=True)
-        (self.root / 'config/isuscope-policy.json').write_text(json.dumps({'operator_line_pattern': '\\[ADMIN\\]'}))
+        (self.root / '.isuscope').mkdir(exist_ok=True)
+        (self.root / '.isuscope/policy.toml').write_text('[benchmark]\noperator_line_pattern = "\\\\[ADMIN\\\\]"\n')
         (self.root / 'config/benchmark-sample.log').write_text(FINAL_OUTPUT)
         self.output = self.root / 'output.log'
 
@@ -138,7 +139,7 @@ class AdapterTest(unittest.TestCase):
 
     # The fake ssh runs the node-side command here, and the benchmark node has GNU timeout and setsid.
     @unittest.skipUnless(shutil.which('timeout') and shutil.which('setsid'), 'needs GNU timeout and setsid')
-    def test_isuscope_timeout_wins_and_cleanup_stops_the_remote_group(self):
+    def test_the_adapter_timeout_and_cleanup_stop_the_remote_group(self):
         fake = self.root / 'scripts/ssh-node.sh'
         fake.write_text('#!/bin/bash\nprintf "%s\\n" "$2" >> "$(dirname "$0")/../remote-commands"\n'
                         'case "$2" in *isuscope-benchmark.pid*kill*) exit 0 ;; esac\nexec bash -c "$2"\n')
@@ -146,12 +147,12 @@ class AdapterTest(unittest.TestCase):
         (self.root / '.local').mkdir(exist_ok=True)
         (self.root / '.local/ansible-inventory.json').write_text(json.dumps(
             {'all': {'children': {'benchmark': {'hosts': {'bench': {}}}}}}))
-        self.configure('', BENCHMARK_TRANSPORT='ssh', BENCHMARK_NODE='bench', BENCHMARK_TIMEOUT_SECONDS='900',
+        self.configure('', BENCHMARK_TRANSPORT='ssh', BENCHMARK_NODE='bench', BENCHMARK_TIMEOUT_SECONDS='1',
                        BENCHMARK_COMMAND="printf 'started\\n'; sleep 30")
         run_dir = self.root / 'run'
         run_dir.mkdir(exist_ok=True)
         environment = dict(os.environ, ISUSCOPE_PROJECT_ROOT=str(self.root), ISUSCOPE_RUN_DIR=str(run_dir),
-                           ISUSCOPE_LOCK_HELD='1', ISUSCOPE_BENCHMARK_TIMEOUT_SECONDS='1')
+                           ISUSCOPE_LOCK_HELD='1')
         completed = subprocess.run(['bash', str(ROOT / '.isuscope/benchmark.sh')], capture_output=True, text=True,
                                    env=environment)
         self.assertEqual(completed.returncode, 124, completed.stderr)

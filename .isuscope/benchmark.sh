@@ -30,12 +30,6 @@ load_config() {
   fi
   set +a
   python3 "${project_root}/scripts/benchmark-contract.py" --root "${project_root}" >&2
-  # isuscope passes its [benchmark] timeout_seconds and stops the run itself only after a
-  # grace period, so the adapter's own wall-clock limit follows it. The contract above checks
-  # the reviewed settings; this only bounds how long the adapter waits.
-  if [[ -n "${ISUSCOPE_BENCHMARK_TIMEOUT_SECONDS:-}" ]]; then
-    BENCHMARK_TIMEOUT_SECONDS=${ISUSCOPE_BENCHMARK_TIMEOUT_SECONDS}
-  fi
   # An empty BENCHMARK_NODE means the only node of the inventory's benchmark group: discover names
   # nodes per provider (such as <stack>-bench), so a fixed default does not match.
   if [[ "${BENCHMARK_TRANSPORT:-}" == ssh && -z "${BENCHMARK_NODE:-}" && -f "${inventory_path}" ]]; then
@@ -56,12 +50,13 @@ validate_regex() {
   fi
 }
 
-# 運営向けの行（`config/isuscope-policy.json`の`operator_line_pattern`）はscore・合否に使いません。
+# 運営向けの行（`.isuscope/policy.toml`の`operator_line_pattern`）はscore・合否に使いません。
 exclude_pattern() {
   if [[ -n "${BENCHMARK_EXCLUDE_REGEX:-}" ]]; then
     printf '%s\n' "${BENCHMARK_EXCLUDE_REGEX}"
-  elif [[ -f "${project_root}/config/isuscope-policy.json" ]]; then
-    jq -r '.operator_line_pattern // empty' "${project_root}/config/isuscope-policy.json"
+  elif [[ -f "${project_root}/.isuscope/policy.toml" ]]; then
+    python3 -c 'import sys, tomllib; print(tomllib.load(open(sys.argv[1], "rb")).get("benchmark", {}).get("operator_line_pattern", ""))' \
+      "${project_root}/.isuscope/policy.toml"
   fi
 }
 

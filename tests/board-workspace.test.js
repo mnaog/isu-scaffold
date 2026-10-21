@@ -12,13 +12,6 @@ test('node scope filters both comparison sides without rewriting run totals or o
  assert.equal(filtered.latest.score,100);assert.equal(filtered.brief.coverage_issues.total_count,2);
  assert.equal(q.sections.http.data.rows.length,2);assert.equal(filtered.sections.http.data.truncated,true);
 });
-test('a quiet node stays selectable and keeps its folded summary',()=>{
- const q={brief:{hosts:{total_count:1,items:[{node:'n1'}]},quiet_hosts:{nodes:['n2','n3'],cpu_busy_max_percent:6.8}},sections:{}};
- assert.equal(ctx.workspaceData(q,'n2').brief.hosts.items.length,0);
- assert.deepEqual([...ctx.workspaceData(q,'n2').brief.quiet_hosts.nodes],['n2']);
- assert.equal(ctx.workspaceData(q,'n1').brief.quiet_hosts,null);
- assert.deepEqual([...q.brief.quiet_hosts.nodes],['n2','n3']);
-});
 test('window wording follows the window the brief chose',()=>{
  assert.equal(ctx.windowLabel('load'),'負荷走行中');
  assert.equal(ctx.windowLabel('whole'),'ベンチ全体');

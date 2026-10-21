@@ -14,6 +14,7 @@ table as `identity.waits`, so every run records the waits it ran with, and a cha
 on a run tagged `wait` and `wait:<METHOD PATH>`; `history` reads both back.
 """
 import argparse
+import importlib.util
 import json
 from pathlib import Path
 import re
@@ -22,6 +23,9 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
+spec = importlib.util.spec_from_file_location('isuscope_sql', Path(__file__).with_name('isuscope_sql.py'))
+isuscope_sql = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(isuscope_sql)
 VARIABLE = 'ISUCON_WAITS'
 LINE = re.compile(r'^\s*(?:export\s+)?' + VARIABLE + r'=(.*)$')
 COMMENT = '# APIごとの待ち（scripts/waits.py setで変える。形はconfig/waits/waits.rs。空なら待たない）'
@@ -224,43 +228,38 @@ def phase_ms(spec, args, phase):
 
 def latest_run(root):
     """The last finished run: the configuration a wait is tried against."""
-    runs = [run for run in load_runs(root) if run['passed']]
-    return runs[-1]['short'] if runs else None
+    try:
+        runs = isuscope_sql.rows(root, "SELECT id FROM runs WHERE passed = 1 AND state IN ('complete', 'degraded') "
+                                       "AND score IS NOT NULL ORDER BY started_at DESC, id DESC LIMIT 1")
+    except isuscope_sql.Unavailable:
+        return None  # the next steps still print, with a placeholder for the base run
+    return runs[0]['id'][-8:] if runs else None
 
 
 def load_runs(root):
-    runs = []
-    for path in sorted((root / 'isuscope-data/runs').glob('*/run.json')):
-        try:
-            run = json.loads(path.read_text())
-        except (OSError, ValueError):
-            continue
-        bench = run.get('benchmark') or {}
-        if run.get('state') not in ('complete', 'degraded') or bench.get('score') is None:
-            continue
-        values = (run.get('identity') or {}).get('values') or {}
-        runs.append({'short': run['id'][-8:], 'started_at': run.get('started_at') or '', 'score': bench['score'],
-                     'passed': bench.get('passed'), 'tags': run.get('tags') or [], 'waits': values.get('waits', ''),
-                     'hypothesis': run.get('hypothesis') or ''})
-    return sorted(runs, key=lambda run: run['started_at'])
+    """Finished runs with a score, oldest first, with their tags and the waits they ran with."""
+    rows = isuscope_sql.rows(root, """
+        SELECT runs.id, runs.started_at, runs.score, runs.passed = 1 AS passed, runs.hypothesis,
+               COALESCE((SELECT value FROM run_identity WHERE run_id = runs.id AND key = 'waits'), '') AS waits,
+               COALESCE((SELECT group_concat(tag, char(10)) FROM run_tags WHERE run_id = runs.id), '') AS tags
+        FROM runs WHERE runs.state IN ('complete', 'degraded') AND runs.score IS NOT NULL
+        ORDER BY runs.started_at, runs.id""")
+    return [{**row, 'short': row['id'][-8:], 'tags': row['tags'].split('\n') if row['tags'] else []} for row in rows]
 
 
 def load_changes(root):
-    changes = []
-    for directory in sorted((root / 'isuscope-data/changes').glob('wait-*')):
-        try:
-            change = json.loads((directory / 'change.json').read_text())
-        except (OSError, ValueError):
-            continue
-        decisions = []
-        for path in sorted((directory / 'decisions').glob('*.json')):
-            try:
-                decisions.append(json.loads(path.read_text()))
-            except (OSError, ValueError):
-                continue
-        decisions.sort(key=lambda decision: decision.get('created_at', ''))
-        changes.append((change, decisions))
-    return sorted(changes, key=lambda item: item[0].get('created_at', ''))
+    """The wait-* changes, oldest first, each with its decisions (oldest first) and their runs."""
+    changes = isuscope_sql.rows(root, "SELECT id, created_at FROM changes WHERE id LIKE 'wait-%' ORDER BY created_at, id")
+    decisions = isuscope_sql.rows(root, """
+        SELECT d.change_id, d.created_at, d.status, d.reason,
+               COALESCE((SELECT group_concat(run_id, char(10)) FROM change_decision_runs WHERE decision_id = d.id), '')
+                 AS runs
+        FROM change_decisions d WHERE d.change_id LIKE 'wait-%' ORDER BY d.created_at, d.id""")
+    by_change = {}
+    for decision in decisions:
+        decision['runs'] = decision['runs'].split('\n') if decision['runs'] else []
+        by_change.setdefault(decision['change_id'], []).append(decision)
+    return [(change, by_change.get(change['id'], [])) for change in changes]
 
 
 def history(root):
@@ -280,7 +279,7 @@ def history(root):
     changes = load_changes(root)
     for change, decisions in changes:
         latest = decisions[-1] if decisions else {}
-        evidence = ', '.join(e.get('run_id', '')[-8:] for d in decisions for e in d.get('evidence', []))
+        evidence = ', '.join(run[-8:] for d in decisions for run in d['runs'])
         print(f'  {change["id"]}: {latest.get("status", "未判定")}（run {evidence or "-"}）')
         if latest.get('reason'):
             print(f'    {latest["reason"][:200]}')
@@ -311,7 +310,7 @@ def main():
             set_rule(root, args)
         else:
             history(root_repo())
-    except ValueError as error:
+    except (ValueError, isuscope_sql.Unavailable) as error:
         raise SystemExit(str(error))
     return 0
 
