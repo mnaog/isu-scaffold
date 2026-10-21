@@ -186,6 +186,7 @@ class ToolGuardTest(unittest.TestCase):
             'bash scripts/deploy.sh',
             './scripts/import.sh',
             'python3 scripts/tare.py',
+            'make durability',
             'make final-check',
             'make final-reboot',
             'python3 scripts/final-verification.py check',

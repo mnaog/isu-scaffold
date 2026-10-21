@@ -82,7 +82,7 @@ scoutと人間の報告は、rootの`.local/scout/reports.md`にある（上の4
 
 - `code-ready`の後、コード・schema・`docs/official/`・（lane `scenario`が書いたら）`docs/benchmark-scenario.md`を読み、得点の仕組みと重そうな処理の見当をつける。
 - 初回baselineの前の性能変更はmainがremoteへ入れない。投稿は作ってよいが、測るのはbaselineの後。
-- lane `indexes`・`n-plus-one`・`obvious-fixes`（kickoffが起動）と`full-memory`（kickoffと同時に起動）の範囲は作らない。`make lanes`と`lane:<名前> commit`の行で確かめる。
+- lane `indexes`・`n-plus-one`・`obvious-fixes`・`runtime`（kickoffが起動）、`full-memory`（kickoffと同時に起動）、`static-edge`（完全importの後にmainが起動）の範囲は作らない。`make lanes`と`lane:<名前> commit`の行で確かめる。
 
 ### しないこと
 

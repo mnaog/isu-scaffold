@@ -140,6 +140,9 @@ class TareTest(unittest.TestCase):
         self.assertNotIn('worker_connections 768', nginx)
         self.assertIn('keepalive_requests 10000;', nginx)
         self.assertIn('error_log /var/log/nginx/error.log warn;', nginx)
+        # The isuscope LTSV drop-in logs each request; the default unbuffered log is not written too.
+        self.assertNotIn('access_log /var/log/nginx/access.log;', nginx)
+        self.assertIn('write "access_log off;" here', nginx)
 
         site = self.read('config/nginx/sites-available/app.conf')
         self.assertIn('listen 80 default_server backlog=4096;', site)
@@ -198,6 +201,16 @@ class TareTest(unittest.TestCase):
         result = self.run_tare()
         self.assertEqual(result.returncode, 1)
         self.assertIn('uncommitted', result.stderr)
+
+    def test_access_log_off_and_the_isuscope_log_are_kept(self):
+        path = self.root / 'config/nginx/nginx.conf'
+        path.write_text(NGINX_CONF.replace('\taccess_log /var/log/nginx/access.log;',
+                                           '\taccess_log off;\n\taccess_log /var/log/nginx/isuscope-access.log isuscope_ltsv;'))
+        git(self.root, 'commit', '-qam', 'own logs')
+        self.assertEqual(self.run_tare().returncode, 0)
+        nginx = path.read_text()
+        self.assertIn('access_log off;', nginx)
+        self.assertIn('access_log /var/log/nginx/isuscope-access.log isuscope_ltsv;', nginx)
 
     def test_existing_backlog_and_upstreams_are_kept(self):
         site = self.root / 'config/nginx/sites-available/app.conf'

@@ -48,7 +48,8 @@
     "n-plus-one",
     "obvious-fixes",
     "local-env",
-    "state-log"
+    "state-log",
+    "runtime"
   ],
   "lanes": {
     "indexes": {
@@ -88,6 +89,19 @@
         "Bash(git switch:*)"
       ],
       "timeout_minutes": 120
+    },
+    "runtime": {
+      "purpose": "問題に依存しない実行時の設定（requestごとのlog、DB接続のTLSとpool、mimalloc、TCP_NODELAY、awaitの無い区間のtokio Mutex）を1件1commitで先行実装する（baselineまでdeployしない）",
+      "prompt": "config/lanes/runtime.md",
+      "timeout_minutes": 20
+    },
+    "static-edge": {
+      "purpose": "静的ファイルの配り方（nginxからの配信、Cache-Control、gzip_static、open_file_cache）を1件1commitで先行実装する（mainが完全importのcommit直後に起動。baselineまでdeployしない）",
+      "prompt": "config/lanes/static-edge.md",
+      "requires": [
+        "config/nginx/nginx.conf"
+      ],
+      "timeout_minutes": 30
     },
     "scenario": {
       "purpose": "公式資料とコードからdocs/benchmark-scenario.mdを書く（mainがdocs/officialをcommitしてから起動）",

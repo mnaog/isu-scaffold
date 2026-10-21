@@ -7,6 +7,7 @@
 - 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。baseline前の変更をremoteへ反映しない規則は、mainが取り込み時に守る。
 - 変更してよいのは`webapp/`のアプリのコードだけ。schema（`webapp/sql`）、`config/`、`scripts/`、他の文書は変えない（索引はlane `indexes`の担当で、同じfileを触るとmergeで衝突する）。
 - lane `n-plus-one`が同じhandlerのループ内SQLを変える。mergeで衝突しにくいよう、直すのに要る行だけを変え、周りを書き換えない（整形し直さない、`cargo fmt`をcrate全体へかけない）。lane `full-memory`（全メモリ化）はN+1の後に始まり、このlaneの終わりは待たない。mainはこのlaneのcommitを全メモリ化と並行して取り込む。
+- 実行時の設定（requestごとのlog、DB接続のTLSとpool、allocator、TCP_NODELAY、`.await`の無い区間のtokio Mutex）はlane `runtime`が同時に直すので触らない。HTTP clientの使い回しはこのlaneの担当。
 
 ## 対象
 

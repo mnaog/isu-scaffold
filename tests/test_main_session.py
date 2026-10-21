@@ -120,7 +120,7 @@ class MainSessionTest(unittest.TestCase):
     def test_only_main_deploys_and_benchmarks_while_a_main_is_declared(self):
         main_only = ['make deploy', 'make first-bench', 'isuscope run --hypothesis x', 'isuscope analyze abc supported',
                      'python3 scripts/lane.py start full-memory', 'bash scripts/deploy.sh', 'isuscope lock -- make build',
-                     'cat .local/operation.lock', 'make scout-start', 'python3 scripts/tare.py',
+                     'cat .local/operation.lock', 'make scout-start', 'python3 scripts/tare.py', 'make durability',
                      'make final-reboot', 'make final-db-late', 'python3 scripts/final-verification.py reboot --yes',
                      'isuscope change decide c1 accepted', 'python3 scripts/proposal.py decide idea/cache accepted',
                      'python3 scripts/proposal.py pending']

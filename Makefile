@@ -1,4 +1,4 @@
-.PHONY: help discover kickoff kickoff-apply build deploy rollback status bench-check first-bench tare lanes proposals builder-images isuscope-node final-check final-reboot final-db-late
+.PHONY: help discover kickoff kickoff-apply build deploy rollback status bench-check first-bench tare durability lanes proposals builder-images isuscope-node final-check final-reboot final-db-late
 
 help:
 	@printf '%s\n' \
@@ -23,6 +23,7 @@ help:
 		'make bench-check                      ベンチ前の全node・isuscope検査を行う' \
 		'make first-bench                      import commit後にbench-check・初回survey-run・deployを続けて行う' \
 		'make tare                             baseline後に接続・fdの上限を上げる1 commitを作る' \
+		'make durability                       DBの書き込み待ちが見えたらMySQLの耐久性を緩める1 commitを作る' \
 		'make board                            人間向けボードを開く (127.0.0.1:8765)' \
 		'make scout-start / scout-stop         scoutの定期実行を開始・停止する（first-benchが初回baseline後に開始する）' \
 		'make scout-status                     scoutの状態を表示する' \
@@ -78,6 +79,9 @@ final-db-late:
 
 tare:
 	@python3 scripts/tare.py
+
+durability:
+	@python3 scripts/durability.py
 
 bench-check:
 	@./scripts/bench-check.sh

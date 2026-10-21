@@ -7,8 +7,10 @@ application does are left out. In practice-14 four FAILs came from these default
 they were raised by hand: nginx closing busy keep-alive connections after 1000 requests,
 the application's 1024 open files, the 511 listen backlog and 4096 worker connections.
 
-- nginx.conf: worker_rlimit_nofile, worker_connections, client keepalive_requests, and the
-  main error_log at warn (connection shortages are logged only at warn)
+- nginx.conf: worker_rlimit_nofile, worker_connections, client keepalive_requests, the
+  main error_log at warn (connection shortages are logged only at warn), and no default
+  access_log in http: the isuscope LTSV drop-in (conf.d) already logs every request, buffered,
+  and the default one writes each request a second time, unbuffered
 - site files: backlog on one listen per address:port, and an upstream with keepalive for
   each literal `proxy_pass http://host:port` (Host and inherited headers are preserved)
 - the Rust unit (the synced rust-service item): LimitNOFILE
@@ -17,6 +19,7 @@ the application's 1024 open files, the 511 listen backlog and 4096 worker connec
 - deploy commands: daemon-reload, loading 99-tare.conf, and a MySQL restart to load them, each
   limited by "when" to deploys that change the unit, the sysctl file or the MySQL settings
 
+Durability (fsync, binlog, redo, doublewrite) is `make durability` (scripts/durability.py).
 The edited files are committed together. Rerunning on an applied tree changes nothing.
 """
 import argparse
@@ -153,6 +156,23 @@ def tare_nginx_main(text):
                              after=('worker_processes', 'pid', 'user'))
     elif len(error_log.words) == 2 or error_log.words[2] in ('error', 'crit', 'alert', 'emerg'):
         text = text[:error_log.start] + f'error_log {error_log.words[1]} warn;' + text[error_log.end:]
+    return drop_default_access_log(text)
+
+
+def drop_default_access_log(text):
+    """Remove http-level access_log lines other than off and the isuscope log.
+
+    The comment left in their place says what to write when the LTSV drop-in goes: with no
+    access_log at all in http, nginx writes its built-in log again.
+    """
+    statements, _ = scan(text)
+    found = [s for s in statements if block_path(s.path) == ('http',) and s.words and s.words[0] == 'access_log'
+             and len(s.words) > 1 and s.words[1] != 'off' and 'isuscope' not in s.words[1]]
+    for statement in sorted(found, key=lambda s: s.start, reverse=True):
+        indent = indent_at(text, statement.start)
+        comment = (f'# make tare: no default access log; the isuscope LTSV drop-in in conf.d logs each request, buffered.\n'
+                   f'{indent}# When that drop-in is removed before the end, write "access_log off;" here.')
+        text = text[:statement.start] + comment + text[statement.end:]
     return text
 
 

@@ -26,7 +26,7 @@
 
 - isuscopeの履歴から、採用するrunとcommitを決める。未採用の実験や一時的な設定を取り除き、全サーバーがそのcommitの内容で動いていることを確かめる。
 - `make scout-stop`で定期探索を止め、`make scout-status`で止まったことを確かめる。最新の報告が`docs/scout-reports.md`へ残るので、commitに含める。
-- 計測を外す。NginxのLTSV access logと、有効にしていればMySQL slow logは、`ansible/playbooks/group_vars/all.yml`の`observability_nginx_ltsv`と`observability_mysql_slow_log`をfalseにし、bootstrapを該当tagだけ再実行して撤去する（手順は`docs/reference/automation.md`）。profiler、デバッグログ、調査用processも止める。障害調査に最低限要るログは残す。計測の有無を比べるためのベンチは回さない。
+- 計測を外す。NginxのLTSV access logと、有効にしていればMySQL slow logは、`ansible/playbooks/group_vars/all.yml`の`observability_nginx_ltsv`と`observability_mysql_slow_log`をfalseにし、bootstrapを該当tagだけ再実行して撤去する（手順は`docs/reference/automation.md`）。`make tare`がnginx.confの既定のaccess_logを外しているので、LTSVを外すときはnginx.confのhttpへ`access_log off;`を書く（httpに`access_log`が1つも無いと、nginxは組み込みの既定のlogを書く）。profiler、デバッグログ、調査用processも止める。障害調査に最低限要るログは残す。計測の有無を比べるためのベンチは回さない。
 - `make final-check`を通す（再起動しない。数十秒）。FAILを全部直し、WARNは理由を確かめる。見る項目は次のとおり。
   - 手元: git（clean、push済み）、HEADとdeploy済みのcommit、scoutの停止、最後のrunのPASSと、HEADのrunの最悪値が最後のスコアのしきい値以上か、EC2（全台running、同じVPC、台数・種別、security group）
   - 全node: 動いているのに自動起動しないunit・自動起動するのに動いていないunit・failedのunit、残った計測（LTSV log、slow log、perfやpprofなどのprocess）、`nginx -t`、起動時のsysctl.dのfileと今の値の差（再起動で消える設定）、diskとメモリ、管理ユーザーと守るunit、`http_checks`

@@ -6,7 +6,7 @@
 
 - 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。baseline前の変更をremoteへ反映しない規則は、mainが取り込み時に守る。
 - 変更してよいのは`webapp/`のアプリのコードと`docs/state-log.md`だけ。schema（`webapp/sql`）、`config/`、`scripts/`、他の文書は変えない。
-- lane `indexes`・`n-plus-one`・`obvious-fixes`が同時に同じコードを変える。mergeで衝突しにくいよう、変更は書き手のmoduleの追加と呼び出しの追加だけにし、周りの行を書き換えない（整形し直さない、`cargo fmt`をcrate全体へかけない）。
+- lane `indexes`・`n-plus-one`・`obvious-fixes`・`runtime`が同時に同じコードを変える。mergeで衝突しにくいよう、変更は書き手のmoduleの追加と呼び出しの追加だけにし、周りの行を書き換えない（整形し直さない、`cargo fmt`をcrate全体へかけない）。
 
 ## 書き手
 
