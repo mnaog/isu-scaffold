@@ -8,11 +8,12 @@ the deployed files, the measurement settings, the distributed build or ours), so
 is the same configuration. Without --base it is the configuration HEAD would deploy now; with
 --base it is that run's.
 
-main measures the latest accepted configuration again whenever nothing waits to be measured
+main measures the latest accepted configuration again while nothing waits to be measured
 (`isuscope run --repeat "振れ幅: ..."`), so that a proposal is judged from one run: the swing is the
-largest distance of a run from the mean of its configuration, taken from the base configuration when
-it has three runs or more, otherwise from the most recent configuration that has. --score places a
-proposal's score above, inside or below that band around the base configuration's mean.
+largest distance of a run from the mean of its configuration, taken from the base configuration once
+it was measured more than once, otherwise from the most recent configuration that was. How many
+repeats are worth it is main's call: the output shows how much the last repeat moved the swing.
+--score places a proposal's score above, inside or below that band around the base configuration's mean.
 """
 import argparse
 import json
@@ -21,7 +22,6 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-ENOUGH = 3
 
 
 def root_repo():
@@ -118,20 +118,18 @@ def main():
 
     base_runs = groups.get(base_key, [])
     base = summary(base_runs) if base_runs else None
-    # The swing: the base configuration's own when measured enough, else the latest that was.
+    # The swing: the base configuration's own once it was measured again, else the latest that was.
     source = None
-    if base and base['runs'] >= ENOUGH:
+    if base and base['runs'] >= 2:
         source = ('基準の構成', base_runs)
     else:
-        for minimum in (ENOUGH, 2):
-            measured = [g for k, g in groups.items() if len(g) >= minimum and k != base_key]
-            if measured:
-                latest = max(measured, key=lambda g: g[-1]['started_at'])
-                source = (f'直近に{len(latest)}回測った構成（最後のrun {latest[-1]["short"]}）', latest)
-                break
-        if source is None and base and base['runs'] >= 2:
-            source = ('基準の構成（2回だけ）', base_runs)
+        measured = [g for k, g in groups.items() if len(g) >= 2 and k != base_key]
+        if measured:
+            latest = max(measured, key=lambda g: g[-1]['started_at'])
+            source = (f'直近に測り直した構成（最後のrun {latest[-1]["short"]}）', latest)
     width = summary(source[1]) if source else None
+    # How much the last repeat moved the swing: main decides from this whether another repeat is worth a run.
+    moved = summary(source[1][:-1])['swing'] if source and len(source[1]) >= 3 else None
 
     verdict = None
     if args.score is not None and base and width:
@@ -141,7 +139,7 @@ def main():
 
     if args.json:
         print(json.dumps({'base': {'how': how, 'values': base_values, **(base or {'runs': 0})},
-                          'swing': None if not width else {'from': source[0], **width},
+                          'swing': None if not width else {'from': source[0], 'before_last': moved, **width},
                           'score': args.score, 'verdict': verdict}, ensure_ascii=False))
         return 0
 
@@ -154,14 +152,16 @@ def main():
         print('  この構成のPASSしたrunはまだ無い')
     if width:
         print(f'振れ幅: ±{width["swing"]:.1%}（{source[0]}、{width["runs"]}回）')
+        if moved is not None:
+            print(f'  最後の1回で±{moved:.1%}→±{width["swing"]:.1%}')
     else:
         print('振れ幅: まだ測っていない（測るものが無い間に、採用した構成を`isuscope run --repeat`で測り直す）')
     if base and width:
         upper = base['mean'] * (1 + width['swing'])
         lower = base['mean'] * (1 - width['swing'])
         print(f'判定の目安: {upper:.0f}より上なら上、{lower:.0f}より下なら下、その間は振れの内側（点では決めない）')
-        if base['runs'] < ENOUGH:
-            print(f'  基準の構成はまだ{base["runs"]}回。空き時間に測り直すと、平均と振れ幅がこの構成のものになる')
+        if base['runs'] < 2:
+            print('  基準の構成はまだ1回。測り直すと、平均と振れ幅がこの構成のものになる')
     if verdict:
         label = {'above': '振れ幅より上', 'inside': '振れの内側', 'below': '振れ幅より下'}[verdict]
         print(f'得点 {args.score:.0f}: {label}（基準の平均比 {args.score / base["mean"] - 1:+.1%}）')
