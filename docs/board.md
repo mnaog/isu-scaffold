@@ -8,7 +8,6 @@
 - 比較元とのHTTP・SQLの比較、ホスト別の負荷、負荷走行の時系列、MySQL、APIの流れ
 - 共有操作（ベンチ・deploy）の実行状況
 - ベンチ待ち（mainのベンチを待つ投稿のキュー）。ページの一番上
-- scout（並列で動かしている調査エージェント）の最新報告
 - 必ず残す記録（`config/records.json`の一覧と中身）
 
 実装は`scripts/board/`、テストは`tests/test_board.py`と`tests/board-*.test.js`です。isuscopeはPATHの`isuscope`を使います。
@@ -57,12 +56,6 @@ HTTP・SQLの合計時間と差分を視覚的に強調する。差分の色は�
 ## ベンチ待ち
 
 ページの一番上に、mainのベンチを待つ投稿（`scripts/proposal.py`）を、測定中・次のベンチ（merge済み）・待ち・保留の順に並べる。見出しの数はキューの待ち（測定中と保留を除く）で、improveが投稿できるのはこれが1件以下のとき。各行に、branch・投稿者（improveか、それ以外のworktree）・commit・仮説・期待する観測・投稿からの時間（測定中なら測定開始からの時間）・根拠のrun・積んでいる投稿・衝突・保留の条件を出す。freeze中はそう出す。`.local/proposals/`を読むだけで、gitを呼ばず、ファイルを書かない（`scripts/board/proposals.py`）。表示はmainが最後に記録した状態なので、衝突（`needs-sync`）はmainがベンチの起動か`pending`・`sync`で確かめたときに更新される。
-
-## scout
-
-実行状況の下に、`config/scout.json`（`.local/scout.json`があればそちら）の順でscoutごとの最新報告を並べる。報告は長さを制限しないので、長い報告はカードの中でスクロールする。カードには投稿時刻と参照したrun、失敗中ならその理由を折りたたんで出す。常駐処理が動いている間だけ、ヘッダーに「scout 稼働中」と各カードの状態・次回予定を出す。
-
-main worktreeの`.local/scout/state.sqlite3`を読み取り専用で開き、常駐処理の稼働は`.local/scout/daemon.lock`の共有lockを非ブロッキングで試して判定する（`scripts/board/scout.py`）。ファイルの作成、lockの保持、scoutの開始・停止はしない。報告の内容は投稿時点のものなので、表示中のrunとは比べない。
 
 ## 実行状況
 

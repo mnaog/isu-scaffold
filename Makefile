@@ -24,8 +24,6 @@ help:
 		'make first-bench                      import commit後にbench-check・初回survey-run・deployを続けて行う' \
 		'make tare                             baseline後に接続・fdの上限を上げる1 commitを作る' \
 		'make board                            人間向けボードを開く (127.0.0.1:8765)' \
-		'make scout-start / scout-stop         scoutの定期実行を開始・停止する（first-benchが初回baseline後に開始する）' \
-		'make scout-status                     scoutの状態を表示する' \
 		'make test                             問題と実サーバーを使わないテストを実行する'
 
 discover:
@@ -85,18 +83,9 @@ bench-check:
 first-bench:
 	@./scripts/first-bench.sh
 
-.PHONY: board scout-start scout-stop scout-status test
+.PHONY: board test
 board:
 	@python3 scripts/board/main.py
-
-scout-start:
-	@python3 scripts/scout/main.py start
-
-scout-stop:
-	@python3 scripts/scout/main.py stop
-
-scout-status:
-	@python3 scripts/scout/main.py status
 
 test:
 	@python3 -m unittest discover -s tests -p 'test_*.py' -v

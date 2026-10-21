@@ -48,8 +48,8 @@ review.mdのFAILを直し、WARNをすべて判断してからCONFIRM_DRAFT=true
 make first-bench（人間の確認を待たずにすぐ実行する。失敗した段階で止まる）
   → make bench-check: 全node、同期、ベンチadapterと接続先、isuscope doctorをベンチなしで検査
   → HEADが完全importの内容のままで、アプリのunitが全nodeで動いていれば、配布されたbuildのままsurvey-runで初回ベンチ
-    （ローカルbuildとdeployを待たない。baseline-readyで分析を始める）。scoutを起動し、その後に同じcommitをmake deploy
-  → そうでなければ、make deploy（kickoff buildの完了を待つ）の後にsurvey-run、続けてscoutを起動
+    （ローカルbuildとdeployを待たない。baseline-readyで分析を始める）。その後に同じcommitをmake deploy
+  → そうでなければ、make deploy（kickoff buildの完了を待つ）の後にsurvey-run
   → 出力の形を確かめる前ならresultはPENDING。python3 scripts/benchmark-sample.py <run>で読み取りを確かめ、
     --apply --score N --pass true|false（自分で読んだ値）でsample・contract・--check・rescoreまで済ませる
 初回runを分析し（スコア・エラー・HTTP・SQL・ホスト負荷。最大の制約と根拠をisuscope analyzeに書く）、`main analyzed`でimproveへ知らせる。improveが観測に基づいて改善を実装・検証して投稿する
@@ -78,7 +78,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 - 先行回収は完全importを待たない読解用の暫定snapshotで、対象はコードとschemaだけに限る。初期状態の正本化と全配布先のdigest一致の確認は、`kickoff-apply`のimportで完了する。
 - `make kickoff`は再実行できる。回収済みならimportを飛ばし、kickoff buildと、完了・実行中のlaneは重複起動しない。
 - draftの判断は`review.md`を読んだ操作者（人間またはこのセッション）が行う。`make`の中で別のAIを呼んで承認させない。
-- `make`はkickoff・deploy・検査とボード・scout常駐処理の入口に絞っている。個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
+- `make`はkickoff・deploy・検査とボードの入口に絞っている。個別の段階をやり直す場合は`scripts/`の該当scriptを直接実行する（変更系scriptは自分で操作lockを取る）。
 - 並行作業はlane（`scripts/lane.py`）か`make worktree`で行う。remote操作はmain側で共通lockを使う。
 
 ### laneの起動と取り込み

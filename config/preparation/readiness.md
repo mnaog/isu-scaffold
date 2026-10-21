@@ -68,4 +68,4 @@
 
 | 項目 | 状態 | 確認日 | 使用版・根拠 |
 | --- | --- | --- | --- |
-| worktree `human`（`make worktree BRANCH=human`）と`scripts/scout/main.py post human`の確認 | 未完了 | | |
+| worktree `human`（`make worktree BRANCH=human`）の確認 | 未完了 | | |

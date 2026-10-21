@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PreToolUse hook that stops the practice rule violations seen so far.
 
-Claude Code (.claude/settings.json) and the Codex scout (.codex/hooks.json) pass the tool call as
+Claude Code (.claude/settings.json) and Codex (.codex/hooks.json) pass the tool call as
 JSON on stdin. A denied call prints a PreToolUse decision with the reason; anything
 else prints nothing and lets the call through. The hook only sees the command it is
 given, so scripts/ssh-node.sh refuses the benchmark node by itself as well.
@@ -17,7 +17,7 @@ Stopped calls:
 
 While a main session is declared (/main, scripts/main-session.py), every other session is also
 refused what only main does: deploy, rollback, import, kickoff, the benchmark (not the adapter's
---check and --probe), isuscope records, deciding worktree proposals, starting or stopping lanes and scouts, and the operation lock.
+--check and --probe), isuscope records, deciding worktree proposals, starting or stopping lanes, and the operation lock.
 Calls without a session id, and
 every call while no main is declared, are not checked for this.
 
@@ -81,7 +81,7 @@ MAIN_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-
                 'benchmark-stop.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'first-bench.sh',
                 'final-verification.py'}
 MAIN_MAKE_TARGETS = {'deploy', 'rollback', 'final-reboot', 'final-db-late', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap', 'bench-check',
-                     'first-bench', 'tare', 'scout-start', 'scout-stop', 'practice-create', 'practice-delete'}
+                     'first-bench', 'tare', 'practice-create', 'practice-delete'}
 LOCAL_URL = re.compile(r'^(?:https?://)?(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:/|$)')
 
 
@@ -361,8 +361,6 @@ class Guard:
             raise Denied(MAIN_HINT)
         if script == 'lane.py' and operands[:1] and operands[0] in {'start', 'kickoff', 'stop'}:
             raise Denied(MAIN_HINT)
-        if script == 'main.py' and operands[:1] and operands[0] in {'start', 'stop', 'daemon'}:
-            raise Denied(MAIN_HINT)  # scripts/scout/main.py
         # Measuring and deciding a proposal is main's; improve and people submit and read.
         if script == 'proposal.py' and operands[:1] and operands[0] in {'decide', 'pending', 'sync', 'hold', 'unhold',
                                                                          'requeue', 'freeze'}:

@@ -36,8 +36,7 @@
 - AI laneが使う`claude -p`を、`config/lanes.json`のmodel・effort・permission modeで短く実行して応答を確認する（例: `echo "Reply OK" | claude -p --model claude-opus-5-5 --effort high --permission-mode dontAsk`）。問題の探索は開始しない。
 - 開始後のコード先行回収と非同期buildの手順を確認する。
 - ボード（`make board`）のローカル表示を確認する。テストデータ・常駐processは開始前に残さない。
-- scout（Codex 2体）を`python3 scripts/scout/main.py once <name> --smoke`で接続確認する。探索とscoutの定期実行は開始しない。smokeセッションをscoutの会話入力として登録しない。Fast（`service_tier="priority"`）は使用量が増えるので、Codexの利用枠に余裕があるかも確かめる。詳細は[scout](../roles/scout.md)。
-- 禁止操作を止めるhookを確認する。Claude Codeは`.claude/settings.json`から`scripts/tool-guard.py`を呼ぶ。Codexのscoutは`.codex/hooks.json`から同じhookを呼ぶので、Codexで一度このrepoを開いてhookを信頼する。練習では`config/tool-guard.json`に、対象の開催回を表す語（`contest_keywords`、例: `isucon14`。アプリのhost名に含まれる語は入れない）とベンチマーカーの置き場所（`benchmarker_paths`、例: `/home/isucon/bench`）を書く。練習の資料を取得し終えてから書くか、取得してよい資料のURLを`allowed_urls`に入れる。練習が終わったら空に戻す。ベンチnodeへの直接の接続は、設定がなくても止まる。
+- 禁止操作を止めるhookを確認する。Claude Codeは`.claude/settings.json`から`scripts/tool-guard.py`を呼ぶ。Codexは`.codex/hooks.json`から同じhookを呼ぶので、Codexで一度このrepoを開いてhookを信頼する。練習では`config/tool-guard.json`に、対象の開催回を表す語（`contest_keywords`、例: `isucon14`。アプリのhost名に含まれる語は入れない）とベンチマーカーの置き場所（`benchmarker_paths`、例: `/home/isucon/bench`）を書く。練習の資料を取得し終えてから書くか、取得してよい資料のURLを`allowed_urls`に入れる。練習が終わったら空に戻す。ベンチnodeへの直接の接続は、設定がなくても止まる。
 
 ## アカウント・接続・参加準備
 
@@ -61,7 +60,7 @@
 ## 人間の作業場所
 
 - 開始用repoで`make worktree BRANCH=human PURPOSE="人間の作業場所"`を作っておく。人間は競技中ずっとここを触り、mainの作業ツリーには触れない。
-- 意見は`python3 scripts/scout/main.py post human "<本文>"`（急ぎは`--emergency`）、コードの変更は投稿（`scripts/proposal.py submit`）でmainへ渡す。投稿は変更ごとのbranch（`git switch -c human-<名前> <mainのbranch>`）から行い、投稿したら別のbranchへ移る（投稿したbranchは、採否が出るまでmainが追従させる）（[scout](../roles/scout.md)の「人間（human）」）。開始前にworktree `human`から`post human "接続確認（意見はまだない）"`を1回流し、`.local/scout/reports.md`に`## human`が出ることを確かめる。この報告は最初のベンチでmainに渡るので、渡っても困らない文面にしておく。
+- コードの変更は投稿（`scripts/proposal.py submit`）でmainへ渡す。投稿は変更ごとのbranch（`git switch -c human-<名前> <mainのbranch>`）から行い、投稿したら別のbranchへ移る（投稿したbranchは、採否が出るまでmainが追従させる）。
 
 ## 開始後へ残すもの
 

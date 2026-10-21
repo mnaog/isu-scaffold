@@ -11,7 +11,7 @@
 - 公式のレギュレーション・当日マニュアル・整合性条件・失格条件を常に守る。当日マニュアルは事前の資料より優先する。
 - 改善はmainとimproveの2つのセッションで進める。mainのセッション（このrepoで起動したClaude Code）は、merge、次に測るものの判断、deploy、ベンチ、分析、採否を受け持ち、ベンチを止めずに回す。improveのセッション（worktree `improve`で`/improve`）は、mainの分析が示す最大の制約を調べて改善を実装・ローカル検証し、投稿でmainへ渡し続ける。どちらも人間の確認を待たない。mainは改善を実装しない（improveが動いていない間も同じで、人間に起動を頼む）。測るものが無い間、mainは、最新の採用構成を測り直して振れ幅を調べるか、APIごとの小さな待ち（`ISUCON_WAITS`、`scripts/waits.py`）を1つ変えて得点が上がる箇所を探すかを、そのときの状況で選ぶ（回数や順番は決めない）。この待ちの表だけは、mainが値を変えてよい。
 - mainは、このrepoのrootで起動したClaude Codeが最初に`/main`で宣言する。isuscopeは各ベンチをこのrepoの`docs/agent-history/`にある会話へ結び付けるので、別のdirectoryで起動したセッションでは`make kickoff`が止まる。目標は人間が`/main`の後に`/goal`で渡す。
-- 宣言は`.local/main-session.json`に残る。宣言がある間は、deploy・rollback・import・kickoff、ベンチ、isuscopeの記録、laneとscoutの起動・停止、`.local/operation.lock`を、ほかのセッションから`scripts/tool-guard.py`が止める。別のセッションで`/main`を打ち直すとmainが移る。
+- 宣言は`.local/main-session.json`に残る。宣言がある間は、deploy・rollback・import・kickoff、ベンチ、isuscopeの記録、laneの起動・停止、`.local/operation.lock`を、ほかのセッションから`scripts/tool-guard.py`が止める。別のセッションで`/main`を打ち直すとmainが移る。
 
 ## 判断の原則
 - 次の変更は、直近runの計測で見えた最大の制約から選ぶ。負荷の位置は変更のたびに動くので、毎回最新のrunから決める。
@@ -46,7 +46,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 - PASSしたrunは、分析を記録するまで次のベンチを始められない。仮説の判定（`supported`・`rejected`・`inconclusive`・`skipped`）と変更の採否（`accepted`・`provisional`・`rejected`・`deferred`）は別に記録する。
 - 何をどの順で測るか、どう組み合わせるかはmainが決める。まとめて測るときは、仮説に変更ごとの期待を並べ、`analyze`を変更ごとに`--change`で同じrunへ記録する。整合性や永続化の時機を変える変更、同じ制約を狙う変更を一緒にすると、落ちたときに原因を切り分けにくい。
 - 分析を記録したら、`python3 scripts/progress.py emit main analyzed "<短縮ID> score <n>。次の最大の制約: ..."`でimproveへ知らせる。
-- 待つ間に、hookが渡す見取り図（`docs/benchmark-scenario.md`）、scoutの報告、worktreeからの投稿を読み、今回の仮説と次の候補が得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめる。ベンチの仕様について観測と食い違う記述があれば、該当箇所を直す（runの結果や改善の効果は書かない）。次に測るものを選んだら、投稿なら`git merge --no-ff <branch>`し、`make build`しておく。sleepやpollingで待たない。
+- 待つ間に、hookが渡す見取り図（`docs/benchmark-scenario.md`）とworktreeからの投稿を読み、今回の仮説と次の候補が得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめる。ベンチの仕様について観測と食い違う記述があれば、該当箇所を直す（runの結果や改善の効果は書かない）。次に測るものを選んだら、投稿なら`git merge --no-ff <branch>`し、`make build`しておく。sleepやpollingで待たない。
 - Monitorで`.local/progress.log`を追う。`benchmark slow`が出たら、アプリ・nginxのerror logとnodeの負荷を確かめ、止まっていれば`scripts/benchmark-stop.sh`で止める。
 - nodeの異常（deploy後にアプリが立ち上がらない、nodeが応答しない、ベンチが止まる）は、手打ちのsshより先に`make status`で全nodeを見る。全nodeを並列に20秒で打ち切り、応答しないnode、メモリ・load・失敗したunit・待ち受けport・直近のOOMとerror・MySQLの実行中のSQLを1回で返す。手でsshするときも`scripts/ssh-node.sh <node> '<command>'`を使い、待つloopには回数の上限を付ける。
 - 同じ構成はisuscopeが測り直さない。測り直す（`--repeat "理由"`）のは、mainが空き時間に最新の採用構成の振れ幅を調べるときと、終了前の確認だけ。投稿やlaneの変更は1回のrunで、`python3 scripts/spread.py --base <基準> --score <得点>`の振れ幅と比べて決め、2度回さない。
@@ -64,8 +64,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 - lane: `claude -p`が自分のworktreeとbranch（`lane/<名前>`）で1回だけ動き、commitして終わる。出力が決まった有限のタスクにだけ使い、常駐させない。mainは`python3 scripts/lane.py status <名前>`で結果を読み、根拠を照合してから取り込む。起動と取り込みの順番は[kickoff](docs/guides/kickoff.md#laneの起動と取り込み)にある。
 - improve: 準備で作ったworktree `improve`で起動したセッションが`/improve`で、最新runとmainの分析から最大の制約を選び、変更ごとのbranch（`improve-<名前>`）で実装・ローカル検証して投稿する。投稿できるのはキュー全体の待ちが1件以下のときだけで、空きは`python3 scripts/proposal.py wait`（background）で待つ。採否を待たずに次の変更へ進む。runはrootにしか無いので`scripts/runs.sh`（isuscopeの読み取り）で読む。mainとは`.local/progress.log`の行（`improve started / working`、`proposal submitted / measuring / held / synced / accepted / rejected / deferred`、`main analyzed / freeze`）で知らせ合い、Monitorで追う。
 - portal: kickoffの間、準備で作ったworktree `portal`で起動したセッションが`/portal`で、サーバーの起動に要る情報、ベンチ接続、当日マニュアルの保存の順に進め、`.local/progress.log`へ`portal environment / bench / official / notice`を書く。mainはその行を見て`git merge --no-ff portal`する（[kickoff](docs/guides/kickoff.md)）。
-- scout（Codex 2体）: `make first-bench`がbaselineの後に起動し、報告の4分後ごとに新しいセッションで探索して`.local/scout/reports.md`へ書く。報告はベンチの起動時にhookが渡す。古い可能性を踏まえ、それぞれの視点を次の改善の参考にする。止めるのは`make scout-stop`。詳細は[scout](docs/roles/scout.md)。
-- 人間（scoutの`human`）: 準備で作ったworktree `human`で作業し（投稿は変更ごとのbranchから行い、投稿したら別のbranchへ移る）、意見を`python3 scripts/scout/main.py post human "..."`で書く。報告は他のscoutより先に、ベンチの起動時に渡る。`--emergency`の報告は次のツールの直後に渡るので、今の作業を続ける前に読み、反映するか理由を人間へ伝える。コードは投稿で届く。
+- 人間: 準備で作ったworktree `human`で作業し（投稿は変更ごとのbranchから行い、投稿したら別のbranchへ移る）、コードは投稿で届く。
 - 人間や手で動かすClaude Codeは、`make worktree BRANCH=<name> PURPOSE="..."`のworktreeで調査・実装・ローカル検証をし、変更目的ごとにcommitを分ける。ローカル環境は各worktreeで`make local-up / local-check / local-down`で使える（[ローカル実行環境](docs/local-development.md)）。
 - worktreeの変更は`python3 scripts/proposal.py submit --hypothesis ... --expect ... --verified ... --based-on <run>`で投稿し、mainのベンチを待つキューに入れる（`make proposals`、boardの上部）。投稿したbranchは採否が出るまでmainのもので、mainがベンチを待つ間に`proposal.py sync`でmainのbranchへ追従させ、衝突も解消する。mainは、何をまとめて測るか、測らずに返すか、条件付きで保留（`hold --until`）にするかを自分で決め、`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred [--run <短縮ID>]`で返す。ベンチが空いているときは、mainが`pending`で新しい投稿を受け取る。終了前は`proposal.py freeze`でimproveの投稿を止める。
 - remote変更・deploy・ベンチ・`.local/operation.lock`を使う操作はmainだけが行う（mainの宣言がある間はhookが止める）。実行中のlockは手で消さず、別の操作の終了を待つ。status・checkなどの読み取りは並行してよい。作業中の他worktreeを変更・削除しない。

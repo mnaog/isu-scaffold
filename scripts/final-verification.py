@@ -246,13 +246,6 @@ def check_local(report, config, nodes):
     deployed = subprocess.run([str(ROOT / 'scripts/check-deployed-commit.sh')], cwd=ROOT, capture_output=True, text=True)
     report.add('OK' if deployed.returncode == 0 else 'FAIL', 'local', 'deployed commit',
                (deployed.stdout + deployed.stderr).strip().splitlines()[-1] if (deployed.stdout + deployed.stderr).strip() else '')
-    scout = subprocess.run([sys.executable, str(ROOT / 'scripts/scout/main.py'), 'status'], cwd=ROOT,
-                           capture_output=True, text=True)
-    try:
-        running = json.loads(scout.stdout).get('daemon_running')
-        report.add('WARN' if running else 'OK', 'local', 'scout', 'still running (make scout-stop)' if running else 'stopped')
-    except ValueError:
-        report.add('INFO', 'local', 'scout', 'status unavailable')
     check_score(report, config)
     check_aws(report, config, nodes)
 

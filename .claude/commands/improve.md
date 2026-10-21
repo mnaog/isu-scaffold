@@ -57,7 +57,7 @@ scripts/runs.sh states sql latest "SELECT ..."
 scripts/runs.sh change list
 ```
 
-scoutと人間の報告は、rootの`.local/scout/reports.md`にある（上の4行目と同じ`.local`）。laneは`make lanes`。
+laneは`make lanes`。
 
 ### 1つの変更の流れ
 
@@ -86,7 +86,7 @@ scoutと人間の報告は、rootの`.local/scout/reports.md`にある（上の4
 
 ### しないこと
 
-- deploy・rollback・ベンチ・isuscopeの記録（analyze、change decide）・投稿の採否と保留・追従（`sync`）・laneとscoutの起動と停止。
+- deploy・rollback・ベンチ・isuscopeの記録（analyze、change decide）・投稿の採否と保留・追従（`sync`）・laneの起動と停止。
 - rootの作業ツリーや、他のworktree、投稿したbranchを変える。
 
 今いる場所、mainの宣言、キューの待ち、今の段階（kickoffの途中か、最新runとmainの分析があるか）を短く報告してから始める。

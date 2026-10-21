@@ -14,7 +14,7 @@ mainは、ベンチを止めずに回し、その結果を正しく読む。改�
 
 - **merge**: improve・人間（worktree `human`）の投稿、laneのcommit、portalを取り込む。キューの追従と衝突の解消（両方の意図を残すだけ）、取り込んだ変更の戻し（`git revert`）まで。buildやdeployが通らない投稿は直さずに戻し、理由を付けて投稿者へ返す。
 - **次に測るものの判断**: 下の「キュー」。何をまとめて測るか、測らずに返すか、保留にするかをmainが決める。
-- **deploy・ベンチ**: mainだけが、deploy・rollback・import・kickoff、ベンチ（`isuscope run`・`survey-run`・`make first-bench`）、isuscopeの記録、laneとscoutの起動・停止、`.local/operation.lock`を使う。ほかのセッションからの同じ操作は`scripts/tool-guard.py`が止める。
+- **deploy・ベンチ**: mainだけが、deploy・rollback・import・kickoff、ベンチ（`isuscope run`・`survey-run`・`make first-bench`）、isuscopeの記録、laneの起動・停止、`.local/operation.lock`を使う。ほかのセッションからの同じ操作は`scripts/tool-guard.py`が止める。
 - **分析と採否**: runを分析し、最大の制約を特定して`isuscope analyze`に書く。improveはこの分析から次の変更を選ぶので、根拠（run ID、node別の観測値、状態ログの数字）と、次の最大の制約をはっきり書く。
 - **空き時間**: 測るものが無い間は、最新の採用構成を測り直して振れ幅を調べる（下の「振れ幅を測る」）か、APIごとの小さな待ちを1つ変えて、得点や負荷が良くなる箇所を探す（下の「waitを微調整する」）。どちらに使うかは、そのときの状況で決める。投稿は振れ幅と比べて1回のrunで決め、2度は回さない。
 
@@ -45,7 +45,7 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 1. 次に測るものを選び、`git merge --no-ff <branch>`して`make build`、commitして`make deploy`。
 2. `isuscope run --hypothesis "..."`を`run_in_background`で起動する。仮説には、含めた投稿ごとに、branch・期待する観測値を並べる。hookが、merge済みの投稿を測定中にする。
 3. 待つ間に:
-   - hookが渡す見取り図・scoutの報告・新しい投稿を読む。
+   - hookが渡す見取り図・新しい投稿を読む。
    - `python3 scripts/proposal.py sync`で、待っている投稿と保留をmainのbranchへ追従させる（`.local/proposal-sync`のworktreeで、各branchへmainのbranchをmergeする）。衝突すると、そこで止まって衝突を残す。解消して`git add`し、もう一度`sync`する。処理の意味がぶつかる（同じ処理を別々に変えている）なら、`git merge --abort`して投稿者へ返す。投稿者のworktreeでcheckoutされたままのbranchは追従できないので、投稿者に離れてもらう。
    - キューを見直し、次に測るものを決めておく。
 4. 終わったら分析する。いつもの回は短く（スコア、効いた・効かなかった観測、次の最大の制約）、予想と違った回だけ深く掘る。採否は、`python3 scripts/spread.py --base <基準の構成のrunの短縮ID> --score <得点>`で、基準の構成の平均と振れ幅に照らして1回で決める。振れ幅より上なら採用、下なら不採用。振れの内側なら点の差としては扱わず、投稿の期待した観測値が狙いどおりに動き、ほかの指標に害が無ければ採用、そうでなければ不採用にする。同じ投稿を2度測らない。スコアが予想と違う方向に動いた回（速くしたのに下がった、FAILした）は、採否を決める前に`isuscope query RUN --base BASE --view transitions`でベンチ側の動きの変化（どの遷移の割合・間隔が変わったか）を見る。分かったベンチの仕様は、見取り図の該当する節へ書く。seventhでは分析がベンチ以外で一番長く（60 runで52分）、改善の周回を決めていた。投稿ごとに`isuscope analyze RUN <判定> --analysis "..." --change <branch> --decision ...`を記録し（同じrunへ追記できる）、`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID> --note "理由"`で返す。不採用は`git revert -m 1 <mergeのcommit>`で戻す。ベンチが起動できなかった、中断した、ベンチの外の原因で落ちたときは、`python3 scripts/proposal.py requeue`で測定中の投稿を待ちへ戻す（投稿が原因で落ちたなら、戻さずに`rejected`で返す）。

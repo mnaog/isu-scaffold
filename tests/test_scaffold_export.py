@@ -49,7 +49,7 @@ class ExportTest(unittest.TestCase):
             self.assertEqual((target/'scripts/preparation-check.py').read_text(),'local edits')
 
     def test_a_removed_file_that_comes_back_as_a_directory(self):
-        # scripts/scout was the scout wrapper file; it is now the scout package directory.
+        # A file the scaffold removed whose path is now a directory it ships.
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             source, target = base / 'source', base / 'target'
