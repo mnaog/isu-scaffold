@@ -250,32 +250,44 @@ def check_local(report, config, nodes):
     check_aws(report, config, nodes)
 
 
+def final_runs(root=None):
+    """Finished runs, oldest first, with the configuration isuscope recorded (identity values)."""
+    runs = []
+    for path in ((root or ROOT) / 'isuscope-data/runs').glob('*/run.json'):
+        try:
+            run = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        if run.get('state') in ('aborted', 'running') or (run.get('benchmark') or {}).get('interrupted'):
+            continue
+        bench = run.get('benchmark') or {}
+        runs.append({'id': run.get('id') or '', 'started_at': run.get('started_at') or '', 'score': bench.get('score'),
+                     'passed': bool(bench.get('passed')),
+                     'config': json.dumps((run.get('identity') or {}).get('values') or {}, sort_keys=True)})
+    return sorted(runs, key=lambda run: run['started_at'])
+
+
 def check_score(report, config):
-    """最終スコアは最後の負荷走行（13・14）。追試はその75〜85%を下回るとfail。同じcommitのrunの振れで見る。"""
-    head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True).stdout.strip()
-    query = ("SELECT commit_hash, score, passed FROM runs WHERE state NOT IN ('aborted', 'running') "
-             "ORDER BY started_at DESC LIMIT 20")
-    done = subprocess.run(['isuscope', 'sql', query], cwd=ROOT, capture_output=True, text=True)
-    if done.returncode != 0:
-        report.add('WARN', 'isuscope', 'final runs', 'cannot read the runs: ' + done.stderr.strip()[:120])
-        return
-    rows = json.loads(done.stdout).get('rows', [])
-    if not rows:
+    """The last run is the final score; the re-test is compared with it. The runs that count are those of
+    the last run's configuration (isuscope's identity), so committing run records after them changes nothing."""
+    runs = final_runs()
+    if not runs:
         report.add('WARN', 'isuscope', 'final runs', 'no runs')
         return
-    last_commit, last_score, last_passed = rows[0]
-    report.add('OK' if last_passed else 'FAIL', 'isuscope', 'last run',
-               f'{"PASS" if last_passed else "FAIL"} score {last_score} (the last run is the final score in recent contests)')
-    same = [row for row in rows if row[0] == head and row[2]]
+    last = runs[-1]
+    report.add('OK' if last['passed'] else 'FAIL', 'isuscope', 'last run',
+               f'{"PASS" if last["passed"] else "FAIL"} score {last["score"]} (run {last["id"][-8:]})')
+    same = [run for run in runs if run['config'] == last['config'] and run['passed']]
     if len(same) < 3:
-        report.add('WARN', 'isuscope', 'runs at HEAD', f'{len(same)} passed runs at {head[:12]}; run 3 (the third after make final-reboot)')
-    if same and last_score:
-        worst = min(row[1] or 0 for row in same)
-        ratio = worst / last_score
-        level = 'OK' if ratio >= config['min_score_ratio'] else 'FAIL'
-        report.add(level, 'isuscope', 'reproduction',
-                   f'worst {worst} is {ratio:.0%} of the last {last_score} over {len(same)} runs at HEAD '
-                   f'(needs {config["min_score_ratio"]:.0%})')
+        report.add('WARN', 'isuscope', 'runs of the final configuration',
+                   f'{len(same)} passed runs of the last run\'s configuration; run 3 (the third after make final-reboot)')
+    ratio_needed = config.get('min_score_ratio')
+    if same and last['score'] and ratio_needed:
+        worst = min(run['score'] or 0 for run in same)
+        ratio = worst / last['score']
+        report.add('OK' if ratio >= ratio_needed else 'FAIL', 'isuscope', 'reproduction',
+                   f'worst {worst} is {ratio:.0%} of the last {last["score"]} over {len(same)} runs of the final '
+                   f'configuration (needs {ratio_needed:.0%})')
 
 
 def check_aws(report, config, nodes):

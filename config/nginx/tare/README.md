@@ -23,17 +23,9 @@ fsync・binlogなど耐久性を変える設定と、下のB1のsendfileなど�
 
 | ファイル | 配置先 | 内容 |
 | --- | --- | --- |
-| `10-tare.conf` | `/etc/nginx/conf.d/10-tare.conf` | `sendfile`、`tcp_nopush`、`tcp_nodelay`、`keepalive_requests 10000` |
-| `upstream-keepalive.conf` | 問題のsite設定へ差し込む | upstreamの`keepalive 128`、`proxy_http_version 1.1`、`Connection ""` |
-| `nginx-limits.conf` | `/etc/systemd/system/nginx.service.d/limits.conf` | `LimitNOFILE=65535` |
-
-`nginx.conf`のmainとeventsはconf.dに書けないので、次をnginx.confへ直接反映する（`config/nginx/nginx.conf`をsync itemにしてdeployする）。
-
-```nginx
-worker_processes auto;
-worker_rlimit_nofile 65535;
-events { worker_connections 4096; }
-```
+| `10-tare.conf` | `/etc/nginx/conf.d/10-tare.conf` | `sendfile`、`tcp_nopush`、`tcp_nodelay` |
+| `upstream-keepalive.conf` | `make tare`がupstreamへ移さなかったproxy（`proxy_pass`が変数や別の形のもの）にだけ差し込む | upstreamの`keepalive 128`、`proxy_http_version 1.1`、`Connection ""` |
+| `nginx-limits.conf` | `/etc/systemd/system/nginx.service.d/limits.conf` | `LimitNOFILE=131072`（`make tare`の`worker_rlimit_nofile`と揃える） |
 
 入れ方: sync.jsonへ`config/nginx/tare/10-tare.conf`などのitemを足し、`post_deploy_commands`に`sudo nginx -t`と`sudo systemctl daemon-reload`、`sudo systemctl reload nginx`（LimitNOFILEの変更時は`restart`）を置く。`rollback_commands`にも同じ検証とreloadを置く。
 

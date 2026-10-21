@@ -154,13 +154,22 @@ def started(root, session):
         isuscope_prune.prune(repo)
     except OSError:
         pass  # the caches are only disk space; the benchmark and its context matter more
+    requeued = []
     if proposal.main_session.is_main(repo, session) is not False:
+        # A PASS run blocks the next benchmark until it is analyzed, so a proposal still measuring here
+        # was on a run that failed or was cut short: it goes back to be measured on this one.
+        try:
+            requeued = proposal.requeue(repo).removeprefix('キューへ戻した: ').split(', ')
+        except proposal.Refused:
+            requeued = []
         measuring = proposal.start_measuring(repo)
     else:
         measuring = []
     context = waiting_context(root, session)
     if measuring:
-        note = (f'このベンチで測る投稿: {", ".join(measuring)}（キューから外し、測定中にした）。'
+        named = ', '.join(f'{branch}（--change {proposal.change_id(branch)}）' for branch in measuring)
+        again = f'前のrunで採否の付かなかった{", ".join(requeued)}も、もう一度このベンチで測る。' if requeued else ''
+        note = (f'このベンチで測る投稿: {named}（キューから外し、測定中にした）。{again}'
                 'ベンチを待つ間に`python3 scripts/proposal.py sync`で待っている投稿をmainのbranchへ追従させる。')
         context = '\n\n'.join(part for part in (note, context) if part)
     return context

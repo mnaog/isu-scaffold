@@ -42,12 +42,14 @@ survey_run() {
   read -r id state <<<"$(latest_run)"
   if [[ "${state}" == pending && -n "${id}" && "${id}" != "${before%% *}" ]]; then
     echo "survey-run ${id} is pending: check how its output is read with python3 scripts/benchmark-sample.py ${id}, then --apply --score N --pass true|false"
+    printf '%s\n' "${id}" >.local/first-bench-pending
     return 0
   fi
   return "${code}"
 }
 
 cd "${repo_dir}"
+rm -f .local/first-bench-pending
 if [[ -n "${ISUCON_LANE:-}" ]]; then
   echo "lanes do not benchmark; ask the main session to run make first-bench" >&2
   exit 2
@@ -98,4 +100,8 @@ else
   stage survey-run survey_run
   progress baseline-ready "analyze with isuscope brief latest"
 fi
-progress complete "a pending result: python3 scripts/benchmark-sample.py <run>, then --apply"
+if [[ -s .local/first-bench-pending ]]; then
+  progress complete "the baseline $(cat .local/first-bench-pending) is pending: python3 scripts/benchmark-sample.py <run>, then --apply"
+else
+  progress complete "the baseline is recorded"
+fi

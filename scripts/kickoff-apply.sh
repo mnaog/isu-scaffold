@@ -29,4 +29,4 @@ stage sync-check "${script_dir}/sync-check.sh"
 stage import "${script_dir}/import.sh"
 
 echo "kickoff apply complete"
-echo "review the import, commit the initial state, then run: make deploy && make bench-check"
+echo "commit the initial state, then run: make first-bench"

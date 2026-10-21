@@ -53,6 +53,26 @@ class FollowTests(unittest.TestCase):
         self.assertNotIn('skip', out)
         self.assertIn('10:02 main analyzed new 次の最大の制約: DB → ', out)
 
+    def test_a_log_that_appears_after_following_started_is_read_from_its_first_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / 'progress.log'
+            env = dict(os.environ, PROGRESS_LOG=str(log))
+            follower = subprocess.Popen(['python3', str(ROOT / 'scripts/progress.py'), 'follow', 'improve'], env=env,
+                                        stdout=subprocess.PIPE, text=True)
+            try:
+                time.sleep(1)
+                log.write_text('2026-10-21T10:00:00+0900\tkickoff\tcode-ready\twebapp/rust\n')
+                time.sleep(1.5)
+            finally:
+                follower.terminate()
+            out = follower.communicate(timeout=5)[0]
+        self.assertIn('10:00 kickoff code-ready webapp/rust', out)
+
+    def test_lanes_that_stop_short_and_unfreezing_reach_someone(self):
+        self.assertIn('止まった', self.shown('main', 'lane:full-memory', 'timeout'))
+        self.assertIn('止まった', self.shown('main', 'lane:full-memory', 'stopped'))
+        self.assertIn('再開', self.shown('improve', 'proposal', 'unfrozen'))
+
 
 if __name__ == '__main__':
     unittest.main()

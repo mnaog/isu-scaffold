@@ -52,9 +52,10 @@ def spread(repo):
     """Per run ID: whether it repeated a configuration or tried a wait, and the swing known when it started."""
     result, groups = {}, {}
     for run in load(repo):
+        # The swing known when the run started: its own score joins the groups after it.
+        result[run['id']] = {'repeat': run['repeat'], 'wait': run['wait'], 'spread': pooled(groups)}
         if run['measured']:
             groups.setdefault(run['config'], []).append(run['score'])
-        result[run['id']] = {'repeat': run['repeat'], 'wait': run['wait'], 'spread': pooled(groups)}
     return result
 
 

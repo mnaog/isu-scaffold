@@ -85,7 +85,8 @@ HINT = ('worktreeからの投稿です（mainのbranchへ衝突なく入るこ�
         '何をどの順で、どう組み合わせて測るかはmainが決める（まとめたら、仮説に投稿ごとの期待を並べ、'
         '`isuscope analyze`を投稿ごとに`--change <branch>`で記録する）。測るまでもなく棄却できるなら測らずに棄却してよい。'
         '取り込んでbuild・deployが通らなければmainが直し、直せなければ棄却する（投稿者へ戻さない）。採否は'
-        '`isuscope analyze RUN ... --change <branch> --decision accepted|rejected|deferred`で記録し、hookが投稿へ写す'
+        '`isuscope analyze RUN ... --change <change ID> --decision accepted|rejected|deferred`で記録し、hookが投稿へ写す'
+        '（change IDはbranch名の`/`などを`-`にしたもの。ベンチを起動したときに投稿ごとに示す）'
         '（runの無い判断だけ`python3 scripts/proposal.py decide`）。判断はmainへ取り込んで測ったcommitに付く。')
 GROUPS = {'measuring': '測定中', 'merged': '次のベンチ', 'delivered': '待ち', 'submitted': '待ち（未読）',
           'needs-sync': '待ち（衝突）', 'held': '保留'}
@@ -322,9 +323,11 @@ def submit(root, hypothesis, expect, verified, note=None, cwd=None, based_on=Non
     commit = git('rev-parse', 'HEAD', cwd=cwd).stdout.strip()
     files = git('diff', '--name-only', f'{base}...HEAD', cwd=cwd).stdout.split()
     # Built on another proposal that main's branch does not hold yet: it stands or falls with it.
+    # sync moves a waiting proposal to a merge commit; a branch built before that holds an earlier one.
     depends_on = sorted(other['branch'] for other in items
                         if other['branch'] != branch and other.get('status') in OPEN
-                        and is_ancestor(root, other['commit'], commit) and not is_ancestor(root, other['commit'], base))
+                        and any(is_ancestor(root, c, commit) and not is_ancestor(root, c, base)
+                                for c in [other['commit'], *(h['commit'] for h in other.get('history') or [])]))
     data = {'branch': branch, 'commit': commit, 'base': base, 'worktree': str(here),
             'hypothesis': hypothesis, 'expect': expect, 'verified': verified, 'note': note or '',
             'based_on': based_on or '', 'depends_on': depends_on, 'files': files,
@@ -514,7 +517,10 @@ def open_entries(data):
 
 
 def undecided(data):
-    """The commits of a proposal that main merged but has not decided, newest first."""
+    """The commits of a proposal that main merged but has not decided, newest first. One being measured
+    now is left out: its decision comes after the run."""
+    if data.get('status') == 'measuring':
+        return []
     return [entry['commit'] for entry in open_entries(data) if entry.get('status') in ('merged', 'measuring')]
 
 
@@ -565,8 +571,9 @@ def deliver(root, session, at=None):
         parts.append(f'mainのbranchと衝突する投稿: {", ".join(held)}。ベンチを待つ間に'
                      '`python3 scripts/proposal.py sync`で取り込み、衝突を解消する。')
     if waiting:
-        parts.append(f'取り込んだが採否を記録していない投稿: {", ".join(waiting)}。測ったrunを付けて'
-                     '`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID>`で記録する。')
+        parts.append(f'取り込んだが採否を記録していない投稿: {", ".join(waiting)}。測ったrunの'
+                     '`isuscope analyze RUN ... --change <その投稿のchange ID> --decision ...`で記録する'
+                     '（runが無い判断は`python3 scripts/proposal.py decide <branch> ...`）。')
     return '\n\n'.join(parts)
 
 

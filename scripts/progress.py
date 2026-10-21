@@ -83,14 +83,17 @@ def follow(role, root=None, from_start=False, interval=0.5, stop=None):
     path = log_path(root)
     rules = load_rules(root)
     position = None
+    appeared = False
     while stop is None or not stop():
         try:
             size = path.stat().st_size
         except OSError:
+            appeared = position is None
             time.sleep(interval)
             continue
         if position is None:
-            position = 0 if from_start else size
+            # A file that appears after following started is read from its first line.
+            position = 0 if from_start or appeared else size
         if size < position:
             position = 0
         if size > position:

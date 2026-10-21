@@ -152,25 +152,29 @@ class UnitAndScoreTests(unittest.TestCase):
             self.assertIn(unit, units)
         self.assertNotIn("daemon-reload.service", units)
 
-    def test_the_reproduction_check_uses_the_worst_run_at_head(self):
+    def test_the_reproduction_check_uses_the_worst_run_of_the_final_configuration(self):
         module = self.load()
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
         with tempfile.TemporaryDirectory() as directory:
-            fake = Path(directory) / "isuscope"
-            rows = [[head, 1000, 1], [head, 820, 1], [head, 990, 1], ["other", 2000, 1]]
-            fake.write_text("#!/bin/sh\nprintf '%s\\n' '" + json.dumps({"rows": rows}) + "'\n")
-            fake.chmod(0o755)
-            old = os.environ["PATH"]
-            os.environ["PATH"] = f"{directory}{os.pathsep}{old}"
+            root = Path(directory)
+            # The other configuration scored more, the final one's worst run is 820 of the last 1000.
+            for minute, (score, config) in enumerate([(2000, "other"), (990, "final"), (820, "final"), (1000, "final")]):
+                run = root / "isuscope-data/runs" / f"run{minute}"
+                run.mkdir(parents=True)
+                (run / "run.json").write_text(json.dumps({
+                    "id": f"01a15900-0000-7000-8000-00000000000{minute}", "state": "complete",
+                    "started_at": f"2026-10-21T12:0{minute}:00Z", "benchmark": {"score": score, "passed": True},
+                    "identity": {"values": {"deployed_files": config}}}))
+            old_root = module.ROOT
+            module.ROOT = root
             try:
                 report = module.Report(quiet=True)
                 module.check_score(report, {"min_score_ratio": 0.85})
             finally:
-                os.environ["PATH"] = old
+                module.ROOT = old_root
         lines = {name: (level, detail) for level, _, name, detail in report.lines}
         self.assertEqual(lines["last run"][0], "OK")
         self.assertEqual(lines["reproduction"][0], "FAIL")
-        self.assertIn("worst 820 is 82% of the last 1000", lines["reproduction"][1])
+        self.assertIn("worst 820 is 82% of the last 1000 over 3 runs", lines["reproduction"][1])
 
     def test_node_checks_reject_errors_empty_and_partial_output(self):
         module = self.load()

@@ -104,8 +104,9 @@ class ProposalDecisionTest(unittest.TestCase):
         commit = self.commit_and_submit('insert.txt', '座標をまとめてINSERTする')
         self.deliver()
         self.git('merge', '-q', '--no-ff', '-m', 'Take human', 'human')
-        for _ in range(2):
-            self.assertIn(f'human（{commit[:8]}）', self.deliver())
+        self.assertIn('このベンチで測る投稿: human（--change human）', self.deliver())
+        # The run ended without a decision (a FAIL is not analyzed): the next benchmark measures it again.
+        self.assertIn('前のrunで採否の付かなかったhuman', self.deliver())
         self.assertIn('採否はまだ出ていない', self.script('proposal.py', 'show', 'human').stdout)
         self.decide('accepted', '--run', 'aaaa1111')
         self.assertEqual(self.deliver(), '')

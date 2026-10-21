@@ -60,12 +60,11 @@ LANE_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-
                 'bootstrap-ssh.sh', 'discover.sh', 'configure-draft.sh', 'configure-apply.sh',
                 'inspect-environment.sh', 'bench-check.sh', 'quick-import-code.sh', 'run-ansible-playbook.sh',
                 'status.sh', 'switch-language-service.sh', 'sync-check.sh', 'benchmark.sh',
-                'benchmark-prepare.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'kickoff-build.py',
+                'benchmark-prepare.sh', 'ansible-install.sh', 'tare.py', 'kickoff-build.py',
                 'lane.py', 'review-draft.py', 'check-deployed-commit.sh', 'first-bench.sh',
                 'benchmark-markers.py', 'deploy-plan.py', 'final-verification.py'}
 LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'final-check', 'final-reboot', 'final-db-late', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap',
-                     'bench-check', 'first-bench', 'tare', 'practice-check', 'practice-create', 'practice-status',
-                     'practice-delete'}
+                     'bench-check', 'first-bench', 'tare'}
 # Read-only isuscope commands; everything else records, benchmarks or reaches nodes.
 LANE_ISUSCOPE = {'list', 'brief', 'query', 'sql', 'series', 'help', '--help', '-h', '--version', 'version'}
 # `isuscope change` subcommands that only read; `decide` records.
@@ -78,10 +77,10 @@ MAIN_HINT = ('この操作はmainのセッション（/mainで宣言したセッ
 MAIN_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-apply.sh', 'bootstrap.sh',
                 'bootstrap-ssh.sh', 'configure-apply.sh', 'bench-check.sh', 'quick-import-code.sh',
                 'run-ansible-playbook.sh', 'switch-language-service.sh', 'benchmark.sh', 'benchmark-prepare.sh',
-                'benchmark-stop.sh', 'practice-stack.sh', 'ansible-install.sh', 'tare.py', 'first-bench.sh',
+                'benchmark-stop.sh', 'ansible-install.sh', 'tare.py', 'first-bench.sh',
                 'final-verification.py'}
 MAIN_MAKE_TARGETS = {'deploy', 'rollback', 'final-reboot', 'final-db-late', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap', 'bench-check',
-                     'first-bench', 'tare', 'practice-create', 'practice-delete'}
+                     'first-bench', 'tare'}
 LOCAL_URL = re.compile(r'^(?:https?://)?(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:/|$)')
 
 
@@ -363,7 +362,7 @@ class Guard:
             raise Denied(MAIN_HINT)
         # Measuring and deciding a proposal is main's; improve and people submit and read.
         if script == 'proposal.py' and operands[:1] and operands[0] in {'decide', 'pending', 'sync', 'hold', 'unhold',
-                                                                         'requeue', 'freeze'}:
+                                                                         'requeue', 'freeze', 'adopt'}:
             raise Denied(MAIN_HINT)
         if program == 'make' and any(a in MAIN_MAKE_TARGETS for a in operands):
             raise Denied(MAIN_HINT)
