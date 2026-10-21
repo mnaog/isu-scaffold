@@ -8,7 +8,6 @@
 - 前回のGitHub repoは`mnaog/practice-12-first`。ローカルの旧ディレクトリ名は`practice-12`のまま。今回は旧repoのアプリ・schema・run・改善案・会話を読んだりコピーしたりして解かない。
 - 初期テンプレには開始後のkickoff・改善手順を含む。過去のAI比較課題・解答・分析は開始用templateへ持ち込まない。
 - AWSは今回確認した`default` profile、`ap-northeast-1`を使う。account・鍵・接続先・APIの生出力は`.local/`に置く。profileの設定変更や認証期限に注意する。
-- 2026-10-02の事前確認では認証・主要操作のIAM simulationは成功し、標準On-Demand枠は512 vCPU、EC2・VPC・Elastic IPの使用はなかった。この値は確認時点の事実であり、実起動や当日の空き容量を保証しない。
 - 準備状況は各repoの`docs/preparation/readiness.md`と`docs/preparation/`に記録する。未確認の機能を完了扱いにしない。
 - 練習の開始は人間が宣言する。このファイルの追加は練習開始の指示ではない。
 
@@ -19,7 +18,7 @@
 - シナリオや得点構造の分析には、参加者向け公式文書、開始後に取得したアプリケーションコード・schema、参加者向けベンチ出力、アプリ側の計測を使う。
 - 運営向け出力は使わない。ISUCON12の`[ADMIN]`行を判断材料にもparserのmessageにも入れない。
 - 資料で確認できない内部条件は不明とし、観測からの推測と確認済みの事実を分ける。内部コードや過去の改善結果で補完しない。
-- モデル比較では閲覧可能な資料と開始時の入力を共通にする。laneの寄与（取り込んだcommit、使った地図）は分けて記録する。
+- モデル比較では閲覧可能な資料と開始時の入力を共通にする。laneの寄与（取り込んだcommit）は分けて記録する。
 - laneはWebを使えない（`dontAsk`で許可していない）。laneの最後の回答も、開始後の資料とコードから作られたものとして扱う。
 
 ## 本番でコードを読める時点
@@ -37,12 +36,12 @@
 3. 当日配布情報に相当する資料を保存し、provider・stack・SSH user/key・node分類を`.local/environment.env`へ設定する。具体的な練習環境の構築方式・AMI・stack名は開始時に確認し、前回の接続先を推測で流用しない。
 4. `make kickoff`を開始する。nodeを発見し、回収元のapplication node 1台のSSHを確立する。
 5. `quick-import-code.sh`がSSH経由でアプリをtar転送し、schemaと初期化scriptを先行回収する。既定の回収元は`/home/isucon/webapp/rust`と`/home/isucon/webapp/sql`、ローカルは`webapp/rust`と`webapp/sql`。これはscaffoldの既定値であり、本番の配置保証ではない。異なる場合は`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`等で指定する。大きな初期データはこの段階では回収しない。
-6. 回収範囲のcommit後、kickoffがkickoff buildとAI lane（`claude -p`のfull-memory、indexes、n-plus-one、obvious-fixes、runtime、local-env、state-log）を並行で起動する。公式資料をcommitしたらmainがlane scenarioを、完全importをcommitしたらlane static-edgeを起動する。mainのセッションはbuild設定・ベンチ接続・draftを進める。
-7. draft確認・完全import・deploy・計測準備から初回baseline分析まで進め、観測に基づく修正・検証・評価を同じセッションで続ける。
+6. 回収範囲のcommit後、kickoffがkickoff buildとAI lane（`claude -p`。`config/lanes.json`の`kickoff`）を並行で起動する。公式資料をcommitしたらmainがlane scenarioを、完全importをcommitしたらlane static-edgeを起動する。mainのセッションはbuild設定・ベンチ接続・draftを進める。
+7. draft確認・完全import・deploy・計測準備から初回baseline分析まで進め、その後は役割ごとに改善を続ける（`AGENTS.md`の「役割」）。
 
 現在の本番想定に合わせ、サーバー作成・起動の待ち時間も開始後の時間に含める。別の練習で「起動済み環境からの開始」を選ぶ場合は、その差を記録し、AMI公開から始めた本番相当の所要時間と混同しない。
 
-計測の区切りは開始、サーバー起動、SSH確立、先行回収完了、コード読解開始、baseline分析完了、修正・ローカル検証完了、改善後の評価完了。並行区間は単純加算せず、どの処理の完了を待ったかを記録する。
+各段階の時刻は`.local/progress.log`とisuscopeのrunに残るので、所要時間はそこから読む。並行区間は単純加算せず、どの処理の完了を待ったかを見る。
 
 ## 本番への切り替え
 

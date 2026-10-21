@@ -128,6 +128,8 @@ jq -r '
     --mysql-slow-log "${mysql_slow_log}" \
     --service-units "${service_units}" \
     --sample-output config/benchmark-sample.log
+  # このrepoが決める設定（会話の紐付け、ベンチの前後のcommandなど）は追跡される.isuscope/policy.tomlが正本。
+  printf '\n[include]\nconfig = [".isuscope/policy.toml"]\n'
   printf '\n[lock]\npath = ".local/operation.lock"\n'
   printf '\n[ssh]\nuser = %s\nidentity_file = %s\nknown_hosts_file = %s\nconnect_timeout_seconds = 5\n\n' \
     "$(jq -Rn --arg value "${ssh_user}" '$value')" \
@@ -135,8 +137,6 @@ jq -r '
     "$(jq -Rn --arg value "${known_hosts_file}" '$value')"
   cat "${nodes_tmp}"
 } >"${config_tmp}"
-
-python3 "${script_dir}/isuscope-policy.py" "${config_tmp}"
 
 mv -- "${inventory_tmp}" "${inventory_file}"
 mv -- "${nodes_tmp}" "${node_toml_file}"

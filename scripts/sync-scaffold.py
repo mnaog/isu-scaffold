@@ -42,8 +42,8 @@ def main():
     if errors:
         sys.exit('non-generic export rejected:\n' + '\n'.join(errors))
     changes = [name for name, data in files.items() if not (target / name).is_file() or (target / name).read_bytes() != data]
-    # A removed file may come back as a directory (scripts/scout, the old wrapper, is now the scout
-    # package); only a file or link at that path is left over.
+    # A removed file may come back as a directory of the same name; only a file or link at that
+    # path is left over.
     def leftover(name):
         return (target / name).is_file() or (target / name).is_symlink()
     deletions = [name for name in removals if leftover(name)]

@@ -61,7 +61,7 @@ def load(root):
 
 
 def current_session(agent=None):
-    """The session running this, from the variables isuscope and the scouts read."""
+    """The session running this, from the variables isuscope reads."""
     claude = os.environ.get('CLAUDE_CODE_SESSION_ID', '').strip()
     codex = os.environ.get('CODEX_SESSION_ID', '').strip() or os.environ.get('CODEX_THREAD_ID', '').strip()
     if agent == 'codex' or (agent is None and codex and not claude):
@@ -104,11 +104,6 @@ def claim(root, agent, session, cwd=None):
     if 'previous' in data:
         lines.append(f'前のmain（{previous.get("agent")} {previous["session"]}、{previous.get("claimed_at")}から）'
                      'から引き継いだ。前のmainはもうdeploy・ベンチ・isuscopeの記録・操作lockを使えない。')
-    # The scouts read main's conversation; keep them on the same session.
-    scout = subprocess.run([sys.executable, str(SCRIPTS / 'scout/main.py'), 'conversation', agent, session],
-                           cwd=root, capture_output=True, text=True)
-    if scout.returncode == 0:
-        lines.append('scoutが読む会話もこのセッションにした。')
     lines.append('ほかのセッションはdeploy・ベンチ・isuscopeの記録・操作lockを使えない。'
                  'worktreeの変更は投稿（scripts/proposal.py）として、ベンチを起動したときに渡される。')
     return '\n'.join(lines)
@@ -162,7 +157,8 @@ def badge(root, session, cwd=None):
         result['role'] = 'other'
     items = proposal.load_all(root)
     result['waiting'] = sum(1 for item in items if item.get('status') in proposal.WAITING)
-    own = next((item for item in items if item.get('branch') == branch and not result['is_root']), None)
+    mine = '' if result['is_root'] else proposal.own_branch(root, cwd)
+    own = next((item for item in items if mine and item.get('branch') == mine), None)
     result['proposal'] = {key: own.get(key) for key in ('status', 'commit', 'decision')} if own else None
     result['benchmark'] = benchmark(root)
     return result

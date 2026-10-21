@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """AI lanes: one `claude -p` run per lane, in its own worktree and branch, merged by main.
 
-  lane.py start NAME [--prompt-file PATH --purpose TEXT] [--force]   start a lane in the background
+  lane.py start NAME [--prompt-file PATH --purpose TEXT]           start a lane in the background
   lane.py kickoff                                          start the lanes make kickoff runs
   lane.py status [NAME]                                    show lanes, or one lane's result
   lane.py stop NAME                                        stop a running lane
@@ -16,11 +16,7 @@ says so may merge the branch it started from into its own). config/lanes.json ho
 model, effort, timeouts, the named prompts and the tools a lane may use: permission mode
 dontAsk denies everything else without asking, so an unattended lane cannot widen its own
 access. A lane may list `requires`: files the starting commit must already hold, so a lane
-that builds on earlier lanes cannot start before main has taken them in. A lane may instead list
-`after`: lanes whose branches it builds on. It starts by itself when the last of them ends
-(complete, timeout or stopped), from main's branch with their branches merged in, without
-waiting for main to take them in; a branch that does not merge cleanly is left for the lane
-to merge first. Their commits are not reported as the lane's. A lane may also list `joins`:
+that builds on earlier lanes cannot start before main has taken them in. A lane may also list `joins`:
 lanes that start alongside it and whose branches it merges itself once they end (it reads their
 state with `lane.py status`), so it need not wait for them to begin; their commits are not
 reported as the lane's either.
@@ -108,13 +104,9 @@ def missing_requirements(name):
             if subprocess.run(['git', 'cat-file', '-e', f'HEAD:{path}'], cwd=ROOT, capture_output=True).returncode]
 
 
-def start(name, prompt_file=None, purpose=None, force=False):
+def start(name, prompt_file=None, purpose=None):
     if os.environ.get('ISUCON_LANE'):
         raise SystemExit('a lane does not start other lanes; report the idea in its final answer')
-    waiting = waiting_on(name)
-    if waiting and not force:
-        raise SystemExit(f'lane {name} starts by itself when these lanes end: {", ".join(waiting)} '
-                         f'(--force starts it now with the branches they have)')
     claude, prompt, purpose = lane_settings(name, prompt_file, purpose)
     prompt = prompt if prompt.is_absolute() else ROOT / prompt
     if not prompt.is_file():
@@ -177,48 +169,6 @@ def lane_state(name):
         return None
 
 
-def waiting_on(name):
-    """The lanes named in `after` that have not ended yet."""
-    after = load_config().get('lanes', {}).get(name, {}).get('after', [])
-    return [lane for lane in after if lane_state(lane) not in DONE]
-
-
-def start_followers(finished):
-    """Start each lane that waits for `finished` once all its `after` lanes have ended."""
-    for name, lane in load_config().get('lanes', {}).items():
-        after = lane.get('after', [])
-        if finished not in after or lane_state(name) is not None:
-            continue
-        failed = [other for other in after if lane_state(other) == 'failed']
-        if failed:
-            progress.emit(f'lane:{name}', 'blocked', f'{", ".join(failed)} failed; '
-                          f'start it with python3 scripts/lane.py start {name} --force', root=ROOT)
-            continue
-        if waiting_on(name):
-            continue
-        try:
-            start(name)
-        except SystemExit as error:
-            progress.emit(f'lane:{name}', 'failed', f'not started: {error.code}', root=ROOT)
-
-
-def merge_after(name, worktree):
-    """Merge the branches of the lanes this one builds on; return (merged, left for the lane)."""
-    merged, left = [], []
-    for lane in load_config().get('lanes', {}).get(name, {}).get('after', []):
-        branch = f'lane/{lane}'
-        if git('rev-parse', '--verify', '--quiet', branch, check=False) == '':
-            continue
-        result = subprocess.run(['git', 'merge', '--no-ff', '--no-edit', '-q', branch], cwd=worktree,
-                                capture_output=True, text=True)
-        if result.returncode:
-            subprocess.run(['git', 'merge', '--abort'], cwd=worktree, capture_output=True)
-            left.append(branch)
-        else:
-            merged.append(branch)
-    return merged, left
-
-
 def create_worktree(name, purpose):
     branch = f'lane/{name}'
     base = git('symbolic-ref', '--quiet', '--short', 'HEAD', check=False) or git('rev-parse', 'HEAD')
@@ -236,13 +186,8 @@ def create_worktree(name, purpose):
     return Path(path), branch, base, git('rev-parse', branch)
 
 
-def lane_prompt(name, prompt, worktree, branch, base, base_commit, merged=(), left=(), joins=()):
+def lane_prompt(name, prompt, worktree, branch, base, base_commit, joins=()):
     after = ''
-    if merged:
-        after += f'始める前に、lane.pyが{", ".join(merged)}をこのbranchへmergeした。'
-    if left:
-        after += (f'{", ".join(left)}は衝突したのでmergeしていない。最初に`git merge --no-edit <branch>`で取り込み、'
-                  '両方の意図を残して衝突を解いてcommitする。')
     if joins:
         after += (f'同時に動いているlane {", ".join(joins)}のbranch（lane/<名前>）は、このlaneが自分で取り込む。'
                   '終わったかは`python3 scripts/lane.py status <名前>`の`state`で見る（complete・timeout・stoppedなら終わり）。'
@@ -273,7 +218,7 @@ def result_of(stream):
 
 def lane_commits(branch, base, base_commit, *options, built_on=()):
     """The lane's own commits: those the base branch already has (merged in by the lane) are main's,
-    and those of the lanes it was built on (`after`) or joins (`joins`) are theirs."""
+    and those of the lanes it joins (`joins`) are theirs."""
     # A joined lane's branch may not exist yet; git log refuses an unknown name in --not.
     present = [ref for ref in built_on if git('rev-parse', '--verify', '--quiet', ref, check=False)]
     return git('log', *options, '--format=%h %s', branch, '--not', base_commit, base, *present,
@@ -323,27 +268,22 @@ def run(name, prompt_file, purpose):
         code = 1
         try:
             worktree, branch, base, base_commit = create_worktree(name, purpose)
-            merged, left = merge_after(name, worktree)
-            defined = load_config().get('lanes', {}).get(name, {})
-            joins = defined.get('joins', [])
-            # Not the lane's own: the merges above, and what the lanes it builds on or joins committed.
-            built_on = [git('rev-parse', branch)] + [f'lane/{lane}' for lane in defined.get('after', []) + joins]
-            if merged or left:
-                progress.emit(source, 'merged', ', '.join(merged) + (f'; left for the lane: {", ".join(left)}' if left else ''),
-                              root=ROOT)
+            joins = load_config().get('lanes', {}).get(name, {}).get('joins', [])
+            # Not the lane's own: where it started, and what the lanes it joins committed.
+            built_on = [git('rev-parse', branch)] + [f'lane/{lane}' for lane in joins]
             command = [claude.get('command', 'claude'), '-p', '--output-format', 'stream-json', '--verbose',
                        '--model', claude['model'], '--effort', claude['effort'],
                        '--permission-mode', claude.get('permission_mode', 'dontAsk'),
                        '--allowedTools', ','.join(claude.get('allowed_tools', []))]
             # --allowedTools takes several values, so the prompt goes through stdin, not argv.
-            text = lane_prompt(name, prompt, worktree, branch, base, base_commit, merged, left, joins)
+            text = lane_prompt(name, prompt, worktree, branch, base, base_commit, joins)
             environment = dict(os.environ, ISUCON_LANE=name, ISUCON_LANE_ROOT=str(root_repo()))
             # Started from a main session that is itself Claude Code: run as a fresh top-level session.
             for variable in ('ISUSCOPE_LOCK_HELD', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT'):
                 environment.pop(variable, None)
             timeout = float(claude['timeout_minutes']) * 60
             save(name, 'running', worktree=str(worktree), branch=branch, base=base, base_commit=base_commit,
-                 timeout_minutes=claude['timeout_minutes'], merged=merged, left_to_merge=left)
+                 timeout_minutes=claude['timeout_minutes'])
             progress.emit(source, 'running', f'{branch} at {worktree}', root=ROOT)
             stream = directory / 'stream.jsonl'
             with stream.open('w') as out, (directory / 'claude.stderr').open('w') as err:
@@ -393,7 +333,6 @@ def run(name, prompt_file, purpose):
             save(name, 'failed', error=str(error), seconds=round(time.time() - started, 1))
             progress.emit(source, 'failed', str(error), root=ROOT)
         record_timing(name, started, code)
-    start_followers(name)
     return code
 
 
@@ -445,7 +384,6 @@ def stop(name):
         os.killpg(pid, signal.SIGTERM)
     save(name, 'stopped')
     progress.emit(f'lane:{name}', 'stopped', '', root=ROOT)
-    start_followers(name)
 
 
 def main():
@@ -454,7 +392,6 @@ def main():
     parser.add_argument('name', nargs='?')
     parser.add_argument('--prompt-file')
     parser.add_argument('--purpose')
-    parser.add_argument('--force', action='store_true', help='start a lane before the lanes in its `after` end')
     args = parser.parse_args()
     if args.action == 'kickoff':
         return kickoff()
@@ -462,7 +399,7 @@ def main():
         return show(args.name and valid_name(args.name))
     name = valid_name(args.name)
     if args.action == 'start':
-        return start(name, args.prompt_file, args.purpose, args.force)
+        return start(name, args.prompt_file, args.purpose)
     if args.action == 'stop':
         return stop(name)
     return run(name, args.prompt_file, args.purpose)

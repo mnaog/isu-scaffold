@@ -33,7 +33,7 @@ _progress_spec = importlib.util.spec_from_file_location('progress', Path(__file_
 progress = importlib.util.module_from_spec(_progress_spec)
 _progress_spec.loader.exec_module(progress)
 NOTIFY = {'needs_configuration': 'config/kickoff-build.json を作るとkickoff buildが始まる（.local/kickoff-build/proposal.json）',
-          'configured': '設定を自動生成した。config/kickoff-build.json を確認してcommitする',
+          'configured': '設定を自動生成した。config/kickoff-build.json をcommitする',
           'building': '', 'complete': 'deployできる成果物がある', 'failed': '', 'stopped': ''}
 
 

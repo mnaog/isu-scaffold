@@ -26,15 +26,6 @@
             "timeout": 10
           }
         ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "[ ! -f \"$CLAUDE_PROJECT_DIR/.local/scout/emergency.json\" ] || python3 \"$CLAUDE_PROJECT_DIR/scripts/bench-hook.py\" --emergency",
-            "timeout": 10
-          }
-        ]
       }
     ]
   }

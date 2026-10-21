@@ -1,0 +1,20 @@
+# このrepoが決めるisuscopeの設定。discoverが生成する`.isuscope/config.toml`（nodeを含み、Gitに入れない）の
+# `[include] config`がこのfileを重ねるので、ここが正本になる。runの`observation`にも入る。
+# ベンチの期限は`config/benchmark.env`の`BENCHMARK_TIMEOUT_SECONDS`だけで、adapterが止める。
+
+[context.agent]
+history_dir = "docs/agent-history"
+
+[benchmark]
+# 運営向けの行。score・合否・messageに使わない。
+operator_line_pattern = "\\[ADMIN\\]"
+prepare_command = ["scripts/benchmark-prepare.sh"]
+rescore_command = [".isuscope/benchmark.sh", "--extract", "{benchmark_stdout}"]
+identity_command = ["scripts/benchmark-identity.py"]
+cleanup_command = [".isuscope/benchmark.sh", "--cleanup"]
+idle_timeout_seconds = 300
+
+[[benchmark.parsers]]
+name = "contest-output"
+command = [".isuscope/parse-benchmark.sh", "{benchmark_stdout}"]
+timeout_seconds = 30

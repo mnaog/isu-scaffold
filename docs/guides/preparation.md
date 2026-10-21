@@ -24,7 +24,7 @@
 - 使用版のisuscopeをbuild/installし、`lock`、`routes`、`rescore`、`doctor`等の必要なコマンドがあることを確認する。version表示だけで同一buildとは判定しない。
 - Rust、Cargo、linker、採用予定の汎用開発ツールを確認し、問題を使わない小さなRustプログラムでbuild・testする。事前に分かるRust版は準備し、配布アプリの正確なtoolchain・Cargo依存・DB schemaは公開後に合わせる。
 - `./scripts/fetch-observability-tools.sh`で、repoへ取り込んだslp・FlameGraphがpin済みの版とSHA256SUMSに一致することを確認する。版を上げる場合だけ`--update`で取り直してcommitする。
-- `make isuscope-node`で、nodeでaccess logの差分を集計する`isuscope-node`を、installしたisuscopeのsourceからLinuxの静的binary（amd64とarm64）としてbuildし、`.local/isuscope-node/`へ置く。bootstrapがnodeへcopyし、isuscopeの`alp` collectorがaccess logの差分をnode上で集計する（2コアで62万行を約1.2秒）。無いと`alp` collectorが失敗し、runにHTTPの計測が残らない。muslの静的binaryなのでnodeのOSに依存せず、Dockerも要らない。`./scripts/build-isuscope-node.sh --check`で、置いたbinaryがinstallしたisuscopeと同じbuildかを確かめ、BUILD_IDを記録する。isuscopeを入れ直したら作り直す。
+- `make isuscope-node`で、nodeでaccess logの差分を集計する`isuscope-node`を、installしたisuscopeのsourceからLinuxの静的binary（amd64とarm64）としてbuildし、`.local/isuscope-node/`へ置く。bootstrapがnodeへcopyし、isuscopeの`alp` collectorがaccess logの差分をnode上で集計する。無いと`alp` collectorが失敗し、runにHTTPの計測が残らない。muslの静的binaryなのでnodeのOSに依存せず、Dockerも要らない。`./scripts/build-isuscope-node.sh --check`で、置いたbinaryがinstallしたisuscopeと同じbuildかを確かめ、BUILD_IDを記録する。isuscopeを入れ直したら作り直す。
 - `make builder-images`で`config/rust-builder/bases.json`の候補base×targetのbuilder imageを作り、所要時間と取得できなかったtagを記録する。問題のコードは使わない。
 - 配布可能な計測toolの取得元・版を固定する。ローカルへ事前取得する場合はhashと再取得手順を残す。サーバーのOS・architecture・kernelに依存するpackageの選択と導入は公開後に行う。
 - `bash tests/kickoff-automation.sh`と`make test`で、問題や実サーバーを使わずimport/deploy/rollback、worktree、ボードの動作を確認する。
@@ -36,8 +36,7 @@
 - AI laneが使う`claude -p`を、`config/lanes.json`のmodel・effort・permission modeで短く実行して応答を確認する（例: `echo "Reply OK" | claude -p --model claude-opus-5-5 --effort high --permission-mode dontAsk`）。問題の探索は開始しない。
 - 開始後のコード先行回収と非同期buildの手順を確認する。
 - ボード（`make board`）のローカル表示を確認する。テストデータ・常駐processは開始前に残さない。
-- scout（Codex 2体）を`python3 scripts/scout/main.py once <name> --smoke`で接続確認する。探索とscoutの定期実行は開始しない。smokeセッションをscoutの会話入力として登録しない。Fast（`service_tier="priority"`）は使用量が増えるので、Codexの利用枠に余裕があるかも確かめる。詳細は[scout](../roles/scout.md)。
-- 禁止操作を止めるhookを確認する。Claude Codeは`.claude/settings.json`から`scripts/tool-guard.py`を呼ぶ。Codexのscoutは`.codex/hooks.json`から同じhookを呼ぶので、Codexで一度このrepoを開いてhookを信頼する。練習では`config/tool-guard.json`に、対象の開催回を表す語（`contest_keywords`、例: `isucon14`。アプリのhost名に含まれる語は入れない）とベンチマーカーの置き場所（`benchmarker_paths`、例: `/home/isucon/bench`）を書く。練習の資料を取得し終えてから書くか、取得してよい資料のURLを`allowed_urls`に入れる。練習が終わったら空に戻す。ベンチnodeへの直接の接続は、設定がなくても止まる。
+- 禁止操作を止めるhookを確認する。Claude Codeは`.claude/settings.json`から`scripts/tool-guard.py`を呼ぶ。Codexは`.codex/hooks.json`から同じhookを呼ぶので、Codexで一度このrepoを開いてhookを信頼する。練習では`config/tool-guard.json`に、対象の開催回を表す語（`contest_keywords`、例: `isucon14`。アプリのhost名に含まれる語は入れない）とベンチマーカーの置き場所（`benchmarker_paths`、例: `/home/isucon/bench`）を書く。練習の資料を取得し終えてから書くか、取得してよい資料のURLを`allowed_urls`に入れる。練習が終わったら空に戻す。ベンチnodeへの直接の接続は、設定がなくても止まる。
 
 ## アカウント・接続・参加準備
 
@@ -61,7 +60,14 @@
 ## 人間の作業場所
 
 - 開始用repoで`make worktree BRANCH=human PURPOSE="人間の作業場所"`を作っておく。人間は競技中ずっとここを触り、mainの作業ツリーには触れない。
-- 意見は`python3 scripts/scout/main.py post human "<本文>"`（急ぎは`--emergency`）、コードの変更は投稿（`scripts/proposal.py submit`）でmainへ渡す。投稿は変更ごとのbranch（`git switch -c human-<名前> <mainのbranch>`）から行い、投稿したら別のbranchへ移る（投稿したbranchは、採否が出るまでmainが追従させる）（[scout](../roles/scout.md)の「人間（human）」）。開始前にworktree `human`から`post human "接続確認（意見はまだない）"`を1回流し、`.local/scout/reports.md`に`## human`が出ることを確かめる。この報告は最初のベンチでmainに渡るので、渡っても困らない文面にしておく。
+- 作り始めたら`python3 scripts/proposal.py working "<狙う制約と変更>"`でボードの「作業中」に出す。コードの変更は投稿（`scripts/proposal.py submit`）でmainへ渡す（投稿すると作業中の表示は消える）。投稿は変更ごとのbranch（`git switch -c human-<名前> <mainのbranch>`）から行い、投稿するとworktreeはそのbranchから外れる（投稿したbranchは、採否が出るまでmainが追従させる）。
+
+## セッションの名前と、セッション同士の話
+
+- main・improve・portal・humanのセッションは、役割の名前を付けて起動する。各worktreeで`claude --name <main|improve|portal|human> --settings config/claude/session.json`。Claude Code v2.1.224以降が要る（`claude --version`）。起動したら`/list-agents`で、互いの名前が見えることを確かめる。
+- `config/claude/session.json`は、ほかのセッションからのメッセージをそのまま受け取る設定（`crossSessionInbound: accept`）。確認なしで動かすセッションでも、人間の承認を待たずに届く。project settings（`.claude/settings.json`）の`accept`は使われないので、`--settings`で渡す。
+- 名前があると、`@main`のように宛先を指してメッセージを送れる（Claudeが`SendMessage`で送り、相手は作業の合間に読む）。人間の意見や止めてほしいことは、humanのセッションで「`@main`に…と伝えて」と打つか、mainのセッションへ直接打つ。
+- 投稿・採否・kickoffとlaneの進み具合は、これまでどおりキュー（`scripts/proposal.py`）と`.local/progress.log`で知らせ合う。メッセージは、それに載らない話（質問、頼みごと、人間の意見）に使う。
 
 ## 開始後へ残すもの
 

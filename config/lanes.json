@@ -1,9 +1,9 @@
 {
-  "description": "AI lanes: each runs `claude -p` once in its own worktree and branch (lane/<name>), commits there and stops; the main session reads the result and merges. scripts/lane.py starts them; make kickoff starts `kickoff` right after the early import (KICKOFF_LANES overrides it, empty disables). Permission mode dontAsk denies every tool outside allowed_tools without asking: no web access, no remote command, no push (curl is allowed, and tool-guard limits it to localhost in a lane). tool-guard (ISUCON_LANE) also refuses remote nodes, deploy, benchmarks and the operation lock. A lane may add `extra_allowed_tools` to the shared list, `requires` files the starting commit must hold (lane.py start refuses otherwise), `after` lanes it builds on: it starts by itself when they end, with their branches merged in, and `joins` lanes that start alongside it: it merges their branches itself once they end.",
+  "description": "AI lanes: each runs `claude -p` once in its own worktree and branch (lane/<name>), commits there and stops; the main session reads the result and merges. scripts/lane.py starts them; make kickoff starts `kickoff` right after the early import (KICKOFF_LANES overrides it, empty disables). Permission mode dontAsk denies every tool outside allowed_tools without asking: no web access, no remote command, no push (curl is allowed, and tool-guard limits it to localhost in a lane). tool-guard (ISUCON_LANE) also refuses remote nodes, deploy, benchmarks and the operation lock. A lane may add `extra_allowed_tools` to the shared list, `requires` files the starting commit must hold (lane.py start refuses otherwise), and `joins` lanes that start alongside it: it merges their branches itself once they end.",
   "claude": {
     "command": "claude",
     "model": "claude-opus-5-5",
-    "effort": "high",
+    "effort": "medium",
     "permission_mode": "dontAsk",
     "allowed_tools": [
       "Read",
@@ -49,6 +49,7 @@
     "obvious-fixes",
     "local-env",
     "state-log",
+    "waits",
     "runtime"
   ],
   "lanes": {
@@ -63,7 +64,7 @@
       "timeout_minutes": 15
     },
     "obvious-fixes": {
-      "purpose": "索引とN+1以外の自明なボトルネックを1件1commitで先行実装する（baselineまでdeployしない）",
+      "purpose": "索引とN+1以外の自明なボトルネックのうち、全メモリ化の後も残るもの（書き込みと、DBを読まない処理）を1件1commitで先行実装する（baselineまでdeployしない）",
       "prompt": "config/lanes/obvious-fixes.md",
       "timeout_minutes": 90
     },
@@ -77,8 +78,13 @@
       "prompt": "config/lanes/state-log.md",
       "timeout_minutes": 45
     },
+    "waits": {
+      "purpose": "APIごとの待ちの口を入れる: config/waits/waits.rsを写し、すべてのrouteを通るmiddlewareを足す（表ISUCON_WAITSは空のまま。値はmainがscripts/waits.pyで変える）",
+      "prompt": "config/lanes/waits.md",
+      "timeout_minutes": 30
+    },
     "full-memory": {
-      "purpose": "全メモリ化: 状態をすべてメモリに置き、読み取りと判定をメモリで行い、書き込みはDBに残す書き換えを作り、最後に最新のmainを1度だけ取り込む（先行回収と同時に始まり、state-log・local-envが終わったら自分で取り込んで確かめる。その後にmainへ入った変更はmainが戻してimproveへ返す）",
+      "purpose": "全メモリ化: 状態をすべてメモリに置き、読み取りと判定をメモリで行い、書き込みはDBに残す書き換えを作り、最後に最新のmainを1度だけ取り込む（先行回収と同時に始まり、state-log・local-envが終わったら自分で取り込んで確かめる。その後にmainへ入った変更はmainが取り込むときに移す）",
       "prompt": "config/lanes/full-memory.md",
       "joins": [
         "state-log",

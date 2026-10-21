@@ -3,9 +3,9 @@
 
 Run once after the first baseline. Every change only lifts a default limit that is
 independent of the problem; durability (fsync, binlog) and anything that changes what the
-application does are left out. In practice-14 four FAILs came from these defaults before
-they were raised by hand: nginx closing busy keep-alive connections after 1000 requests,
-the application's 1024 open files, the 511 listen backlog and 4096 worker connections.
+application does are left out. Left at their defaults these limits make a busy benchmark FAIL:
+nginx closing keep-alive connections after its default request count, the application's default
+open-file limit, the default listen backlog and worker connections.
 
 - nginx.conf: worker_rlimit_nofile, worker_connections, client keepalive_requests, the
   main error_log at warn (connection shortages are logged only at warn), and no default
@@ -408,7 +408,7 @@ def main():
     # a Rust-only change must not restart MySQL and empty its buffer pool before every run.
     reload = {'node_group': 'application', 'command': 'sudo systemctl daemon-reload', 'when': ['rust-service']}
     # Only tare's own file: `sysctl --system` also reloads the OS defaults, whose keys the instance
-    # may not have, and printed "Invalid argument" after every deploy (practice-12-sixth).
+    # may not have, and prints "Invalid argument" after every deploy.
     sysctl = {'node_group': 'application', 'command': 'sudo sysctl -q -p /etc/sysctl.d/99-tare.conf', 'when': ['tare-sysctl']}
     restart_mysql = {'node_group': 'role_mysql', 'command': 'sudo systemctl restart mysql', 'when': ['mysql-*']}
     for key in ('post_deploy_commands', 'rollback_commands'):

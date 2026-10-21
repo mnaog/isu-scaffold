@@ -30,8 +30,9 @@ class KickoffReportTest(unittest.TestCase):
             stub = root / 'bin/isuscope'
             stub.parent.mkdir()
             sql = json.dumps({'columns': ['id', 'started_at', 'finished_at', 'mode', 'state', 'score', 'passed'], 'rows': runs})
-            brief = json.dumps({'limits': {'columns': ['node', 'setting', 'evidence'],
-                                           'rows': [['app1', 'listen backlog', '1198 TCP listen overflows']]}})
+            brief = json.dumps({'limits': {'columns': ['node', 'config_key', 'value', 'evidence'],
+                                           'rows': [['app1', 'listen backlog', 4096, '1198 TCP listen overflows'],
+                                                    ['app1', 'net.core.somaxconn', 4096, None]]}})
             empty = json.dumps({'limits': {'columns': [], 'rows': []}})
             stub.write_text(f"""#!/bin/sh
 case "$1" in

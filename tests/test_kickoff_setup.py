@@ -6,67 +6,26 @@ import unittest
 import os
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('policy', ROOT / 'scripts/isuscope-policy.py')
-policy = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(policy)
 
 
 class KickoffSetupTest(unittest.TestCase):
-    def test_hooks_and_the_benchmark_timeout_reach_the_generated_config(self):
-        import tempfile
-        with tempfile.TemporaryDirectory() as d:
-            env = Path(d) / 'benchmark.env'
-            env.write_text("BENCHMARK_TRANSPORT=ssh\nBENCHMARK_TIMEOUT_SECONDS='240'\n")
-            original = policy.BENCHMARK_ENV
-            policy.BENCHMARK_ENV = env
-            try:
-                settings = policy.effective({'history_dir': 'docs/agent-history', 'operator_line_pattern': 'x',
-                                             'identity_command': ['scripts/benchmark-identity.py'],
-                                             'cleanup_command': ['.isuscope/benchmark.sh', '--cleanup'],
-                                             'idle_timeout_seconds': 300})
-            finally:
-                policy.BENCHMARK_ENV = original
-        text = policy.apply('[benchmark]\ncommand = ["bench"]\n', settings)
+    def test_the_policy_overlay_names_commands_that_exist(self):
         import tomllib
-        benchmark = tomllib.loads(text)['benchmark']
-        self.assertEqual(benchmark['timeout_seconds'], 240)
-        self.assertEqual(benchmark['idle_timeout_seconds'], 300)
-        self.assertEqual(benchmark['cleanup_command'], ['.isuscope/benchmark.sh', '--cleanup'])
-        self.assertEqual(benchmark['identity_command'], ['scripts/benchmark-identity.py'])
+        policy = tomllib.loads((ROOT / '.isuscope/policy.toml').read_text())
+        history = Path(policy['context']['agent']['history_dir'])
+        self.assertFalse(history.is_absolute() or '..' in history.parts)  # isuscope refuses both
+        benchmark = policy['benchmark']
+        for key in ('prepare_command', 'rescore_command', 'identity_command', 'cleanup_command'):
+            with self.subTest(key):
+                self.assertTrue((ROOT / benchmark[key][0]).is_file(), benchmark[key])
+        for parser in benchmark['parsers']:
+            self.assertTrue((ROOT / parser['command'][0]).is_file(), parser)
+        # The benchmark's deadline is the adapter's alone (config/benchmark.env).
+        self.assertNotIn('timeout_seconds', benchmark)
 
-    def test_regeneration_preserves_declared_policy_and_collectors(self):
-        settings = {'history_dir': 'docs/agent-history', 'operator_line_pattern': r'\[ADMIN\]'}
-        template = '[benchmark]\ncommand = ["bench"]\n\n[[collectors]]\nname = "cpu"\n'
-        rendered = policy.apply(template, settings)
-        self.assertIn('name = "cpu"', rendered)
-        self.assertEqual(policy.apply(rendered, settings), rendered)
-        policy.check(rendered, settings)
-        with self.assertRaises(ValueError):
-            policy.check(template, settings)
-
-    def test_policy_sets_markers_and_the_commands_around_each_benchmark(self):
-        import tomllib
-        settings = {
-            'history_dir': 'docs/agent-history', 'operator_line_pattern': r'\[ADMIN\]',
-            'initialize_start_marker': 'msg=load starts', 'initialize_finish_marker': 'msg=tick',
-            'prepare_command': ['scripts/benchmark-prepare.sh'],
-            'rescore_command': ['.isuscope/benchmark.sh', '--extract', '{benchmark_stdout}'],
-        }
-        template = '[benchmark]\ncommand = ["bench"]\n# prepare_command = ["example"]\n'
-        rendered = policy.apply(template, settings)
-        benchmark = tomllib.loads(rendered)['benchmark']
-        self.assertEqual(benchmark['prepare_command'], ['scripts/benchmark-prepare.sh'])
-        self.assertEqual(benchmark['rescore_command'][-1], '{benchmark_stdout}')
-        self.assertEqual(benchmark['initialize_finish_marker'], 'msg=tick')
-        self.assertEqual(policy.apply(rendered, settings), rendered)
-        with self.assertRaises(ValueError):
-            policy.check(rendered.replace('scripts/benchmark-prepare.sh', 'other.sh'), settings)
-
-    def test_policy_refuses_a_history_dir_isuscope_would_refuse(self):
-        # practice-12-sixth: pointing history_dir at another repo passed here and failed in isuscope.
-        for history in ('/Users/nao/project/isucon/isu-scaffold/docs/agent-history', '../scaffold/docs/agent-history', ' '):
-            with self.subTest(history), self.assertRaisesRegex(ValueError, 'relative path'):
-                policy.check('', {'history_dir': history, 'operator_line_pattern': 'x'})
+    def test_discover_includes_the_policy_in_the_generated_config(self):
+        render = (ROOT / 'scripts/render-environment.sh').read_text()
+        self.assertIn('config = [".isuscope/policy.toml"]', render)
 
     def test_review_checks_the_slow_log_only_when_bootstrap_turns_it_on(self):
         spec = importlib.util.spec_from_file_location('review', ROOT / 'scripts/review-draft.py')

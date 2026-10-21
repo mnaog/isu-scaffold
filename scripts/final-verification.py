@@ -5,15 +5,15 @@
   python3 scripts/final-verification.py reboot   # make final-reboot: 全台を再起動して、戻った後と数分後を確かめる
   python3 scripts/final-verification.py db-late  # make final-db-late: DBが後から起動してもアプリが立ち直るか
 
-ISUCON9〜14の追試は、全台の再起動（順序は保証されない。poweroffの後10分以上置いた回もある）→ envcheck →
-最後の負荷走行の対象へのベンチ（再現スコアが75〜85%以下ならfail）→ もう一度再起動 → 書いたデータが
-残っているか → フロントエンド、だった。実際の失格・事故は、enableしていないservice、DBより先に起動して
-落ちるアプリ、15分後に止められたDB（起動完了を通知できなかった）、再起動で消える設定、追試の2回目の
-ベンチで落ちるアプリ、だった。問題ごとの値（envcheckのcommand、管理ユーザー、確かめるURL、インスタンス
+追試は、全台の再起動（順序は保証されず、長く置かれることもある）→ envcheck → 最後の負荷走行の対象へのベンチ
+（再現スコアが規定のしきい値を下回ればfail）→ もう一度再起動 → 書いたデータが残っているか → フロントエンド、
+という流れで行われる。落ちる原因は、enableしていないservice、DBより先に起動して落ちるアプリ、起動完了を
+通知できずに後から止められるDB、再起動で消える設定、追試の2回目のベンチで落ちるアプリ。問題ごとの値（envcheckのcommand、管理ユーザー、確かめるURL、インスタンス
 種別）はconfig/final-check.jsonに書く。結果は1行ずつOK・WARN・FAIL・INFOで出し、FAILがあれば1で終わる。
 """
 import argparse
 import concurrent.futures
+import importlib.util
 import json
 import os
 import re
@@ -25,6 +25,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location('isuscope_sql', Path(__file__).with_name('isuscope_sql.py'))
+isuscope_sql = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(isuscope_sql)
 LOCAL = ROOT / '.local'
 CONFIG = ROOT / 'config/final-check.json'
 SNAPSHOT = LOCAL / 'final-snapshot.json'
@@ -246,43 +249,42 @@ def check_local(report, config, nodes):
     deployed = subprocess.run([str(ROOT / 'scripts/check-deployed-commit.sh')], cwd=ROOT, capture_output=True, text=True)
     report.add('OK' if deployed.returncode == 0 else 'FAIL', 'local', 'deployed commit',
                (deployed.stdout + deployed.stderr).strip().splitlines()[-1] if (deployed.stdout + deployed.stderr).strip() else '')
-    scout = subprocess.run([sys.executable, str(ROOT / 'scripts/scout/main.py'), 'status'], cwd=ROOT,
-                           capture_output=True, text=True)
-    try:
-        running = json.loads(scout.stdout).get('daemon_running')
-        report.add('WARN' if running else 'OK', 'local', 'scout', 'still running (make scout-stop)' if running else 'stopped')
-    except ValueError:
-        report.add('INFO', 'local', 'scout', 'status unavailable')
     check_score(report, config)
     check_aws(report, config, nodes)
 
 
+def final_runs(root=None):
+    """Runs whose benchmark started and finished, oldest first, with isuscope's configuration key."""
+    return isuscope_sql.rows(root or ROOT, "SELECT id, score, passed = 1 AS passed, config_key FROM runs "
+                             "WHERE benchmark_started = 1 AND state NOT IN ('running', 'aborted') "
+                             "ORDER BY started_at, id")
+
+
 def check_score(report, config):
-    """最終スコアは最後の負荷走行（13・14）。追試はその75〜85%を下回るとfail。同じcommitのrunの振れで見る。"""
-    head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True).stdout.strip()
-    query = ("SELECT commit_hash, score, passed FROM runs WHERE state NOT IN ('aborted', 'running') "
-             "ORDER BY started_at DESC LIMIT 20")
-    done = subprocess.run(['isuscope', 'sql', query], cwd=ROOT, capture_output=True, text=True)
-    if done.returncode != 0:
-        report.add('WARN', 'isuscope', 'final runs', 'cannot read the runs: ' + done.stderr.strip()[:120])
+    """The last run is the final score; the re-test is compared with it. The runs that count are those of
+    the last run's configuration (isuscope's config_key), so committing run records after them changes nothing."""
+    try:
+        runs = final_runs()
+    except isuscope_sql.Unavailable as error:
+        report.add('FAIL', 'isuscope', 'final runs', f'isuscope sql failed: {error}')
         return
-    rows = json.loads(done.stdout).get('rows', [])
-    if not rows:
+    if not runs:
         report.add('WARN', 'isuscope', 'final runs', 'no runs')
         return
-    last_commit, last_score, last_passed = rows[0]
-    report.add('OK' if last_passed else 'FAIL', 'isuscope', 'last run',
-               f'{"PASS" if last_passed else "FAIL"} score {last_score} (the last run is the final score in recent contests)')
-    same = [row for row in rows if row[0] == head and row[2]]
+    last = runs[-1]
+    report.add('OK' if last['passed'] else 'FAIL', 'isuscope', 'last run',
+               f'{"PASS" if last["passed"] else "FAIL"} score {last["score"]} (run {last["id"][-8:]})')
+    same = [run for run in runs if run['config_key'] and run['config_key'] == last['config_key'] and run['passed']]
     if len(same) < 3:
-        report.add('WARN', 'isuscope', 'runs at HEAD', f'{len(same)} passed runs at {head[:12]}; run 3 (the third after make final-reboot)')
-    if same and last_score:
-        worst = min(row[1] or 0 for row in same)
-        ratio = worst / last_score
-        level = 'OK' if ratio >= config['min_score_ratio'] else 'FAIL'
-        report.add(level, 'isuscope', 'reproduction',
-                   f'worst {worst} is {ratio:.0%} of the last {last_score} over {len(same)} runs at HEAD '
-                   f'(needs {config["min_score_ratio"]:.0%})')
+        report.add('WARN', 'isuscope', 'runs of the final configuration',
+                   f'{len(same)} passed runs of the last run\'s configuration; run 3 (the third after make final-reboot)')
+    ratio_needed = config.get('min_score_ratio')
+    if same and last['score'] and ratio_needed:
+        worst = min(run['score'] or 0 for run in same)
+        ratio = worst / last['score']
+        report.add('OK' if ratio >= ratio_needed else 'FAIL', 'isuscope', 'reproduction',
+                   f'worst {worst} is {ratio:.0%} of the last {last["score"]} over {len(same)} runs of the final '
+                   f'configuration (needs {ratio_needed:.0%})')
 
 
 def check_aws(report, config, nodes):
@@ -503,6 +505,11 @@ def db_late(report, config, groups, nodes):
         report.add(*line)
 
 
+def emit_progress(state, message):
+    subprocess.run([sys.executable, str(ROOT / 'scripts/progress.py'), 'emit', 'final', state, message],
+                   cwd=ROOT, capture_output=True)
+
+
 def lock_or_exec():
     """再起動とDBの停止は、deployやベンチと重ならないよう操作lockの中で行う。"""
     if os.environ.get('ISUSCOPE_LOCK_HELD') != '1':
@@ -512,7 +519,8 @@ def lock_or_exec():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=['check', 'reboot', 'db-late'])
+    parser.add_argument('command', choices=['check', 'reboot', 'db-late', 'settled'])
+    parser.add_argument('--nodes', help='settled: 確かめるnode（reboot が渡す）')
     parser.add_argument('--settle', type=int, help='再起動の後、もう一度確かめるまでの秒数（既定は設定のsettle_seconds）')
     parser.add_argument('--yes', action='store_true', help='全台を再起動する・DBを止めることの確認を省く')
     args = parser.parse_args()
@@ -558,9 +566,23 @@ def main():
             compare_counts(report, {node: before[node] for node in returned}, table_counts(report, returned))
             settle = config['settle_seconds'] if args.settle is None else args.settle
             if settle > 0:
-                report.add('INFO', 'reboot', 'settle', f'checking again in {settle}s (units that fail late, like a DB stopped after its start timeout)')
-                time.sleep(settle)
-                check_nodes(report, config, groups, back, envcheck=False, settled=True)
+                # The later check only reads, so it waits outside the operation lock: benchmarks and
+                # deploys need not wait for it. Its result comes as a progress line.
+                with (LOCAL / 'final-settle.log').open('w') as out:
+                    subprocess.Popen([sys.executable, str(Path(__file__).resolve()), 'settled', '--settle', str(settle),
+                                      '--nodes', ','.join(back)], cwd=ROOT, stdout=out, stderr=subprocess.STDOUT,
+                                     stdin=subprocess.DEVNULL, start_new_session=True,
+                                     env={k: v for k, v in os.environ.items() if k != 'ISUSCOPE_LOCK_HELD'})
+                report.add('INFO', 'reboot', 'settle', f'checking again in {settle}s in the background (units that fail '
+                           'late, like a DB stopped after its start timeout); the result comes as `final settled` or '
+                           '`final failed` in .local/progress.log, details in .local/final-settle.log')
+    elif args.command == 'settled':
+        time.sleep(args.settle or 0)
+        check_nodes(report, config, groups, [n for n in (args.nodes or '').split(',') if n] or nodes, envcheck=False, settled=True)
+        failed = [line for line in report.lines if line[0] == 'FAIL']
+        emit_progress('failed' if failed else 'settled',
+                      f'after {args.settle}s: ' + ('; '.join(f'{line[1]} {line[2]}: {line[3]}' for line in failed)[:300]
+                                                  if failed else 'every unit still up'))
     elif args.command == 'db-late':
         def interrupted(signum, frame):
             raise KeyboardInterrupt(f'interrupted by signal {signum}')

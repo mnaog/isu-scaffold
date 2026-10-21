@@ -3,8 +3,7 @@
 # 待ち受けport、直近のOOM killとerror、MySQLの実行中のSQL）と、config/sync.jsonのstatus_commandsの
 # 結果を返す。応答しないnodeはSTATUS_TIMEOUT_SECONDS（既定20秒）で打ち切って「応答なし」と出す。
 # 失敗にするのはstatus_commandsの失敗と応答しないnodeだけで、様子は判断の材料として出す。
-# practice-14-seventhでは、メモリを使い切ったDBのnodeに手打ちのsshが120秒固まり、ポートが開くのを
-# 待つloopで180秒ずつ待ってから原因に気付いた。
+# メモリを使い切ったnodeには手打ちのsshが長く固まり、ポートが開くのを待つloopでは原因に気付くのが遅れる。
 set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)

@@ -11,15 +11,11 @@ set -euo pipefail
 # for the local Rust build and deploy; deploy follows the benchmark, so the deploy path is
 # proven before the first improvement. Otherwise, or with FIRST_BENCH_MODE=deploy, it deploys
 # first as before. Each step takes the operation lock itself, so this script holds no lock.
-# Once the baseline exists, the scouts start (make scout-start), so their first reports read it
-# while the deploy runs; FIRST_BENCH_SCOUT=0 leaves them stopped. A scout that cannot start never
-# fails the benchmark.
 # Run it from the main session, never from a lane, so the run records that conversation.
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "${script_dir}/.." && pwd)
 hypothesis=${HYPOTHESIS:-初期状態の負荷構造とベンチシナリオを記録する}
 mode=${FIRST_BENCH_MODE:-auto}
-scout=${FIRST_BENCH_SCOUT:-1}
 
 # shellcheck disable=SC1091
 source "${script_dir}/stage-lib.sh"
@@ -35,7 +31,7 @@ print(row.get("id", ""), row.get("state", ""))' 2>/dev/null || true
 }
 
 # isuscope exits 1 for any result that is not a PASS, also for one the adapter left pending
-# before the output's shape is known (practice-12-sixth). A pending baseline is the expected
+# before the output's shape is known. A pending baseline is the expected
 # first result: it is completed later with the saved output and `isuscope rescore`, so the
 # deploy after it still runs. A new run in any other state stays a failure.
 survey_run() {
@@ -46,23 +42,14 @@ survey_run() {
   read -r id state <<<"$(latest_run)"
   if [[ "${state}" == pending && -n "${id}" && "${id}" != "${before%% *}" ]]; then
     echo "survey-run ${id} is pending: check how its output is read with python3 scripts/benchmark-sample.py ${id}, then --apply --score N --pass true|false"
+    printf '%s\n' "${id}" >.local/first-bench-pending
     return 0
   fi
   return "${code}"
 }
 
-# Already running (a restart of make first-bench) or unable to start: say so and go on.
-start_scout() {
-  if [[ "${scout}" == 0 ]]; then
-    progress scout-skipped "FIRST_BENCH_SCOUT=0; start them with make scout-start"
-  elif python3 "${script_dir}/scout/main.py" start; then
-    progress scout-started "the scouts read the baseline and report 8 minutes after each report; make scout-status"
-  else
-    progress scout-not-started "see python3 scripts/scout/main.py status; make scout-start"
-  fi
-}
-
 cd "${repo_dir}"
+rm -f .local/first-bench-pending
 if [[ -n "${ISUCON_LANE:-}" ]]; then
   echo "lanes do not benchmark; ask the main session to run make first-bench" >&2
   exit 2
@@ -99,7 +86,6 @@ if [[ "${distributed}" == true ]]; then
   progress distributed "benchmarking the distributed build at $(git rev-parse --short HEAD) without waiting for build and deploy"
   stage survey-run survey_run
   progress baseline-ready "analyze with isuscope brief latest; deploying the same commit meanwhile"
-  start_scout
   # Deploy only what was measured: a change committed during the survey-run (make tare, a
   # cherry-picked lane commit) must get its own run, so it is not shipped here unmeasured.
   if "${script_dir}/check-deployed-commit.sh" >/dev/null 2>&1; then
@@ -113,6 +99,9 @@ else
   progress deployed "$(git rev-parse --short HEAD); starting survey-run"
   stage survey-run survey_run
   progress baseline-ready "analyze with isuscope brief latest"
-  start_scout
 fi
-progress complete "a pending result: python3 scripts/benchmark-sample.py <run>, then --apply"
+if [[ -s .local/first-bench-pending ]]; then
+  progress complete "the baseline $(cat .local/first-bench-pending) is pending: python3 scripts/benchmark-sample.py <run>, then --apply"
+else
+  progress complete "the baseline is recorded"
+fi

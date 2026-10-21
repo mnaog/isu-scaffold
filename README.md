@@ -12,12 +12,12 @@ make kickoff                           # コード先行回収・kickoff build�
                                        # 実行中は.local/progress.logを追い、ベンチ接続を並行して準備する
 CONFIRM_DRAFT=true make kickoff-apply  # .local/draft/review.mdを判断してから反映・完全import
 make first-bench                       # importをcommitしたら: bench-check → 配布状態のままsurvey-run → deploy
-make lanes                             # AI lane（indexes、n-plus-one、obvious-fixes、runtime、local-env、state-log、scenario、full-memory、static-edge）の結果を読んで取り込む
+make lanes                             # AI lane（config/lanes.json）の結果を読んで取り込む
 ```
 
 | 資料 | 内容 |
 | --- | --- |
-| [AGENTS.md](AGENTS.md) | 作業するClaude Codeへの指示（目的、判断の原則、流れ、ベンチの回し方、守ること） |
+| [AGENTS.md](AGENTS.md) | 作業するClaude Codeへの指示（目的、役割、判断の原則、流れ、守ること） |
 | [docs/reference/automation.md](docs/reference/automation.md) | kickoffの各コマンド、draft検査、deploy、ベンチ接続、isuscope設定の詳細 |
 | [docs/guides/preparation.md](docs/guides/preparation.md) | 本番開始前の準備と完了条件 |
 | [docs/guides/kickoff.md](docs/guides/kickoff.md)・[finish.md](docs/guides/finish.md) | 開始後のkickoffと、終了前の固定の進め方 |

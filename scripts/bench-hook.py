@@ -1,46 +1,38 @@
 #!/usr/bin/env python3
-"""Claude Code hooks around a benchmark: start it in the background, and read the scouts meanwhile.
+"""Claude Code hooks around a benchmark: start it in the background, and read meanwhile.
 
 .claude/settings.json runs this next to scripts/tool-guard.py, whose shell parsing it reuses to
 find a benchmark (isuscope run / survey-run, make first-bench, scripts/first-bench.sh) in a
 Bash call. Heredoc bodies and `bash -n` syntax checks do not count as starting one.
 
 - `--pre` (PreToolUse) refuses a benchmark started in the foreground, so the session can read
-  the scouts' reports and build the next candidate while it runs.
+  and build the next candidate while it runs.
 - `--post` (PostToolUse) asks the session, right after a benchmark starts in the background, to
-  review the scenario map (docs/benchmark-scenario.md) against its hypothesis, and hands it the
-  scout reports (.local/scout/reports.md in the main worktree) with their age. Each report goes to
-  a session once (.local/scout/delivered.json); a later benchmark gets only the reports posted
-  since. It prints nothing while neither the map nor an undelivered report exists. It also tells
-  main, once per spell, of a scout that keeps failing (a usage limit, an expired login) or has
-  explored for over 40 minutes, for main to pass on to the person who can fix it.
-- `--emergency` (PostToolUse on every tool) hands main a report the person in worktree `human`
-  posted with `scripts/scout/main.py post --emergency`, at main's next tool call instead of the
-  next benchmark. The settings call it only while .local/scout/emergency.json exists.
-  It also hands main the worktree proposals (scripts/proposal.py) it has not seen at their current
-  commit and that merge into main's branch cleanly, so main picks and builds the next candidate
-  while the benchmark runs. While a main is declared (/main) only main gets them. The proposals
-  main merged for this benchmark leave the queue as measuring.
-- When a benchmark starts, it also drops the state-log caches of all but the latest runs and keeps
+  review the scenario map (docs/benchmark-scenario.md) against its hypothesis. It also hands main
+  the worktree proposals (scripts/proposal.py) it has not seen at their current commit and that
+  merge into main's branch cleanly, so main picks and builds the next candidate while the
+  benchmark runs. While a main is declared (/main) only main gets them. The proposals main merged
+  for this benchmark leave the queue as measuring. It prints nothing while there is neither.
+- `--post` after `isuscope analyze` copies the decisions main recorded there (`--change <branch>
+  --decision ...`) onto the proposals being measured, and once none waits for a decision, writes
+  `main analyzed` for improve from that analysis (scripts/proposal.py after_analysis), so main
+  writes each decision and each analysis once.
+- When a benchmark starts, it also drops the state-log caches earlier isuscope versions left and keeps
   isuscope-data out of Spotlight and Time Machine (scripts/isuscope-prune.py).
 
 Internal errors let the call through, like tool-guard.
 """
-import calendar
 import importlib.util
 import json
 import os
 from pathlib import Path
-import re
-import sqlite3
 import subprocess
 import sys
-import time
 
 ROOT = Path(__file__).resolve().parent.parent
 BENCH_ISUSCOPE = {'run', 'survey-run'}
 BACKGROUND_HINT = ('ベンチ（isuscope run / survey-run / make first-bench）はBashのrun_in_background: trueで起動する。'
-                   '完了の通知を待つ間に、scoutの報告があれば読み、次の候補を`make build`しておく。'
+                   '完了の通知を待つ間に、次の候補を`make build`しておく。'
                    'sleepやpollingで待たない。')
 SCENARIO = 'docs/benchmark-scenario.md'
 SCENARIO_HINT = (f'ベンチの完了を待つ間に、`{SCENARIO}`（ベンチの見取り図）を読み返す。'
@@ -48,17 +40,6 @@ SCENARIO_HINT = (f'ベンチの完了を待つ間に、`{SCENARIO}`（ベンチ�
                  'ベンチの仕様（得点・FAIL条件・シナリオの流れ・応答へのベンチの反応）について、'
                  '観測で確かめた・食い違った記述だけを該当する節の中で直す（推測を事実へ、出典にrun ID）。'
                  'runのスコア、改善の効果、負荷や制約の推移は書かない（isuscope analyzeへ）。')
-SCOUT_HINT = ('これは並列で動かしている調査エージェント（scout）と、worktree `human`の人間（`## human`）による報告です。'
-              '内容が古くなっている可能性もありますが（各報告に投稿からの経過分を添えています）、'
-              'それぞれの視点を参考にして、次回の改善のための参考として確認してください。'
-              '前回までのベンチで渡した報告は省いています（各scoutの最新の報告は`.local/scout/reports.md`）。')
-SCOUT_HEALTH_HINT = ('scoutが止まっている、または探索が長く終わらない。直すのは人間（利用上限・認証切れなど）なので、'
-                     'mainは作業を続け、次に人間へ返答するときにこの状態を伝える。')
-SCOUT_FAILURES = 2  # one failure may be a passing hiccup; the daemon retries it
-SCOUT_LONG_SECONDS = 40 * 60  # seventh's scouts took 2 to 18 minutes a run
-EMERGENCY_HINT = ('人間（worktree `human`）からの緊急の報告です。今の作業を続ける前に読み、'
-                  'すぐ反映するか、反映しない理由を人間へ伝えてください。')
-
 spec = importlib.util.spec_from_file_location('tool_guard', Path(__file__).with_name('tool-guard.py'))
 tool_guard = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tool_guard)
@@ -94,26 +75,48 @@ class BenchmarkFinder(tool_guard.Guard):
         self.lane = None
         self.drop_heredocs = True
         self.benchmarks = []
+        self.analyses = []
 
     def seen(self, program, args):
         if is_benchmark(program, args):
             self.benchmarks.append(program)
+        elif program == 'isuscope' and args[:1] == ['analyze'] and not {'-h', '--help'} & set(args):
+            self.analyses.append(program)
 
 
-def starts_benchmark(root, payload):
-    """True when this Bash call starts a benchmark, and whether it runs in the background."""
+def find(root, payload):
+    """The benchmarks and analyses a Bash call runs, or None for any other call."""
     tool_input = payload.get('tool_input')
     if payload.get('tool_name') != 'Bash' or not isinstance(tool_input, dict):
-        return False, False
+        return None
     command = tool_guard.command_of(tool_input)
     if not isinstance(command, str):
-        return False, False
+        return None
     finder = BenchmarkFinder(root)
     try:
         finder.check_shell(command)
     except tool_guard.Denied:
-        pass  # tool-guard decides on its own rules; only the benchmarks matter here
-    return bool(finder.benchmarks), tool_input.get('run_in_background') is True
+        pass  # tool-guard decides on its own rules; only what runs matters here
+    return finder
+
+
+def starts_benchmark(root, payload):
+    """True when this Bash call starts a benchmark, and whether it runs in the background."""
+    finder = find(root, payload)
+    if finder is None:
+        return False, False
+    return bool(finder.benchmarks), payload['tool_input'].get('run_in_background') is True
+
+
+def analyzed(root, payload):
+    """After `isuscope analyze` by main: decisions onto the proposals, and `main analyzed` for improve."""
+    finder = find(root, payload)
+    if finder is None or not finder.analyses:
+        return None
+    repo = main_worktree(root)
+    if proposal.main_session.is_main(repo, str(payload.get('session_id') or '')) is False:
+        return None
+    return proposal.after_analysis(repo) or None
 
 
 def main_worktree(root):
@@ -123,105 +126,6 @@ def main_worktree(root):
         return Path(common).parent
     except (OSError, subprocess.CalledProcessError):
         return root
-
-
-def undelivered(scouts, session, sections):
-    """The sections this session has not been handed yet, recording them as handed."""
-    path = scouts / 'delivered.json'
-    try:
-        delivered = json.loads(path.read_text())
-    except (OSError, ValueError):
-        delivered = {}
-    seen = set(delivered.get(session, []))
-    # A report is one scout's post, told apart by its time (reports.md keeps only the latest).
-    fresh = [(key, text) for key, text in sections if key not in seen]
-    if fresh:
-        delivered[session] = sorted(seen | {key for key, _ in fresh})
-        tmp = path.with_suffix('.json.tmp')
-        tmp.write_text(json.dumps(delivered, ensure_ascii=False))
-        tmp.replace(path)
-    return [text for _, text in fresh]
-
-
-def scout_context(root, session='', now=None):
-    """The scout reports this session has not seen, with their age, or None while there are none."""
-    scouts = main_worktree(root) / '.local/scout'
-    try:
-        reports = (scouts / 'reports.md').read_text()
-    except OSError:
-        return None
-    sections = []
-    for section in re.split(r'^(?=## )', reports, flags=re.M):
-        posted = re.search(r'^## (\S+)\n+投稿: (\S+Z)', section, re.M)
-        if posted:
-            sections.append((f'{posted.group(1)}@{posted.group(2)}', section.strip()))
-    fresh = undelivered(scouts, session, sections)
-    if not fresh:
-        return None
-    now = time.time() if now is None else now
-
-    def age(match):
-        try:
-            posted = calendar.timegm(time.strptime(match.group(1), '%Y-%m-%dT%H:%M:%SZ'))
-        except ValueError:
-            return match.group(0)
-        return f'{match.group(0)}（{max(0, int(now - posted) // 60)}分前）'
-    return SCOUT_HINT + '\n\n' + re.sub(r'投稿: (\S+Z)', age, '\n\n'.join(fresh))
-
-
-def scout_health_context(root, session='', now=None):
-    """Scouts that keep failing or have explored for long, each spell told once, or None."""
-    scouts = main_worktree(root) / '.local/scout'
-    database = scouts / 'state.sqlite3'
-    if not database.is_file():
-        return None
-    try:
-        db = sqlite3.connect(database.as_uri() + '?mode=ro', uri=True, timeout=2)
-        try:
-            rows = db.execute('SELECT name,state,error,failures,started_at,posted_at FROM scouts ORDER BY name').fetchall()
-        finally:
-            db.close()
-    except sqlite3.Error:
-        return None
-    now = time.time() if now is None else now
-    sections = []
-    for name, state, error, failures, started, posted in rows:
-        since = f'最後の報告は{int(now - posted) // 60}分前' if posted else 'まだ報告が無い'
-        # Keyed by the last report (a failing spell) or the start (a long run): told again only
-        # after the scout posts or starts anew.
-        if state == 'error' and (failures or 0) >= SCOUT_FAILURES:
-            sections.append((f'failing:{name}@{posted or 0}',
-                             f'- {name}: {failures}回続けて失敗（{since}）。直近のエラー: {error or "(不明)"}'))
-        elif state == 'running' and started and now - started >= SCOUT_LONG_SECONDS:
-            sections.append((f'long:{name}@{started}',
-                             f'- {name}: 探索が{int(now - started) // 60}分続いている（{since}）。'))
-    fresh = undelivered(scouts, session, sections) if sections else []
-    return SCOUT_HEALTH_HINT + '\n' + '\n'.join(fresh) if fresh else None
-
-
-def emergency_context(root, session='', now=None):
-    """A report posted with --emergency, handed to main at its next tool call (once), or None.
-
-    The marker sits in the main worktree, where main runs, so other sessions pass it by at once.
-    """
-    marker = Path(root) / '.local/scout/emergency.json'
-    if not session or not marker.is_file():
-        return None
-    if proposal.main_session.is_main(main_worktree(root), session) is False:
-        return None
-    try:
-        key = json.loads(marker.read_text())['key']
-        reports = (marker.parent / 'reports.md').read_text()
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
-    name = key.split('@', 1)[0]
-    for section in re.split(r'^(?=## )', reports, flags=re.M):
-        posted = re.search(r'^## (\S+)\n+投稿: (\S+Z)', section, re.M)
-        if posted and f'{posted.group(1)}@{posted.group(2)}' == key and posted.group(1) == name:
-            # Recorded as delivered like any report, so the next benchmark does not hand it again.
-            fresh = undelivered(marker.parent, session, [(key, section.strip())])
-            return EMERGENCY_HINT + '\n\n' + fresh[0] if fresh else None
-    return None
 
 
 def proposal_context(root, session='', now=None):
@@ -235,15 +139,26 @@ def proposal_context(root, session='', now=None):
 
 
 def waiting_context(root, session='', now=None):
-    """What to do while a background benchmark runs: the scenario map, new scout reports, new proposals."""
+    """What to do while a background benchmark runs: the scenario map and new proposals."""
     parts = [SCENARIO_HINT] if (root / SCENARIO).is_file() else []
-    if scouts := scout_context(root, session, now):
-        parts.append(scouts)
-    if health := scout_health_context(root, session, now):
-        parts.append(health)
     if proposals := proposal_context(root, session, now):
         parts.append(proposals)
     return '\n\n'.join(parts) or None
+
+
+def start_sync(repo):
+    """Bring the waiting proposals up to main's branch while the benchmark runs, in the background.
+    It stops at the first conflict and leaves it in .local/proposal-sync; the output says which."""
+    if os.environ.get('PROPOSAL_AUTO_SYNC') == '0':  # tests that drive sync step by step
+        return
+    log = repo / '.local/proposal-sync.log'
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open('w') as out:
+            subprocess.Popen([sys.executable, str(Path(__file__).with_name('proposal.py')), 'sync'], cwd=repo,
+                             stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass  # main can still run it by hand
 
 
 def started(root, session):
@@ -254,14 +169,23 @@ def started(root, session):
         isuscope_prune.prune(repo)
     except OSError:
         pass  # the caches are only disk space; the benchmark and its context matter more
+    requeued = []
     if proposal.main_session.is_main(repo, session) is not False:
+        # A PASS run blocks the next benchmark until it is analyzed, so a proposal still measuring here
+        # was on a run that failed or was cut short: it goes back to be measured on this one.
+        try:
+            requeued = proposal.requeue(repo).removeprefix('キューへ戻した: ').split(', ')
+        except proposal.Refused:
+            requeued = []
         measuring = proposal.start_measuring(repo)
+        start_sync(repo)
     else:
         measuring = []
     context = waiting_context(root, session)
     if measuring:
-        note = (f'このベンチで測る投稿: {", ".join(measuring)}（キューから外し、測定中にした）。'
-                'ベンチを待つ間に`python3 scripts/proposal.py sync`で待っている投稿をmainのbranchへ追従させる。')
+        named = ', '.join(f'{branch}（--change {proposal.change_id(branch)}）' for branch in measuring)
+        again = f'前のrunで採否の付かなかった{", ".join(requeued)}も、もう一度このベンチで測る。' if requeued else ''
+        note = f'このベンチで測る投稿: {named}（キューから外し、測定中にした）。{again}'
         context = '\n\n'.join(part for part in (note, context) if part)
     return context
 
@@ -271,13 +195,11 @@ def main():
         payload = json.load(sys.stdin)
         payload = payload if isinstance(payload, dict) else {}
         root = Path(os.environ.get('TOOL_GUARD_ROOT') or ROOT)
-        if '--emergency' in sys.argv:
-            if context := emergency_context(root, str(payload.get('session_id') or '')):
-                print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUse', 'additionalContext': context}},
-                                 ensure_ascii=False))
-            return 0
         benchmark, background = starts_benchmark(root, payload)
         if not benchmark:
+            if '--post' in sys.argv and (context := analyzed(root, payload)):
+                print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUse', 'additionalContext': context}},
+                                 ensure_ascii=False))
             return 0
         if '--pre' in sys.argv and not background:
             output = {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',

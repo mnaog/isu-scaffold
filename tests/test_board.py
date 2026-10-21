@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 import re
 import shutil
-import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -21,7 +20,6 @@ import reads
 import board_data
 import activity
 import records
-import scout
 
 
 class BoardTests(unittest.TestCase):
@@ -30,7 +28,7 @@ class BoardTests(unittest.TestCase):
         self.repo = Path(self.temp.name).resolve() / 'repo'
         self.repo.mkdir()
         shutil.copytree(SOURCE / 'scripts/board', self.repo / 'scripts/board')
-        for name in ('proposal.py', 'main-session.py', 'progress.py'):
+        for name in ('proposal.py', 'isuscope_sql.py', 'main-session.py', 'progress.py'):
             shutil.copy(SOURCE / 'scripts' / name, self.repo / 'scripts' / name)
         (self.repo / 'config').mkdir()
         shutil.copy(SOURCE / 'config/records.json', self.repo / 'config/records.json')
@@ -59,7 +57,7 @@ class BoardTests(unittest.TestCase):
         def fake(repo, argv):
             calls.append(argv)
             if 'list' in argv:
-                return {'runs': [{'id':'active','state':'running'}, {'id':'done','state':'complete','commit_hash':'abc'}]}
+                return {'runs': [{'run':'active','state':'running'}, {'run':'done','state':'complete','commit_hash':'abc'}]}
             if 'brief' in argv:
                 return {'run': argv[2], 'summary': {'state':'complete'}}
             return {'rows': []}
@@ -69,10 +67,10 @@ class BoardTests(unittest.TestCase):
         self.assertEqual([c[1] for c in calls], ['list', 'brief'])
 
     def test_score_history_keeps_failed_and_missing_scores_without_full_run_details(self):
-        runs=[{'id':'active','state':'running'},
-              {'id':'failed','state':'failed','score':None,'passed':False,'started_at':'2026-10-01T10:02:00Z'},
-              {'id':'zero','state':'complete','score':0,'passed':True,'started_at':'2026-10-01T10:01:00Z'},
-              {'id':'first','state':'complete','score':100,'passed':True,'started_at':'2026-10-01T10:00:00Z','hypothesis':'large text'}]
+        runs=[{'run':'active','state':'running'},
+              {'run':'failed','state':'failed','score':None,'passed':False,'started_at':'2026-10-01T10:02:00Z'},
+              {'run':'zero','state':'complete','score':0,'passed':True,'started_at':'2026-10-01T10:01:00Z'},
+              {'run':'first','state':'complete','score':100,'passed':True,'started_at':'2026-10-01T10:00:00Z','hypothesis':'large text'}]
         def fake(repo, argv):
             if 'list' in argv: return {'runs':runs}
             return {}
@@ -85,7 +83,7 @@ class BoardTests(unittest.TestCase):
         self.assertEqual(data['running'][0]['id'], 'active')
 
     def test_running_is_kept_before_first_completed_benchmark(self):
-        with patch.object(reads, 'command_json', return_value={'runs': [{'id': 'active', 'state': 'running'}]}):
+        with patch.object(reads, 'command_json', return_value={'runs': [{'run': 'active', 'state': 'running'}]}):
             data = reads.metrics(self.repo, self.cfg)
         self.assertEqual(data['running'][0]['id'], 'active')
         self.assertIsNone(data['latest'])
@@ -430,33 +428,6 @@ class BoardTests(unittest.TestCase):
         (self.repo / 'docs/official/image.png').write_bytes(b'\x89PNG\0\0')
         self.assertIn('error', records.content(self.repo, 'docs/official/image.png'))
 
-    def test_scout_reports_are_read_without_creating_state(self):
-        write = lambda path, text: (path.parent.mkdir(parents=True, exist_ok=True), path.write_text(text))
-        write(self.repo / 'config/scout.json', json.dumps({'scouts': {'claude': {}, 'codex': {}, 'kimi': {}}}))
-        result = scout.scouts(self.repo)
-        self.assertEqual(result['reports'], [{'name': n, 'state': 'stopped'} for n in ('claude', 'codex', 'kimi')])
-        self.assertFalse(result['running'])
-        self.assertFalse((self.repo / '.local/scout').exists())
-        database = self.repo / '.local/scout/state.sqlite3'
-        database.parent.mkdir(parents=True)
-        db = sqlite3.connect(database)
-        db.executescript((SOURCE / 'scripts/scout/schema.sql').read_text())
-        db.execute("INSERT INTO scouts(name,state,report,posted_at,run_id) VALUES ('codex','waiting',?,10,'12345678')", ('長い報告'*500,))
-        db.execute("INSERT INTO scouts(name,state,report) VALUES ('opencode','waiting','外した報告')")
-        db.commit()
-        db.close()
-        reports = {r['name']: r for r in scout.scouts(self.repo)['reports']}
-        self.assertEqual(list(reports), ['claude', 'codex', 'kimi'])
-        self.assertEqual(reports['codex']['report'], '長い報告'*500)
-        self.assertEqual(reports['codex']['run_id'], '12345678')
-        # The daemon holds daemon.lock exclusively while it runs.
-        with (database.parent / 'daemon.lock').open('a+') as held:
-            fcntl.flock(held, fcntl.LOCK_EX)
-            self.assertTrue(scout.scouts(self.repo)['running'])
-        self.assertFalse(scout.scouts(self.repo)['running'])
-        write(self.repo / '.local/scout.json', json.dumps({'scouts': {'codex': {}}}))
-        self.assertEqual([r['name'] for r in scout.scouts(self.repo)['reports']], ['codex'])
-
     def test_queue_lists_measuring_next_waiting_and_held_in_that_order(self):
         import proposals
         stored = self.repo / '.local/proposals'
@@ -481,7 +452,7 @@ class BoardTests(unittest.TestCase):
             url=p.stdout.readline().strip()
             with urllib.request.urlopen(url+'/api/board') as r:
                 data=json.load(r)
-                self.assertEqual(set(data),{'metrics','activity','scouts','queue'})
+                self.assertEqual(set(data),{'metrics','activity','queue','waits'})
                 self.assertEqual((data['queue']['waiting'],data['queue']['items']),(0,[]))
             with urllib.request.urlopen(url+'/api/records') as r:
                 self.assertEqual(len(json.load(r)['records']), len(records.declared(SOURCE)))

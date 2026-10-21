@@ -1,9 +1,9 @@
-import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import tomllib
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -23,8 +23,8 @@ class BenchmarkMarkersTests(unittest.TestCase):
         (self.root / 'scripts').mkdir()
         (self.root / 'config').mkdir()
         shutil.copy(ROOT / 'scripts/benchmark-markers.py', self.root / 'scripts/benchmark-markers.py')
-        (self.root / 'config/isuscope-policy.json').write_text(json.dumps(
-            {'history_dir': 'docs/agent-history', 'operator_line_pattern': '\\[ADMIN\\]'}))
+        (self.root / '.isuscope').mkdir()
+        shutil.copy(ROOT / '.isuscope/policy.toml', self.root / '.isuscope/policy.toml')
         (self.root / 'config/benchmark-sample.log').write_text(SAMPLE)
 
     def tearDown(self):
@@ -47,16 +47,19 @@ class BenchmarkMarkersTests(unittest.TestCase):
         self.assertNotEqual(self.markers('set', 'internal detail', '負荷走行').returncode, 0)  # operator line
         result = self.markers('set', 'webappの初期化を開始します', '負荷走行を開始します')
         self.assertEqual(result.returncode, 0, result.stderr)
-        policy = json.loads((self.root / 'config/isuscope-policy.json').read_text())
+        policy = tomllib.loads((self.root / '.isuscope/policy.toml').read_text())['benchmark']
         self.assertEqual(policy['initialize_start_marker'], 'webappの初期化を開始します')
         self.assertEqual(policy['operator_line_pattern'], '\\[ADMIN\\]')
+        self.assertEqual(policy['prepare_command'], ['scripts/benchmark-prepare.sh'])  # the rest stays
+        again = self.markers('set', 'webappの初期化を開始します', '負荷走行を開始します')
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertEqual(tomllib.loads((self.root / '.isuscope/policy.toml').read_text())['benchmark'], policy)
         self.assertEqual(self.markers('check').returncode, 0)
 
     def test_initialize_route_from_the_code_is_enough(self):
         source = self.root / 'webapp/rust/src/main.rs'
         source.parent.mkdir(parents=True)
         source.write_text('let app = Router::new()\n    .route("/api/initialize", post(initialize));\n')
-        (self.root / '.isuscope').mkdir()
         (self.root / '.isuscope/routes.toml').write_text(
             '# 大会固有routeはここへ追加します。\n\n[[routes]]\npattern = "^/a/[0-9]+$"\nreplace = "/a/:id"\n')
         self.assertIn('POST /api/initialize    (webapp/rust/src/main.rs:2)', self.markers('suggest-route').stdout)

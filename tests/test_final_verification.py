@@ -48,6 +48,7 @@ class FinalVerificationTests(unittest.TestCase):
         for folder in ("scripts", "config", ".local"):
             (self.repo / folder).mkdir()
         shutil.copy2(ROOT / "scripts/final-verification.py", self.repo / "scripts/final-verification.py")
+        shutil.copy2(ROOT / "scripts/isuscope_sql.py", self.repo / "scripts/isuscope_sql.py")
         (self.repo / "scripts/ssh-node.sh").write_text(FAKE_SSH)
         (self.repo / "scripts/ssh-node.sh").chmod(0o755)
         (self.repo / ".local/ansible-inventory.json").write_text(json.dumps(
@@ -152,25 +153,26 @@ class UnitAndScoreTests(unittest.TestCase):
             self.assertIn(unit, units)
         self.assertNotIn("daemon-reload.service", units)
 
-    def test_the_reproduction_check_uses_the_worst_run_at_head(self):
+    def test_the_reproduction_check_uses_the_worst_run_of_the_final_configuration(self):
         module = self.load()
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
-        with tempfile.TemporaryDirectory() as directory:
-            fake = Path(directory) / "isuscope"
-            rows = [[head, 1000, 1], [head, 820, 1], [head, 990, 1], ["other", 2000, 1]]
-            fake.write_text("#!/bin/sh\nprintf '%s\\n' '" + json.dumps({"rows": rows}) + "'\n")
-            fake.chmod(0o755)
-            old = os.environ["PATH"]
-            os.environ["PATH"] = f"{directory}{os.pathsep}{old}"
-            try:
-                report = module.Report(quiet=True)
-                module.check_score(report, {"min_score_ratio": 0.85})
-            finally:
-                os.environ["PATH"] = old
+        # The other configuration scored more, the final one's worst run is 820 of the last 1000.
+        runs = [{"id": f"01a15900-0000-7000-8000-00000000000{n}", "score": score, "passed": 1, "config_key": key}
+                for n, (score, key) in enumerate([(2000, "other"), (990, "final"), (820, "final"), (1000, "final")])]
+        with patch.object(module, "final_runs", return_value=runs):
+            report = module.Report(quiet=True)
+            module.check_score(report, {"min_score_ratio": 0.85})
         lines = {name: (level, detail) for level, _, name, detail in report.lines}
         self.assertEqual(lines["last run"][0], "OK")
         self.assertEqual(lines["reproduction"][0], "FAIL")
-        self.assertIn("worst 820 is 82% of the last 1000", lines["reproduction"][1])
+        self.assertIn("worst 820 is 82% of the last 1000 over 3 runs", lines["reproduction"][1])
+
+    def test_final_runs_ask_isuscope_for_runs_whose_benchmark_started(self):
+        module = self.load()
+        with patch.object(module.isuscope_sql, "rows", return_value=[]) as rows:
+            module.final_runs(Path("/repo"))
+        query = rows.call_args.args[1]
+        self.assertIn("benchmark_started = 1", query)
+        self.assertIn("config_key", query)
 
     def test_node_checks_reject_errors_empty_and_partial_output(self):
         module = self.load()

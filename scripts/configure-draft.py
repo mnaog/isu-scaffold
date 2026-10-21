@@ -427,7 +427,7 @@ def main() -> int:
                 "owner_group": "root",
             })
             # An EnvironmentFile outside the application tree (DB host, ports) is part of the
-            # configuration too; practice-14 had to add /home/isucon/env.sh by hand.
+            # configuration too (such as /home/isucon/env.sh); without it the item must be added by hand.
             environment_files = {}
             for report in reports.values():
                 for line in report.get("service_environment_files", []):

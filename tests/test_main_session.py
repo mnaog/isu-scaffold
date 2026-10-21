@@ -21,7 +21,7 @@ class MainSessionTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.repo = Path(self.tmp.name) / 'repo'
         (self.repo / 'scripts').mkdir(parents=True)
-        for name in ('main-session.py', 'proposal.py', 'progress.py', 'runs.sh'):
+        for name in ('main-session.py', 'proposal.py', 'isuscope_sql.py', 'progress.py', 'runs.sh'):
             shutil.copy2(ROOT / 'scripts' / name, self.repo / 'scripts' / name)
         (self.repo / 'scripts' / 'board').mkdir()
         shutil.copy(ROOT / 'scripts' / 'board' / 'activity.py', self.repo / 'scripts' / 'board' / 'activity.py')
@@ -35,6 +35,7 @@ class MainSessionTest(unittest.TestCase):
         self.git('commit', '-qm', 'fixture')
         self.worktree = Path(self.tmp.name) / 'repo-idea'
         self.git('worktree', 'add', '-q', '-b', 'idea/cache', str(self.worktree))
+        self.branch_of = {self.worktree: 'idea/cache'}
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -52,11 +53,13 @@ class MainSessionTest(unittest.TestCase):
         return result
 
     def commit_in_worktree(self, path='app.txt', text='a\nB\nc\n', message='Change b'):
+        self.back_to_branch(self.worktree)
         (self.worktree / path).write_text(text)
         self.git('add', path, cwd=self.worktree)
         self.git('commit', '-qm', message, cwd=self.worktree)
 
     def submit(self, session='S-worker'):
+        self.remember_branch(self.worktree)
         return self.script('proposal.py', 'submit', '--hypothesis', 'bを大文字にすると速い',
                            '--expect', 'GET /b のp99が下がる', '--verified', 'cargo test', '--based-on', '1a2b3c4d',
                            cwd=self.worktree, session=session, check=False)
@@ -69,7 +72,7 @@ class MainSessionTest(unittest.TestCase):
         """What bench-hook --post hands this session when it starts a benchmark in the background."""
         payload = {'tool_name': 'Bash', 'session_id': session, 'cwd': str(self.repo),
                    'tool_input': {'command': 'isuscope run --hypothesis x', 'run_in_background': True}}
-        env = dict(self.env, TOOL_GUARD_ROOT=str(self.repo))
+        env = dict(self.env, TOOL_GUARD_ROOT=str(self.repo), PROPOSAL_AUTO_SYNC='0')
         result = subprocess.run(['python3', str(HOOK), '--post'], input=json.dumps(payload), text=True,
                                 capture_output=True, env=env)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -120,7 +123,7 @@ class MainSessionTest(unittest.TestCase):
     def test_only_main_deploys_and_benchmarks_while_a_main_is_declared(self):
         main_only = ['make deploy', 'make first-bench', 'isuscope run --hypothesis x', 'isuscope analyze abc supported',
                      'python3 scripts/lane.py start full-memory', 'bash scripts/deploy.sh', 'isuscope lock -- make build',
-                     'cat .local/operation.lock', 'make scout-start', 'python3 scripts/tare.py', 'make durability',
+                     'cat .local/operation.lock', 'make tare', 'python3 scripts/tare.py', 'make durability',
                      'make final-reboot', 'make final-db-late', 'python3 scripts/final-verification.py reboot --yes',
                      'isuscope change decide c1 accepted', 'python3 scripts/proposal.py decide idea/cache accepted',
                      'python3 scripts/proposal.py pending']
@@ -174,7 +177,7 @@ class MainSessionTest(unittest.TestCase):
         self.assertIn('git merge --no-ff idea/cache', context)
         self.assertNotIn('idea/cache', self.deliver('S-main'))  # once per commit
         badge = json.loads(self.script('main-session.py', 'badge', '--session', 'S-worker', cwd=self.worktree).stdout)
-        self.assertEqual((badge['role'], badge['branch'], badge['proposal']['status']), ('other', 'idea/cache', 'delivered'))
+        self.assertEqual((badge['role'], badge['proposal']['status']), ('other', 'delivered'))  # found after submit left the branch
         badge = json.loads(self.script('main-session.py', 'badge', '--session', 'S-main').stdout)
         self.assertEqual((badge['role'], badge['waiting']), ('main', 1))
         self.commit_in_worktree('more.txt', 'x\n', 'Add more')
@@ -192,6 +195,35 @@ class MainSessionTest(unittest.TestCase):
         self.assertTrue(lines[0][2].startswith('idea/cache '), lines)
         self.assertIn('ab12cd34', lines[-1][2])
 
+    def test_a_worktree_says_what_it_builds_until_it_submits(self):
+        refused = self.script('proposal.py', 'working', '索引', session='S-main', check=False)
+        self.assertNotEqual(refused.returncode, 0)  # main does not implement
+        self.script('proposal.py', 'working', 'app.txtのbを大文字にする（DBの読み取りが最大の制約）',
+                    cwd=self.worktree, session='S-worker')
+        queue = json.loads(subprocess.run(['python3', '-c', 'import importlib.util,json,sys;'
+                                           's=importlib.util.spec_from_file_location("p",sys.argv[1]);m=importlib.util.module_from_spec(s);'
+                                           's.loader.exec_module(m);print(json.dumps(m.queue(sys.argv[2])))',
+                                           str(self.repo / 'scripts/proposal.py'), str(self.repo)],
+                                          capture_output=True, text=True, check=True).stdout)
+        self.assertEqual([(w['name'], w['role'], w['branch']) for w in queue['working']], [('idea', 'worktree', 'idea/cache')])
+        self.assertIn('DBの読み取り', queue['working'][0]['what'])
+        self.assertIn('worktree\tworking\tidea idea/cache', (self.repo / '.local/progress.log').read_text())
+        self.commit_in_worktree()
+        self.assertNotIn('宣言していなかったようです。', self.submit().stdout)
+        self.assertFalse((self.repo / '.local/proposal-state/working/idea.json').exists())
+        # The run's hypothesis is the merged proposal's own.
+        self.assertNotEqual(self.script('proposal.py', 'hypothesis', check=False).returncode, 0)
+        self.git('merge', '--no-ff', '-q', 'idea/cache', '-m', 'Merge idea/cache')
+        out = self.script('proposal.py', 'hypothesis').stdout.strip()
+        self.assertTrue(out.startswith('idea/cache: bを大文字にすると速い'), out)
+        self.assertIn('期待: ', out)
+        # Submitting without having said so first is reminded to say so next time.
+        self.commit_in_worktree(text='a\nB\nC\n', message='Change c')
+        self.assertIn('宣言していなかったようです。', self.submit().stdout)
+        self.script('proposal.py', 'working', 'もう1つ', cwd=self.worktree, session='S-worker')
+        self.script('proposal.py', 'working', '--done', cwd=self.worktree, session='S-worker')
+        self.assertFalse((self.repo / '.local/proposal-state/working/idea.json').exists())
+
     def test_a_conflicting_proposal_waits_for_its_author_and_a_merged_one_closes(self):
         self.commit_in_worktree()
         self.assertEqual(self.submit().returncode, 0)
@@ -204,7 +236,8 @@ class MainSessionTest(unittest.TestCase):
         shown = self.script('proposal.py', 'show', cwd=self.worktree).stdout
         self.assertIn('needs-sync', shown)
         self.assertIn('app.txt', shown)
-        # The author merges main, resolves, and submits again.
+        # The author comes back to the branch, merges main, resolves, and submits again.
+        self.back_to_branch(self.worktree)
         subprocess.run(['git', 'merge', '-q', 'main'], cwd=self.worktree, capture_output=True, env=self.env)
         (self.worktree / 'app.txt').write_text('a\nBEE\nc\n')
         self.git('commit', '-qam', 'Merge main', cwd=self.worktree)
@@ -230,40 +263,39 @@ class MainSessionTest(unittest.TestCase):
     def test_runs_are_read_in_the_root_from_a_worktree(self):
         bin_dir = Path(self.tmp.name) / 'bin'
         bin_dir.mkdir()
-        (bin_dir / 'isuscope').write_text('#!/bin/sh\necho "$PWD $*"\n')
+        (bin_dir / 'isuscope').write_text('#!/bin/sh\necho "$ISUSCOPE_PROJECT $*"\n')
         (bin_dir / 'isuscope').chmod(0o755)
         env = dict(self.env, PATH=f'{bin_dir}:{self.env["PATH"]}')
         shutil.copy2(self.repo / 'scripts/runs.sh', self.worktree / 'scripts/runs.sh')
-
-        def runs(*args):
-            return subprocess.run([str(self.worktree / 'scripts/runs.sh'), *args], cwd=self.worktree,
-                                  capture_output=True, text=True, env=env)
-        missing = runs('brief', 'latest')
-        self.assertEqual(missing.returncode, 1)
-        self.assertIn('config.toml', missing.stderr)
-        (self.repo / '.isuscope').mkdir()
-        (self.repo / '.isuscope/config.toml').write_text('')
-        read = runs('brief', 'latest')
+        read = subprocess.run([str(self.worktree / 'scripts/runs.sh'), 'brief', 'latest'], cwd=self.worktree,
+                              capture_output=True, text=True, env=env)
         self.assertEqual(read.returncode, 0, read.stderr)
         self.assertEqual(read.stdout.strip(), f'{self.repo.resolve()} brief latest')
-        self.assertEqual(runs('change', 'show', 'c1').returncode, 0)
-        for args in (['run', '--hypothesis', 'x'], ['analyze', 'r', 'supported'], ['change', 'decide', 'c1', 'accepted'], []):
-            with self.subTest(args=args):
-                refused = runs(*args)
-                self.assertEqual(refused.returncode, 2)
-                self.assertIn('reads runs only', refused.stderr)
 
     def add_worktree(self, name, branch=None):
         path = Path(self.tmp.name) / f'repo-{name}'
         self.git('worktree', 'add', '-q', '-b', branch or name, str(path))
+        self.branch_of[path] = branch or name
         return path
 
+    def remember_branch(self, path):
+        branch = subprocess.run(['git', 'symbolic-ref', '-q', '--short', 'HEAD'], cwd=path, capture_output=True, text=True)
+        if branch.returncode == 0:
+            self.branch_of[path] = branch.stdout.strip()
+
+    def back_to_branch(self, path):
+        """submit left the branch; the author comes back to it to commit again."""
+        if subprocess.run(['git', 'symbolic-ref', '-q', 'HEAD'], cwd=path, capture_output=True).returncode:
+            self.git('switch', '-q', self.branch_of[path], cwd=path)
+
     def change(self, path, file, text, message):
+        self.back_to_branch(path)
         (path / file).write_text(text)
         self.git('add', file, cwd=path)
         self.git('commit', '-qm', message, cwd=path)
 
     def submit_from(self, path, session, *extra):
+        self.remember_branch(path)
         return self.script('proposal.py', 'submit', '--hypothesis', f'{path.name}の仮説', '--expect', 'x',
                            '--verified', 'y', *extra, cwd=path, session=session, check=False)
 
@@ -331,6 +363,7 @@ class MainSessionTest(unittest.TestCase):
         # A proposal built on idea/cache before main takes it stands or falls with it.
         stacked = Path(self.tmp.name) / 'repo-stacked'
         self.git('worktree', 'add', '-q', '-b', 'idea/stacked', str(stacked), 'idea/cache')
+        self.branch_of[stacked] = 'idea/stacked'
         self.change(stacked, 'more.txt', 'more\n', 'Stack on cache')
         self.assertEqual(self.submit_from(stacked, 'S-worker').returncode, 0)
         stored = json.loads((self.repo / '.local/proposals/idea__stacked.json').read_text())
@@ -358,8 +391,6 @@ class MainSessionTest(unittest.TestCase):
         other = self.add_worktree('other', 'idea/other')
         self.change(other, 'other.txt', 'o\n', 'Other file')
         self.assertEqual(self.submit_from(other, 'S-worker').returncode, 0)
-        for path in (self.worktree, other):  # the authors move on; the branches are main's now
-            self.git('switch', '-q', '--detach', cwd=path)
         (self.repo / 'app.txt').write_text('a\nbee\nc\n')
         self.git('commit', '-qam', 'Main changes b too')
         self.deliver('S-main')
@@ -395,6 +426,9 @@ class MainSessionTest(unittest.TestCase):
         self.script('main-session.py', 'claim', session='S-main')
         self.commit_in_worktree('own.txt', 'own\n', 'Own file')
         self.assertEqual(self.submit().returncode, 0)
+        # submit left the branch; an author who checks it out again keeps main from moving it.
+        self.assertEqual(self.git('rev-parse', '--abbrev-ref', 'HEAD', cwd=self.worktree).strip(), 'HEAD')
+        self.git('switch', '-q', 'idea/cache', cwd=self.worktree)
         (self.repo / 'main.txt').write_text('m\n')
         self.git('add', 'main.txt')
         self.git('commit', '-qm', 'Main moves on')

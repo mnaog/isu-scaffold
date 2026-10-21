@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Proposals: the queue of changes waiting for main's benchmark, and main's decisions on them.
 
-  proposal.py submit --hypothesis TEXT --expect TEXT --verified TEXT [--based-on RUN] [--note TEXT]
+  proposal.py submit --hypothesis TEXT --expect TEXT [--verified TEXT] [--based-on RUN] [--note TEXT]
   proposal.py list [--all]                 the queue: measuring, next, waiting, held (--all: decided too)
   proposal.py show [BRANCH]                one proposal (default: this worktree's branch)
   proposal.py wait [--timeout SECONDS]     improve: return once the queue has room for its next proposal
   proposal.py improve                      declare this worktree session improve (/improve)
   proposal.py withdraw [BRANCH]
+  proposal.py working TEXT | --done        show on the board what this worktree is building now
+  proposal.py hypothesis                   the run hypothesis for the proposals merged for the next benchmark
 main only:
   proposal.py pending                      the proposals not handed to main yet, as the benchmark hook does
   proposal.py sync [BRANCH ...]            bring the waiting proposals up to main's branch; stops at a conflict
@@ -32,9 +34,11 @@ worktrees are not limited. Submitting a branch that already waits replaces it.
 
 Once submitted, a branch is main's until it is decided. main keeps the queue mergeable while a
 benchmark runs: `sync` merges main's branch into each waiting branch in its own worktree
-(.local/proposal-sync), and leaves the first conflict there for main to resolve. main may also
-decide a proposal without measuring it. A rejected, deferred or withdrawn proposal sends back the
-waiting proposals built on it.
+(.local/proposal-sync), and leaves the first conflict there for main to resolve. Nothing goes back
+to its author: main fixes what it can (a conflict, a build that breaks once merged) and rejects what
+it cannot, or what needs no benchmark to reject. A rejected, deferred or withdrawn proposal takes the
+waiting proposals built on it out of the queue. `submit` detaches the author's worktree from the
+branch it submitted, so `sync` can move that branch.
 
 When main starts a benchmark in the background, the hook hands it the proposals it has not seen at
 their current commit that merge into main's branch without a conflict (git merge-tree); `pending`
@@ -43,13 +47,21 @@ line to .local/progress.log (`proposal <state>`), which main and improve follow 
 
 A decision belongs to the commit main merged and measured, including earlier submissions in history.
 Acceptance requires a run; merged and measuring proposals remain owed a decision.
+
+Before there is anything to submit, a worktree (improve, a person in worktree `human`) says what it
+is building with `working`; the board shows who works on what until it submits (which clears it) or
+says `working --done`. `hypothesis` writes the hypothesis main gives `isuscope run` from the merged
+proposals' own hypothesis and expected observation, so the run reads as the queue entry did.
 """
 import argparse
 import contextlib
+import fcntl
+from datetime import datetime
 import importlib.util
 import io
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -58,6 +70,9 @@ SCRIPTS = Path(__file__).resolve().parent
 _spec = importlib.util.spec_from_file_location('main_session', SCRIPTS / 'main-session.py')
 main_session = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(main_session)
+_spec = importlib.util.spec_from_file_location('isuscope_sql', SCRIPTS / 'isuscope_sql.py')
+isuscope_sql = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(isuscope_sql)
 
 # Waiting for a benchmark: what the queue counts.
 WAITING = ('submitted', 'delivered', 'needs-sync', 'merged')
@@ -72,9 +87,11 @@ WAIT_INTERVAL_SECONDS = 2
 HINT = ('worktreeからの投稿です（mainのbranchへ衝突なく入ることを確かめ済み）。ベンチを待つ間に読み、'
         '次に測るものを選んだら`git merge --no-ff <branch>`して`make build`しておく。'
         '何をどの順で、どう組み合わせて測るかはmainが決める（まとめたら、仮説に投稿ごとの期待を並べ、'
-        '`isuscope analyze`を投稿ごとに`--change <branch>`で記録する）。測らずに返してもよい。採否は'
-        '`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID> --note "理由"`'
-        'で投稿者へ返す（isuscopeの`analyze --change`とは別に記録する）。判断はmainへ取り込んで測ったcommitに付く。')
+        '`isuscope analyze`を投稿ごとに`--change <branch>`で記録する）。測るまでもなく棄却できるなら測らずに棄却してよい。'
+        '取り込んでbuild・deployが通らなければmainが直し、直せなければ棄却する（投稿者へ戻さない）。採否は'
+        '`isuscope analyze RUN ... --change <change ID> --decision accepted|rejected|deferred`で記録し、hookが投稿へ写す'
+        '（change IDはbranch名の`/`などを`-`にしたもの。ベンチを起動したときに投稿ごとに示す）'
+        '（runの無い判断だけ`python3 scripts/proposal.py decide`）。判断はmainへ取り込んで測ったcommitに付く。')
 GROUPS = {'measuring': '測定中', 'merged': '次のベンチ', 'delivered': '待ち', 'submitted': '待ち（未読）',
           'needs-sync': '待ち（衝突）', 'held': '保留'}
 
@@ -162,6 +179,16 @@ def current_branch(cwd=None):
     return git('symbolic-ref', '--quiet', '--short', 'HEAD', cwd=cwd).stdout.strip()
 
 
+def own_branch(root, cwd=None):
+    """This worktree's branch, or, once `submit` left it, the branch it submitted last."""
+    branch = current_branch(cwd)
+    if branch:
+        return branch
+    here = main_session.toplevel(cwd)
+    mine = [data for data in load_all(root) if here and data.get('worktree') == str(here)]
+    return max(mine, key=lambda data: data.get('submitted_at') or '')['branch'] if mine else ''
+
+
 def is_ancestor(root, commit, of):
     return git('merge-base', '--is-ancestor', commit, of, cwd=root).returncode == 0
 
@@ -208,6 +235,59 @@ def freeze(root, off=False, note=None):
     return 'improveの新しい投稿を止めた（`wait`も止まる）。人間の投稿は受け付ける。'
 
 
+def working_dir(root):
+    return state_dir(root) / 'working'
+
+
+def worktree_name(root, here):
+    """`human` for <repo>-human: the worktrees sit next to the root repository, named after it."""
+    name = Path(here).name
+    prefix = Path(root).resolve().name + '-'
+    return name[len(prefix):] if name.startswith(prefix) and len(name) > len(prefix) else name
+
+
+def working(root, what=None, done=False, cwd=None):
+    here = main_session.toplevel(cwd)
+    if here is None or here == Path(root).resolve():
+        raise Refused('作業中の宣言はworktree（improve、human、make worktree）から行う。mainは実装しない。')
+    name = worktree_name(root, here)
+    path = working_dir(root) / f'{name}.json'
+    agent, session = main_session.current_session()
+    role = 'improve' if is_improve(root, session, here) else 'worktree'
+    if done:
+        path.unlink(missing_ok=True)
+        progress_emit(root, role if role == 'improve' else 'worktree', 'idle', name)
+        return f'{name}の作業中の表示を消した。'
+    if not what:
+        raise Refused('何をしているか（狙う制約と変更）を書く。')
+    write_json(path, {'name': name, 'role': role, 'agent': agent, 'session': session, 'worktree': str(here),
+                      'branch': current_branch(cwd), 'what': what, 'started_at': now()})
+    progress_emit(root, role if role == 'improve' else 'worktree', 'working', f'{name} {current_branch(cwd)}: {what}')
+    return f'{name}の作業中にした（ボードの上部に出る。投稿すると消える）: {what}'
+
+
+def working_now(root):
+    """Who builds what now, oldest first; a worktree that is gone no longer works on anything."""
+    entries = []
+    for path in sorted(working_dir(root).glob('*.json')) if working_dir(root).is_dir() else []:
+        data = read_json(path)
+        if data and Path(data.get('worktree') or '').is_dir():
+            entries.append({key: data.get(key) for key in ('name', 'role', 'agent', 'branch', 'what', 'started_at')})
+    return sorted(entries, key=lambda entry: entry.get('started_at') or '')
+
+
+def run_hypothesis(root):
+    """The hypothesis for `isuscope run`, from the proposals main merged for the next benchmark."""
+    base = main_session.main_branch(root)
+    merged = [data for data in (refresh(root, data, base) for data in load_all(root)) if data.get('status') == 'merged']
+    if not merged:
+        raise Refused('次のベンチへ取り込んだ投稿が無い（`git merge --no-ff <branch>`の後に使う）。')
+    merged.sort(key=lambda data: data.get('first_submitted_at') or '')
+    parts = [f'{data["branch"]}: {data.get("hypothesis") or ""}' + (f' 期待: {data["expect"]}' if data.get('expect') else '')
+             for data in merged]
+    return ' / '.join(parts)
+
+
 def queue_count(root, items=None, without=None):
     items = load_all(root) if items is None else items
     return sum(1 for data in items if data.get('status') in WAITING and data.get('branch') != without)
@@ -231,7 +311,7 @@ def submit(root, hypothesis, expect, verified, note=None, cwd=None, based_on=Non
         raise Refused(f'{base}に無いcommitが無い。変更をcommitしてから投稿する。')
     previous = load(root, branch) or {}
     if previous.get('status') == 'measuring':
-        raise Refused(f'{branch}は測定中。採否が返るまで投稿し直さない（直すなら新しいbranchで投稿する）。')
+        raise Refused(f'{branch}は測定中。採否が出るまで投稿し直さない（直すなら新しいbranchで投稿する）。')
     agent, session = main_session.current_session()
     items = load_all(root)
     improve = is_improve(root, session, here)
@@ -247,9 +327,11 @@ def submit(root, hypothesis, expect, verified, note=None, cwd=None, based_on=Non
     commit = git('rev-parse', 'HEAD', cwd=cwd).stdout.strip()
     files = git('diff', '--name-only', f'{base}...HEAD', cwd=cwd).stdout.split()
     # Built on another proposal that main's branch does not hold yet: it stands or falls with it.
+    # sync moves a waiting proposal to a merge commit; a branch built before that holds an earlier one.
     depends_on = sorted(other['branch'] for other in items
                         if other['branch'] != branch and other.get('status') in OPEN
-                        and is_ancestor(root, other['commit'], commit) and not is_ancestor(root, other['commit'], base))
+                        and any(is_ancestor(root, c, commit) and not is_ancestor(root, c, base)
+                                for c in [other['commit'], *(h['commit'] for h in other.get('history') or [])]))
     data = {'branch': branch, 'commit': commit, 'base': base, 'worktree': str(here),
             'hypothesis': hypothesis, 'expect': expect, 'verified': verified, 'note': note or '',
             'based_on': based_on or '', 'depends_on': depends_on, 'files': files,
@@ -265,11 +347,22 @@ def submit(root, hypothesis, expect, verified, note=None, cwd=None, based_on=Non
                                 'decision': previous.get('decision')})
     save(root, data)
     progress(root, 'submitted', f'{branch} {commit[:8]}: {hypothesis[:120]}')
+    # Submitted, it shows in the queue; it no longer needs saying what this worktree works on.
+    declared = working_dir(root) / f'{worktree_name(root, here)}.json'
+    was_working = declared.is_file()
+    declared.unlink(missing_ok=True)
     waiting = queue_count(root)
+    # The branch is main's now: leave it, so main can bring it up to its branch while it waits.
+    detached = git('switch', '--quiet', '--detach', cwd=cwd).returncode == 0
     lines = [f'{branch}（{commit[:8]}）を投稿した。キューの待ちは{waiting}件。mainが次にベンチを起動したときに渡る。'
-             '状態は`python3 scripts/proposal.py show`。投稿したbranchは採否が出るまでmainのもの（commitしない）。']
+             '状態は`python3 scripts/proposal.py show`。投稿したbranchは採否が出るまでmainのもの'
+             + ('で、このworktreeはbranchから外した（HEADは同じcommit）。次の変更は新しいbranchで作る。' if detached
+                else '（commitしない）。このworktreeをbranchから外せなかったので、`git switch --detach`で外す。')]
     if depends_on:
-        lines.append(f'取り込まれていない投稿の上に積んでいる: {", ".join(depends_on)}（それが返されると一緒に返る）。')
+        lines.append(f'取り込まれていない投稿の上に積んでいる: {", ".join(depends_on)}（それが棄却・取り下げになると一緒に外れる）。')
+    if not was_working:
+        lines.append('作り始めたときに`python3 scripts/proposal.py working "<狙う制約と変更>"`で宣言していなかったようです。'
+                     '次の変更からは、作り始めたら宣言してください（ボードの「作業中」に出て、誰が何をしているか分かる）。')
     return '\n'.join(lines)
 
 
@@ -301,6 +394,94 @@ def refresh(root, data, base=None):
         data.update(status='delivered' if data.get('delivered') else 'submitted', conflicts=[])
         save(root, data)
     return data
+
+
+def change_id(branch):
+    """The isuscope change a proposal is recorded under: `analyze --change <this>`."""
+    return re.sub(r'[^A-Za-z0-9_-]', '-', branch)[:100]
+
+
+def instant(stamp):
+    """A time from this script (local, %z) or from isuscope (UTC, fractions, Z)."""
+    try:
+        return datetime.strptime(stamp, '%Y-%m-%dT%H:%M:%S%z')
+    except (TypeError, ValueError):
+        pass
+    try:
+        return datetime.fromisoformat(re.sub(r'\.(\d{6})\d*', r'.\1', stamp.replace('Z', '+00:00')))
+    except (AttributeError, ValueError):
+        return None
+
+
+def latest_change_decision(root, branch):
+    """The last decision isuscope recorded for the proposal's change, with the first run it cites."""
+    # change_id leaves only [A-Za-z0-9_-], so it is safe inside the SQL string.
+    rows = isuscope_sql.rows(root, f"""
+        SELECT d.created_at, d.status, d.reason,
+               (SELECT run_id FROM change_decision_runs WHERE decision_id = d.id ORDER BY run_id LIMIT 1) AS run_id
+        FROM change_decisions d WHERE d.change_id = '{change_id(branch)}'
+        ORDER BY d.created_at DESC, d.id DESC LIMIT 1""")
+    return rows[0] if rows and instant(rows[0]['created_at']) else None
+
+
+def adopt_decisions(root):
+    """Copy what main decided with `isuscope analyze --change <branch> --decision ...` onto the proposals
+    being measured, so main writes each decision once. A provisional change keeps its code: accepted."""
+    adopted = []
+    for data in load_all(root):
+        if data.get('status') != 'measuring':
+            continue
+        record = latest_change_decision(root, data['branch'])
+        since = instant(data.get('measuring_since'))
+        if not record or (since and instant(record['created_at']) < since):
+            continue
+        decision = 'accepted' if record.get('status') == 'provisional' else record.get('status')
+        if decision not in DECISIONS:
+            continue
+        run = (record.get('run_id') or '')[-8:]
+        decide(root, data['branch'], decision, run=run or None, note=record.get('reason') or '')
+        adopted.append(f'{data["branch"]} {decision}')
+    return adopted
+
+
+def latest_analysis(root):
+    """The analysis recorded last, with its run's ID and score, from isuscope's index."""
+    rows = isuscope_sql.rows(root, """
+        SELECT a.id, a.body, r.id AS run_id, r.score FROM run_analyses a JOIN runs r ON r.id = a.run_id
+        ORDER BY a.created_at DESC, a.id DESC LIMIT 1""")
+    return rows[0] if rows else None
+
+
+def after_analysis(root):
+    """After main records an analysis: the decisions reach the proposals, and once nothing measured waits
+    for one, improve hears of the analysis (`main analyzed`) without main writing it again."""
+    lines = []
+    try:
+        return after_analysis_reading(root, lines)
+    except isuscope_sql.Unavailable as error:
+        lines.append(f'isuscopeの記録を読めなかった（{error}）。採否は`python3 scripts/proposal.py decide`で投稿へ返す。')
+        return '\n'.join(lines)
+
+
+def after_analysis_reading(root, lines):
+    if adopted := adopt_decisions(root):
+        lines.append('isuscopeの採否を投稿へ写した: ' + ', '.join(adopted))
+    if waiting := [data['branch'] for data in load_all(root) if data.get('status') == 'measuring']:
+        lines.append(f'まだ採否の無い測定中の投稿: {", ".join(waiting)}（`isuscope analyze RUN ... --change '
+                     f'{change_id(waiting[0])} --decision ...`で記録する）。')
+        return '\n'.join(lines)
+    analysis = latest_analysis(root)
+    if not analysis:
+        return '\n'.join(lines)
+    state = state_dir(root) / 'analyzed.json'
+    told = read_json(state) or {}
+    if told.get('analysis') != analysis['id']:
+        body = ' '.join((analysis['body'] or '').split())
+        run = analysis['run_id'][-8:]
+        progress_emit(root, 'main', 'analyzed', f'{run} score {analysis["score"]}: {body[:300]}')
+        write_json(state, {'analysis': analysis['id'], 'run': analysis['run_id']})
+        lines.append(f'improveへ`main analyzed`（run {run}の分析の冒頭）を出した。')
+    return '\n'.join(lines)
 
 
 def start_measuring(root):
@@ -340,7 +521,10 @@ def open_entries(data):
 
 
 def undecided(data):
-    """The commits of a proposal that main merged but has not decided, newest first."""
+    """The commits of a proposal that main merged but has not decided, newest first. One being measured
+    now is left out: its decision comes after the run."""
+    if data.get('status') == 'measuring':
+        return []
     return [entry['commit'] for entry in open_entries(data) if entry.get('status') in ('merged', 'measuring')]
 
 
@@ -376,7 +560,7 @@ def deliver(root, session, at=None):
             f'{author.get("role") or "worktree"} {author.get("agent") or "?"}）',
             f'- 仮説: {data.get("hypothesis")}',
             f'- 期待する観測: {data.get("expect")}',
-            f'- 確かめたこと: {data.get("verified")}',
+            *([f'- 確かめたこと: {data["verified"]}'] if data.get('verified') else []),
             *([f'- 根拠のrun: {data["based_on"]}'] if data.get('based_on') else []),
             *([f'- 積んでいる投稿: {", ".join(data["depends_on"])}'] if data.get('depends_on') else []),
             *([f'- 補足: {data["note"]}'] if data.get('note') else []),
@@ -391,13 +575,14 @@ def deliver(root, session, at=None):
         parts.append(f'mainのbranchと衝突する投稿: {", ".join(held)}。ベンチを待つ間に'
                      '`python3 scripts/proposal.py sync`で取り込み、衝突を解消する。')
     if waiting:
-        parts.append(f'取り込んだが採否を返していない投稿: {", ".join(waiting)}。測ったrunを付けて'
-                     '`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID>`で返す。')
+        parts.append(f'取り込んだが採否を記録していない投稿: {", ".join(waiting)}。測ったrunの'
+                     '`isuscope analyze RUN ... --change <その投稿のchange ID> --decision ...`で記録する'
+                     '（runが無い判断は`python3 scripts/proposal.py decide <branch> ...`）。')
     return '\n\n'.join(parts)
 
 
-def send_back_dependents(root, branch, reason):
-    """The waiting proposals built on one that will not be taken go back to their authors."""
+def drop_dependents(root, branch, reason):
+    """The waiting proposals built on one that will not be taken leave the queue with it."""
     returned = []
     for data in load_all(root):
         if branch in (data.get('depends_on') or []) and data.get('status') in WAITING + ('held',):
@@ -445,13 +630,13 @@ def decide(root, branch, decision, run=None, note=None, commit=None):
     entry = data if target == data['commit'] else next(e for e in data['history'] if e['commit'] == target)
     entry.update(status=decision, decision=record)
     save(root, data)
-    progress(root, decision, f'{branch} {target[:8]} run {run or "-"}: {note or ""}')
+    progress(root, decision, f'{branch} {target[:8]} run {run or "-"}: {(note or "")[:200]}')
     if entry is not data:
         return (f'{branch}の{target[:8]}（{base}へ取り込んだcommit）を{decision}にした。'
                 f'今の投稿{data["commit"][:8]}はその後に出たもので、判断は付けていない。')
-    lines = [f'{branch}（{target[:8]}）を{decision}にした。' + ('' if run else '（ベンチにかけずに返した）')]
-    if decision != 'accepted' and (returned := send_back_dependents(root, branch, decision)):
-        lines.append(f'積んでいた投稿も返した: {", ".join(returned)}')
+    lines = [f'{branch}（{target[:8]}）を{decision}にした。' + ('' if run else '（ベンチにかけずに決めた）')]
+    if decision != 'accepted' and (dropped := drop_dependents(root, branch, decision)):
+        lines.append(f'積んでいた投稿もキューから外した: {", ".join(dropped)}')
     return '\n'.join(lines)
 
 
@@ -508,8 +693,8 @@ def withdraw(root, branch):
     data.update(status='withdrawn', withdrawn_at=now())
     save(root, data)
     progress(root, 'withdrawn', branch)
-    returned = send_back_dependents(root, branch, 'withdrawn')
-    return f'{branch}の投稿を取り下げた。' + (f'積んでいた投稿も返した: {", ".join(returned)}' if returned else '')
+    dropped = drop_dependents(root, branch, 'withdrawn')
+    return f'{branch}の投稿を取り下げた。' + (f'積んでいた投稿もキューから外した: {", ".join(dropped)}' if dropped else '')
 
 
 def worktree_branches(root):
@@ -528,7 +713,19 @@ def sync_dir(root):
 
 
 def sync(root, branches=None):
-    """Merge main's branch into each waiting proposal, in a worktree of main's own; stop at a conflict."""
+    """Merge main's branch into each waiting proposal, in a worktree of main's own; stop at a conflict.
+    One at a time: the hook starts it in the background when a benchmark starts, and main may run it too."""
+    lock_path = Path(root) / '.local/proposal-sync.lock'
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return '別のsyncが動いている（ベンチの起動時にhookが始めたもの）。結果は`.local/proposal-sync.log`。'
+        return sync_locked(root, branches)
+
+
+def sync_locked(root, branches=None):
     base = main_session.main_branch(root)
     work = sync_dir(root)
     if not (work / '.git').exists():
@@ -564,13 +761,13 @@ def sync(root, branches=None):
         branch = data['branch']
         tip = git('rev-parse', '--verify', '-q', f'refs/heads/{branch}', cwd=root).stdout.strip()
         if tip != data['commit']:
-            lines.append(f'- {branch}: 投稿の後にbranchが動いた（{tip[:8] or "消えた"}）。投稿者に確かめる。')
+            lines.append(f'- {branch}: 投稿の後にbranchが動いた（{tip[:8] or "消えた"}）。投稿の`commit`と見比べて扱いを決める。')
             continue
         if is_ancestor(root, base, data['commit']):
             lines.append(f'- {branch}: 最新')
             continue
         if held_by.get(branch) and Path(held_by[branch]).resolve() != work.resolve():
-            lines.append(f'- {branch}: {held_by[branch]}でcheckoutされている。投稿者が別のbranchへ移るまで同期できない。')
+            lines.append(f'- {branch}: {held_by[branch]}でcheckoutされている（そのworktreeを変えないので、外れるまで同期しない）。')
             continue
         switched = git('switch', '--quiet', branch, cwd=work)
         if switched.returncode != 0:
@@ -587,7 +784,8 @@ def sync(root, branches=None):
             data.update(status='needs-sync', conflicts=unmerged, checked_at=now())
             save(root, data)
             lines.append(f'- {branch}: 衝突（{", ".join(unmerged)}）。{work}で解消して`git add`し、もう一度'
-                         '`python3 scripts/proposal.py sync`。処理の意味がぶつかるなら`git merge --abort`して投稿者へ返す。')
+                         '`python3 scripts/proposal.py sync`。処理の意味がぶつかるときも両方の意図を残して解く。'
+                         '解けなければ`git merge --abort`して棄却する。')
             return '\n'.join(lines)
         lines.append(record_sync(root, branch, work, base))
         git('switch', '--quiet', '--detach', cwd=work)
@@ -610,16 +808,17 @@ def record_sync(root, branch, work, base):
     return f'- {branch}: {base}を取り込んだ（{new[:8]}）'
 
 
-def wait(root, timeout=3600, interval=WAIT_INTERVAL_SECONDS):
-    """Return once the queue has room for improve's next proposal, or when main freezes."""
-    deadline = time.time() + timeout
+def wait(root, timeout=None, interval=WAIT_INTERVAL_SECONDS):
+    """Return once the queue has room for improve's next proposal, or when main freezes. It runs in the
+    background, so by default it waits as long as it takes."""
+    deadline = None if timeout is None else time.time() + timeout
     while True:
         if frozen(root):
             raise Refused('mainが終了前の固定（freeze）に入った。新しい変更は投稿しない。', FROZEN_EXIT)
         waiting = queue_count(root)
         if waiting <= IMPROVE_ROOM:
             return f'キューの待ちは{waiting}件。投稿できる。'
-        if time.time() >= deadline:
+        if deadline is not None and time.time() >= deadline:
             raise Refused(f'{timeout}秒待っても、キューの待ちが{waiting}件のまま。', 2)
         time.sleep(interval)
 
@@ -632,7 +831,7 @@ def queue(root):
                    key=lambda data: (order[data['status']], data.get('first_submitted_at') or ''))
     fields = ('branch', 'status', 'commit', 'hypothesis', 'expect', 'based_on', 'depends_on', 'note',
               'first_submitted_at', 'submitted_at', 'measuring_since', 'conflicts', 'hold', 'files')
-    return {'waiting': queue_count(root, items), 'room': IMPROVE_ROOM, 'frozen': frozen(root),
+    return {'waiting': queue_count(root, items), 'room': IMPROVE_ROOM, 'frozen': frozen(root), 'working': working_now(root),
             'items': [{**{key: data.get(key) for key in fields}, 'group': GROUPS[data['status']],
                        'author': (data.get('author') or {}).get('role') or 'worktree',
                        'agent': (data.get('author') or {}).get('agent') or ''} for data in shown]}
@@ -641,7 +840,7 @@ def queue(root):
 def describe(data):
     lines = [f'{data["branch"]}  {data.get("status")}  {data["commit"][:8]}  投稿 {age(data.get("submitted_at"))}',
              f'  仮説: {data.get("hypothesis")}', f'  期待する観測: {data.get("expect")}',
-             f'  確かめたこと: {data.get("verified")}']
+             *([f'  確かめたこと: {data["verified"]}'] if data.get('verified') else [])]
     if data.get('based_on'):
         lines.append(f'  根拠のrun: {data["based_on"]}')
     if data.get('depends_on'):
@@ -655,7 +854,7 @@ def describe(data):
         decision = data['decision']
         lines.append(f'  mainの判断: {decision.get("decision")}  run {decision.get("run") or "-"}  {decision.get("note") or ""}')
     elif data.get('status') in ('merged', 'measuring'):
-        lines.append('  mainへ取り込み済み。採否はまだ返っていない。')
+        lines.append('  mainへ取り込み済み。採否はまだ出ていない。')
     for entry in reversed(data.get('history') or []):
         decision = entry.get('decision') or {}
         state = (f'{decision.get("decision")}  run {decision.get("run") or "-"}  {decision.get("note") or ""}'
@@ -691,7 +890,7 @@ def main():
     p = sub.add_parser('submit')
     p.add_argument('--hypothesis', required=True, help='何を変えて、なぜ速くなる（点が上がる）と考えるか')
     p.add_argument('--expect', required=True, help='期待する観測値（route、SQL、CPUなど、briefとqueryで確かめられるもの）')
-    p.add_argument('--verified', required=True, help='ローカルで確かめたこと（build、test、local-check、local-flowなど）')
+    p.add_argument('--verified', default='', help='ローカルで確かめたことがあれば')
     p.add_argument('--based-on', help='根拠にしたrunの短縮ID（mainが前提の古さを確かめる）')
     p.add_argument('--note')
     p = sub.add_parser('list')
@@ -699,7 +898,7 @@ def main():
     p = sub.add_parser('show')
     p.add_argument('branch', nargs='?')
     p = sub.add_parser('wait')
-    p.add_argument('--timeout', type=int, default=3600)
+    p.add_argument('--timeout', type=int, help='この秒数で諦める（既定は空きが出るまで待つ）')
     sub.add_parser('improve')
     sub.add_parser('pending')
     p = sub.add_parser('sync')
@@ -718,11 +917,16 @@ def main():
     p.add_argument('--run')
     p.add_argument('--note')
     p.add_argument('--commit', help='判断を付けるcommit（既定は、mainへ取り込んだ未判断のcommit）')
+    sub.add_parser('adopt')
     p = sub.add_parser('freeze')
     p.add_argument('--off', action='store_true')
     p.add_argument('--note')
     p = sub.add_parser('withdraw')
     p.add_argument('branch', nargs='?')
+    p = sub.add_parser('working')
+    p.add_argument('what', nargs='?', help='何をしているか（狙う制約と変更）')
+    p.add_argument('--done', action='store_true')
+    sub.add_parser('hypothesis')
     args = parser.parse_args()
     root = main_session.root_repo()
     _, session = main_session.current_session()
@@ -750,10 +954,16 @@ def main():
             print(claim_improve(root))
         elif args.action == 'freeze':
             print(freeze(root, args.off, args.note))
+        elif args.action == 'working':
+            print(working(root, args.what, args.done))
+        elif args.action == 'adopt':
+            print(after_analysis(root) or 'measuring中の投稿も、新しい分析も無い。')
+        elif args.action == 'hypothesis':
+            print(run_hypothesis(root))
         elif args.action == 'withdraw':
-            print(withdraw(root, args.branch or current_branch()))
+            print(withdraw(root, args.branch or own_branch(root)))
         elif args.action == 'show':
-            branch = args.branch or current_branch()
+            branch = args.branch or own_branch(root)
             data = load(root, branch)
             if not data:
                 raise Refused(f'{branch}の投稿は無い。')

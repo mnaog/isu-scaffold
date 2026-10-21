@@ -31,7 +31,7 @@
 
 追加比較の[集計データ](lithos-opencode-tiers-20261001.json)と、`.local/lithos-ultra/task-results-tiers-v2/` にある生成コード・会話・テスト結果を保存した。実験コードは `.local/lithos-ultra/task-bench-tiers-v2.py`。SHA256 `75e389f198b71c8f9509f6ecbdc29fcc5444736d088a28b92de790182b1d7a0f`。
 
-測定中はグローバル設定とデフォルトモデルを変更していない。測定後、ユーザーの指定により通常利用とscoutをLithos無印に統一した（[現在の設定](../roles/opencode-lithos.md)）。以下は初回のZenを含む測定と共通の方法論であり、追加比較とは別バッチの結果として読む。
+測定中はグローバル設定とデフォルトモデルを変更していない。測定後、ユーザーの指定により通常利用をLithos無印に統一した（[現在の設定](../roles/opencode-lithos.md)）。以下は初回のZenを含む測定と共通の方法論であり、追加比較とは別バッチの結果として読む。
 
 ## 初回のUltraとZenの比較
 

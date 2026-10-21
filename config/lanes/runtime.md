@@ -6,7 +6,7 @@
 
 - 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。baseline前の変更をremoteへ反映しない規則は、mainが取り込み時に守る。
 - 変更してよいのは`webapp/`のアプリのコード（起動処理、`Cargo.toml`と`Cargo.lock`）だけ。schema、`config/`、`scripts/`、他の文書は変えない。
-- 他のlaneも起動処理（`main.rs`など）に行を足す。mergeで衝突しにくいよう、直すのに要る行だけを変え、周りを書き換えない（整形し直さない、`cargo fmt`をcrate全体へかけない）。
+- 他のlaneも起動処理（`main.rs`など）に行を足す。lane `waits`はrouterに待ちのmiddlewareを足すので、それには触らず、外すのはrequestごとのlogのmiddlewareだけにする。mergeで衝突しにくいよう、直すのに要る行だけを変え、周りを書き換えない（整形し直さない、`cargo fmt`をcrate全体へかけない）。
 
 ## 対象（1件1commit、上から順に）
 
