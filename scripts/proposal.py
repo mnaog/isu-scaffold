@@ -335,8 +335,8 @@ def submit(root, hypothesis, expect, verified, note=None, cwd=None, based_on=Non
     if depends_on:
         lines.append(f'取り込まれていない投稿の上に積んでいる: {", ".join(depends_on)}（それが返されると一緒に返る）。')
     if not was_working:
-        lines.append('作り始めたときに`python3 scripts/proposal.py working "<狙う制約と変更>"`で宣言していなかった。'
-                     '次の変更からは、作り始めたら宣言する（ボードの「作業中」に出て、誰が何をしているか分かる）。')
+        lines.append('作り始めたときに`python3 scripts/proposal.py working "<狙う制約と変更>"`で宣言していなかったようです。'
+                     '次の変更からは、作り始めたら宣言してください（ボードの「作業中」に出て、誰が何をしているか分かる）。')
     return '\n'.join(lines)
 
 
