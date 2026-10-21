@@ -52,11 +52,11 @@ class WaitsScriptTests(unittest.TestCase):
 
     def test_set_finds_the_unit_s_environment_file_and_edits_one_line(self):
         self.assertNotIn('waits', self.identity())  # no table, no field
-        out = self.waits('set', 'GET', '/api/app/nearby-chairs', '--after', '30', '--max-body', '40').stdout
+        out = self.waits('set', 'GET', '/api/app/nearby-chairs', '--after', '30').stdout
         self.assertIn('--change wait-get-api-app-nearby-chairs-after-30', out)
         env = (self.repo / 'config/app/env.sh').read_text()
         self.assertIn('ISUCON_DB_HOST=127.0.0.1\n', env)
-        self.assertIn('ISUCON_WAITS="GET /api/app/nearby-chairs after 30 max_body=40"', env)
+        self.assertIn('ISUCON_WAITS="GET /api/app/nearby-chairs after 30"', env)
         # The same route and phase is replaced, a placeholder spelled differently is the same route.
         self.waits('set', 'POST', '/api/app/rides/:ride_id/evaluation', '--before', '5')
         self.waits('set', 'post', '/api/app/rides/{id}/evaluation', '--before', '10')
@@ -75,11 +75,11 @@ class WaitsScriptTests(unittest.TestCase):
         self.assertNotIn('waits', self.identity())
 
     def test_a_wrong_rule_is_refused_before_it_reaches_the_app(self):
-        refused = self.waits('set', 'GET', '/x', '--after', '5000', ok=False)
+        refused = self.waits('set', 'GET', 'x', '--after', '10', ok=False)
         self.assertNotEqual(refused.returncode, 0)
-        self.assertIn('0〜2000', refused.stderr)
-        refused = self.waits('set', 'GET', '/x', '--before', '10', '--max-body', '3', ok=False)
-        self.assertIn('afterだけ', refused.stderr)
+        self.assertIn('PATHは/で始める', refused.stderr)
+        refused = self.waits('set', 'GET', '/x', '--after', '-5', ok=False)
+        self.assertIn('0以上の整数', refused.stderr)
         self.assertNotIn('ISUCON_WAITS', (self.repo / 'config/app/env.sh').read_text())
 
     def test_history_reads_the_runs_and_the_wait_changes(self):
@@ -98,13 +98,13 @@ class WaitsScriptTests(unittest.TestCase):
         (change / 'decisions').mkdir(parents=True)
         (change / 'change.json').write_text(json.dumps({'id': 'wait-get-a-after-30', 'created_at': '2026-10-20T12:02:00Z'}))
         (change / 'decisions/d.json').write_text(json.dumps({
-            'created_at': '2026-10-20T12:02:00Z', 'status': 'accepted', 'reason': '振れ幅より上',
+            'created_at': '2026-10-20T12:02:00Z', 'status': 'accepted', 'reason': '空振りのpollingが減り、点になる処理が増えた',
             'evidence': [{'run_id': '01a15900-0000-7000-8000-000000000001'}]}))
         out = self.waits('history').stdout
         self.assertIn('00000001 PASS    760000  waits="GET /a after 30"', out)
         self.assertNotIn('00000002', out)  # same table, no tag
         self.assertIn('wait-get-a-after-30: accepted（run 00000001）', out)
-        self.assertIn('振れ幅より上', out)
+        self.assertIn('空振りのpollingが減り', out)
 
 
 MAIN = r'''
@@ -112,18 +112,16 @@ mod waits;
 
 fn main() {
     let (table, errors) = waits::Waits::parse(
-        "GET /api/app/nearby-chairs after 100 max_body=40; POST /api/app/rides/:ride_id/evaluation before 9999;\
+        "GET /api/app/nearby-chairs after 100; POST /api/app/rides/:ride_id/evaluation before 9999;\
          PUT /x sideways 1; GET /api/chair/notification after 20 status=200");
     println!("errors {}", errors.len());
     println!("describe {}", table.describe());
     let ms = |d: Option<std::time::Duration>| d.map(|d| d.as_millis() as i64).unwrap_or(-1);
-    println!("empty-body {}", ms(table.after("GET", "/api/app/nearby-chairs", 200, Some(30))));
-    println!("full-body {}", ms(table.after("GET", "/api/app/nearby-chairs", 200, Some(500))));
-    println!("unknown-body {}", ms(table.after("GET", "/api/app/nearby-chairs", 200, None)));
+    println!("after {}", ms(table.after("GET", "/api/app/nearby-chairs")));
+    println!("other-phase {}", ms(table.before("GET", "/api/app/nearby-chairs")));
     println!("placeholder {}", ms(table.before("post", "/api/app/rides/01ABC/evaluation")));
     println!("deeper {}", ms(table.before("POST", "/api/app/rides/01ABC/evaluation/x")));
-    println!("status-miss {}", ms(table.after("GET", "/api/chair/notification", 204, None)));
-    println!("status-hit {}", ms(table.after("GET", "/api/chair/notification", 200, None)));
+    println!("unknown-word {}", ms(table.after("GET", "/api/chair/notification")));
     std::env::set_var(waits::VARIABLE, "");
     println!("global-empty {}", waits::global().is_empty());
 }
@@ -132,7 +130,7 @@ fn main() {
 
 @unittest.skipUnless(shutil.which('cargo'), 'cargo is not installed')
 class WaitsModuleTest(unittest.TestCase):
-    def test_the_module_parses_matches_and_caps(self):
+    def test_the_module_parses_and_matches(self):
         with tempfile.TemporaryDirectory() as tmp:
             crate = Path(tmp) / 'crate'
             (crate / 'src').mkdir(parents=True)
@@ -143,16 +141,13 @@ class WaitsModuleTest(unittest.TestCase):
             out = subprocess.run(['cargo', 'run', '--quiet', '--offline'], cwd=crate, env=env, capture_output=True,
                                  text=True, check=True).stdout
         lines = dict(line.split(' ', 1) for line in out.splitlines())
-        self.assertEqual(lines['errors'], '1')
-        self.assertEqual(lines['describe'], 'GET /api/app/nearby-chairs after 100 max_body=40;'
-                         'POST /api/app/rides/:ride_id/evaluation before 2000;GET /api/chair/notification after 20 status=200')
-        self.assertEqual(lines['empty-body'], '100')
-        self.assertEqual(lines['full-body'], '-1')
-        self.assertEqual(lines['unknown-body'], '-1')
-        self.assertEqual(lines['placeholder'], '2000')
+        self.assertEqual(lines['errors'], '2')  # an unknown phase and a fifth word are skipped, not fatal
+        self.assertEqual(lines['describe'], 'GET /api/app/nearby-chairs after 100;POST /api/app/rides/:ride_id/evaluation before 9999')
+        self.assertEqual(lines['after'], '100')
+        self.assertEqual(lines['other-phase'], '-1')
+        self.assertEqual(lines['placeholder'], '9999')
         self.assertEqual(lines['deeper'], '-1')
-        self.assertEqual(lines['status-miss'], '-1')
-        self.assertEqual(lines['status-hit'], '20')
+        self.assertEqual(lines['unknown-word'], '-1')
         self.assertEqual(lines['global-empty'], 'true')
 
 

@@ -14,10 +14,9 @@
 2. **middlewareを1つ足す。** アプリのframeworkと版に合わせて、すべてのrouteを通るmiddlewareを書く（axum 0.7の例はfile冒頭のコメント）。
    - `waits::global()`が空なら、何もせずに次へ渡す。表が空のときに応答・status code・速さを変えない。
    - 待つかを決めるのは、要求のmethodとpath（`uri().path()`。query stringを含めない）。
-   - `before`はhandlerの前、`after`はhandlerの後で応答を返す前に、非同期のsleep（`tokio::time::sleep`など）で待つ。threadを止めるsleepを使わない。
-   - `after`に渡す本文の長さは、長さが分かるときだけ（axumなら`size_hint().exact()`）。SSEやstreamの応答はNoneを渡す。本文を読み出してbufferし直さない。
+   - `before`はhandlerの前、`after`はhandlerの後で応答を返す前に、非同期のsleep（`tokio::time::sleep`など）で待つ。threadを止めるsleepを使わない。応答の本文を読み出してbufferし直さない。
    - routerの外で返す応答（静的ファイルをアプリが返すなら、それも含めて）も同じmiddlewareを通るように、routerの最後に足す。initializeも通ってよい（表に書かなければ待たない）。
-3. **確かめる。** `cargo build --release`と既存のtestを通す。`config/local/compose.yaml`があれば`make local-up`で動かし、`make local-check`が通ることを確かめる。`ISUCON_WAITS`を付けて起動を確かめられる場合は、`GET`のrouteを1つ`after 300`にして、そのrouteだけ応答が約300ms遅れること、標準エラーに`waits: ...`の行が出ることを確かめる。`make local-down`する。確かめられなかったことはcommit本文に書く。
+3. **確かめる。** `cargo build --release`と既存のtestを通す。`config/local/compose.yaml`があれば`make local-up`で動かし、`make local-check`が通ることを確かめる。`ISUCON_WAITS`を付けて起動を確かめられる場合は、routeを1つ表に書いて、そのrouteだけ応答がその分遅れること、標準エラーに`waits: ...`の行が出ることを確かめる。`make local-down`する。確かめられなかったことはcommit本文に書く。
 
 ## commit
 

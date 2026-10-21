@@ -2,8 +2,7 @@
 """The per-API waits main tunes while nothing else waits to be measured.
 
   waits.py show                                   the table, where it lives, and the change IDs to record
-  waits.py set METHOD PATH --after MS [--max-body N] [--status CODE]
-  waits.py set METHOD PATH --before MS            (MS 0 drops that rule; --off drops both)
+  waits.py set METHOD PATH --after MS|--before MS   (MS 0 drops that rule; --off drops both)
   waits.py history                                what was tried, from isuscope's runs and changes
 
 The app reads ISUCON_WAITS once at start (config/waits/waits.rs, wired in by lane `waits`), so the
@@ -24,7 +23,6 @@ import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 VARIABLE = 'ISUCON_WAITS'
-MAX_MS = 2000
 LINE = re.compile(r'^\s*(?:export\s+)?' + VARIABLE + r'=(.*)$')
 COMMENT = '# APIごとの待ち（scripts/waits.py setで変える。形はconfig/waits/waits.rs。空なら待たない）'
 
@@ -54,8 +52,8 @@ def path_key(path):
 
 def parse_rule(text):
     words = text.split()
-    if len(words) < 4:
-        raise ValueError(f'{text}: METHOD PATH before|after MS が要る')
+    if len(words) != 4:
+        raise ValueError(f'{text}: METHOD PATH before|after MS の4語で書く')
     method, path, phase, ms = words[0].upper(), words[1], words[2], words[3]
     if not re.fullmatch(r'[A-Z]+', method):
         raise ValueError(f'{text}: METHODが読めない')
@@ -63,17 +61,9 @@ def parse_rule(text):
         raise ValueError(f'{text}: PATHは/で始める')
     if phase not in ('before', 'after'):
         raise ValueError(f'{text}: before・afterのどちらか')
-    if not ms.isdigit() or int(ms) > MAX_MS:
-        raise ValueError(f'{text}: MSは0〜{MAX_MS}の整数')
-    rule = {'method': method, 'path': path, 'phase': phase, 'ms': int(ms)}
-    for option in words[4:]:
-        key, _, value = option.partition('=')
-        if key not in ('max_body', 'status') or not value.isdigit():
-            raise ValueError(f'{text}: 読めない指定 {option}')
-        if phase == 'before':
-            raise ValueError(f'{text}: max_body・statusはafterだけ')
-        rule[key] = int(value)
-    return rule
+    if not ms.isdigit():
+        raise ValueError(f'{text}: MSは0以上の整数')
+    return {'method': method, 'path': path, 'phase': phase, 'ms': int(ms)}
 
 
 def parse(spec):
@@ -81,11 +71,7 @@ def parse(spec):
 
 
 def describe(rule):
-    text = f'{rule["method"]} {rule["path"]} {rule["phase"]} {rule["ms"]}'
-    for key in ('max_body', 'status'):
-        if key in rule:
-            text += f' {key}={rule[key]}'
-    return text
+    return f'{rule["method"]} {rule["path"]} {rule["phase"]} {rule["ms"]}'
 
 
 def spec_of(rules):
@@ -200,12 +186,7 @@ def set_rule(root, args):
         changed = None
     else:
         phase, ms = ('after', args.after) if args.after is not None else ('before', args.before)
-        text = f'{args.method} {args.path} {phase} {ms}'
-        if args.max_body is not None:
-            text += f' max_body={args.max_body}'
-        if args.status is not None:
-            text += f' status={args.status}'
-        changed = parse_rule(text)
+        changed = parse_rule(f'{args.method} {args.path} {phase} {ms}')
         rules = [rule for rule in rules if (rule['method'], path_key(rule['path']), rule['phase']) != key + (phase,)]
         if ms:
             rules.append(changed)
@@ -294,8 +275,6 @@ def main():
     group.add_argument('--after', type=int, metavar='MS')
     group.add_argument('--before', type=int, metavar='MS')
     group.add_argument('--off', action='store_true')
-    set_parser.add_argument('--max-body', type=int)
-    set_parser.add_argument('--status', type=int)
     set_parser.add_argument('--file', help='ISUCON_WAITSを置くfile（repoのpath）。無ければ探す')
     sub.add_parser('history')
     args = parser.parse_args()
@@ -304,8 +283,6 @@ def main():
         if args.action == 'show':
             show(root, args.file)
         elif args.action == 'set':
-            if args.off and (args.max_body is not None or args.status is not None):
-                raise ValueError('--offにmax_body・statusは付けない')
             set_rule(root, args)
         else:
             history(root_repo())
