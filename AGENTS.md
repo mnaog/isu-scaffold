@@ -46,7 +46,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 - PASSしたrunは、分析を記録するまで次のベンチを始められない。仮説の判定（`supported`・`rejected`・`inconclusive`・`skipped`）と変更の採否（`accepted`・`provisional`・`rejected`・`deferred`）は別に記録する。
 - 何をどの順で測るか、どう組み合わせるかはmainが決める。まとめて測るときは、仮説に変更ごとの期待を並べ、`analyze`を変更ごとに`--change`で同じrunへ記録する。整合性や永続化の時機を変える変更、同じ制約を狙う変更を一緒にすると、落ちたときに原因を切り分けにくい。
 - 分析を記録したら、`python3 scripts/progress.py emit main analyzed "<短縮ID> score <n>。次の最大の制約: ..."`でimproveへ知らせる。
-- 待つ間に、hookが渡す見取り図（`docs/benchmark-scenario.md`）、scoutの報告、worktreeからの投稿を読み、今回の仮説と次の候補が得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめる。観測と食い違う記述があれば文書を直す。次に測るものを選んだら、投稿なら`git merge --no-ff <branch>`し、`make build`しておく。sleepやpollingで待たない。
+- 待つ間に、hookが渡す見取り図（`docs/benchmark-scenario.md`）、scoutの報告、worktreeからの投稿を読み、今回の仮説と次の候補が得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめる。ベンチの仕様について観測と食い違う記述があれば、該当箇所を直す（runの結果や改善の効果は書かない）。次に測るものを選んだら、投稿なら`git merge --no-ff <branch>`し、`make build`しておく。sleepやpollingで待たない。
 - Monitorで`.local/progress.log`を追う。`benchmark slow`が出たら、アプリ・nginxのerror logとnodeの負荷を確かめ、止まっていれば`scripts/benchmark-stop.sh`で止める。
 - nodeの異常（deploy後にアプリが立ち上がらない、nodeが応答しない、ベンチが止まる）は、手打ちのsshより先に`make status`で全nodeを見る。全nodeを並列に20秒で打ち切り、応答しないnode、メモリ・load・失敗したunit・待ち受けport・直近のOOMとerror・MySQLの実行中のSQLを1回で返す。手でsshするときも`scripts/ssh-node.sh <node> '<command>'`を使い、待つloopには回数の上限を付ける。
 - 同じ構成はisuscopeが測り直さない。意図した測り直しだけ`--repeat "理由"`を付ける。同じ変更の比較のためにベンチを重ねない。
@@ -55,6 +55,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 ### isuscopeで読む・比べる
 - 比べるときは対象を絞る。HTTPは`--view http --label route=...`、DBは`--view database --window load`（initializeを除く）に`--group-by sql-shape`や`--label-contains digest=...`を足す。絞らない巨大JSONを避ける。
 - DBの合計時間の変化は、`total_ms_delta_by_calls`（回数による分）と`total_ms_delta_by_avg`（1回の時間による分）に分けて読む。
+- ベンチ側の動きは`isuscope query latest --base BASE_RUN --view transitions`で比べる（遷移ごとの回数・全体に占める割合・間隔。割合の変化が大きい順）。スコアが予想と違う方向に動いた回は、ここで何が変わったかを見る。
 - 状態は`isuscope states sql latest "SELECT ..."`（表は`--schema`）で集計し、1つの対象の前後は`isuscope states timeline latest --kind <種類> --id <ID> --related`で時刻順に並べる（`--around <時刻>`で前後に絞る）。1つのSQLは30秒で止まる。止まったら、行ごとに数え直す相関サブクエリをやめ、示された書き方（attrsで結ぶなら`state_attrs`の索引、ある状態にいる数の推移なら累積和）に直す。
 - 自由な集計は`isuscope sql`（読み取り専用。表は`--schema`）、時系列は`isuscope series`で見る。
 - `analyze`のrun IDは、実行結果か`isuscope list`のものを明示する。本文では短縮ID（末尾8文字）で書く。`provisional`には`--revisit`が要る。FAILと中断のrunに分析は要らない。

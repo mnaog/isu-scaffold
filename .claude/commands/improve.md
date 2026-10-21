@@ -52,6 +52,7 @@ runはrootにしか無いので、`scripts/runs.sh`で読む（isuscopeの読み
 scripts/runs.sh list --limit 5
 scripts/runs.sh brief latest                 # latest_analysisにmainの分析
 scripts/runs.sh query latest --base BASE_RUN --view http --label route=...
+scripts/runs.sh query latest --base BASE_RUN --view transitions   # ベンチ側の動きの変化
 scripts/runs.sh states sql latest "SELECT ..."
 scripts/runs.sh change list
 ```
@@ -75,7 +76,7 @@ scoutと人間の報告は、rootの`.local/scout/reports.md`にある（上の4
 
    終了コード3（キューが埋まっている）なら、上の「キュー」のとおり`wait`をbackgroundで起動する。
 6. **次へ**: 投稿したbranchから離れる（次のbranchを切るか、`git switch --detach`）。採否を待たずに次の候補を進めてよい。調整の続きのように直前の結果を見ないと作れない変更は、結果を待つか、その間に別の制約を調べる。
-7. **返事を読む**: `rejected`・`deferred`は、mainの分析とrunで理由を確かめて次の案に活かす。採用された変更の上で、最大の制約がどこへ動いたかを見て次を選ぶ。
+7. **返事を読む**: `rejected`・`deferred`は、mainの分析とrunで理由を確かめて次の案に活かす。速くしたのに点が下がった変更は、`--view transitions`で比較元とベンチ側の動きを比べ、何に反応したかを確かめてから次を作る。採用された変更の上で、最大の制約がどこへ動いたかを見て次を選ぶ。
 
 ### kickoffの間
 

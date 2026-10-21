@@ -163,7 +163,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 ## 初回ベンチを実行する
 
-初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する。initializeと負荷走行の境界は、初回runより前に`.isuscope/routes.toml`の`[initialize]`で決めておく。コードに候補が1つだけならkickoffが書いてcommitする。`.local/progress.log`の`initialize-route`が`needs_choice`なら、`scripts/benchmark-markers.py suggest-route`の候補から選んで`set-route`する。完全importのcommit後に`make first-bench`で、人間の確認を待たずに実行する。
+初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する（行動遷移と生のaccess logは以後の`run`でも毎回残る）。initializeと負荷走行の境界は、初回runより前に`.isuscope/routes.toml`の`[initialize]`で決めておく。コードに候補が1つだけならkickoffが書いてcommitする。`.local/progress.log`の`initialize-route`が`needs_choice`なら、`scripts/benchmark-markers.py suggest-route`の候補から選んで`set-route`する。完全importのcommit後に`make first-bench`で、人間の確認を待たずに実行する。
 
 最初のdeployの前は、サーバーが完全importと同じ内容（配布状態）で動いている。`make first-bench`は、HEADがimportしたdigestのままで（`scripts/imported-state.py`）、アプリのunitが全nodeで動いてlistenしていれば、そのcommitを稼働中として記録し（`.local/current-import-commit`）、ローカルbuildとdeployを待たずにbaselineを取る。その後に同じcommitをdeployし、deploy経路を最初の改善より前に確かめる。baselineの実行ファイルは配布されたbuild、2本目以降は自前のbuild（Rust 1.99.0）になるので、最初の改善runの比較にはその差が混ざり得る。配布サーバーのRust版（`.local/kickoff-build/environment.txt`）が大きく違う場合は初回runの分析に書き、小さな差の判定に注意する。配布状態で測れないとき（記録がない、importの後に配る対象を変えた、unitが動いていない、既にdeployした）は、deployしてから測る。`FIRST_BENCH_MODE=deploy`なら常にdeployが先になる。追加でスコアの振れ幅を見る場合は`survey-run`を繰り返さず、以後は通常の`isuscope run`を使う。手順は[自動化の仕様](../reference/automation.md)の「ベンチ前gateと初回run」を参照する。
 
@@ -178,7 +178,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 ## ベンチマークシナリオを分析する
 
-`AGENTS.md`とそこから指定された追加指示、公式レギュレーション・当日マニュアルに従い、利用が認められた資料と計測結果から次を分かる範囲で`docs/benchmark-scenario.md`（ベンチの見取り図）へ整理する。資料とコードから書ける部分は、公式資料のcommit直後に起動するlane `scenario`が初回ベンチより前に書き、mainのセッションは初回runの観測で推測の部分を確かめて直す。
+`AGENTS.md`とそこから指定された追加指示、公式レギュレーション・当日マニュアルに従い、利用が認められた資料と計測結果から次を分かる範囲で`docs/benchmark-scenario.md`（ベンチの見取り図）へ整理する。資料とコードから書ける部分は、公式資料のcommit直後に起動するlane `scenario`が初回ベンチより前に書き、mainのセッションは初回run以降の観測で推測の部分を確かめ、該当する節の中で事実へ書き換える（出典にrun IDを付け、観測の節を追記しない）。見取り図に書くのはベンチの仕様（得点、FAILと整合性の条件、シナリオの流れ、応答へのベンチの反応）だけで、runのスコア・API回数・改善の効果・最大の制約の推移は書かない（isuscopeの`analyze`に残る）。
 
 各項目に根拠を残し、確認済みの事実と観測からの推測を区別する。許可された資料から確認できない並列数・繰り返し条件・整合性チェックなどは不明と記録する。
 

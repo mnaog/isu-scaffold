@@ -21,6 +21,8 @@ Bash call. Heredoc bodies and `bash -n` syntax checks do not count as starting o
   commit and that merge into main's branch cleanly, so main picks and builds the next candidate
   while the benchmark runs. While a main is declared (/main) only main gets them. The proposals
   main merged for this benchmark leave the queue as measuring.
+- When a benchmark starts, it also drops the state-log caches of all but the latest runs and keeps
+  isuscope-data out of Spotlight and Time Machine (scripts/isuscope-prune.py).
 
 Internal errors let the call through, like tool-guard.
 """
@@ -43,7 +45,9 @@ BACKGROUND_HINT = ('ベンチ（isuscope run / survey-run / make first-bench）�
 SCENARIO = 'docs/benchmark-scenario.md'
 SCENARIO_HINT = (f'ベンチの完了を待つ間に、`{SCENARIO}`（ベンチの見取り図）を読み返す。'
                  '今回の仮説と次の候補が、得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめる。'
-                 '観測と食い違う記述や新しく分かった事実があれば、文書を直す。')
+                 'ベンチの仕様（得点・FAIL条件・シナリオの流れ・応答へのベンチの反応）について、'
+                 '観測で確かめた・食い違った記述だけを該当する節の中で直す（推測を事実へ、出典にrun ID）。'
+                 'runのスコア、改善の効果、負荷や制約の推移は書かない（isuscope analyzeへ）。')
 SCOUT_HINT = ('これは並列で動かしている調査エージェント（scout）と、worktree `human`の人間（`## human`）による報告です。'
               '内容が古くなっている可能性もありますが（各報告に投稿からの経過分を添えています）、'
               'それぞれの視点を参考にして、次回の改善のための参考として確認してください。'
@@ -61,6 +65,9 @@ spec.loader.exec_module(tool_guard)
 spec = importlib.util.spec_from_file_location('proposal', Path(__file__).with_name('proposal.py'))
 proposal = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(proposal)
+spec = importlib.util.spec_from_file_location('isuscope_prune', Path(__file__).with_name('isuscope-prune.py'))
+isuscope_prune = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(isuscope_prune)
 
 
 def is_benchmark(program, args):
@@ -242,6 +249,11 @@ def waiting_context(root, session='', now=None):
 def started(root, session):
     """A benchmark started in the background: the merged proposals are measured now, then the waiting context."""
     repo = main_worktree(root)
+    try:
+        isuscope_prune.exclude_from_backups(repo)
+        isuscope_prune.prune(repo)
+    except OSError:
+        pass  # the caches are only disk space; the benchmark and its context matter more
     if proposal.main_session.is_main(repo, session) is not False:
         measuring = proposal.start_measuring(repo)
     else:

@@ -4,7 +4,7 @@ isuscopeは、ベンチ1回ごとにscore、仮説、Gitの状態、HTTP・SQL�
 
 ## 初回
 
-`survey-run`は開始後の初回調査だけに使い、初期状態と行動遷移を一度だけ記録する（`make first-bench`が実行する）。その後は、構成やroutingを大きく変えた場合も`run`を使う。
+`survey-run`は開始後の初回調査に使う（`make first-bench`が実行する）。観測は`run`と同じで、違うのは、問題に合わせて有効にした調査用のcollector（`score-probe`など）がsurvey-runでだけ動くことである。その後は、構成やroutingを大きく変えた場合も`run`を使う。
 
 ```bash
 isuscope survey-run --hypothesis "初期状態の負荷構造を記録する"
@@ -40,8 +40,14 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
   - `database_io`: MySQLがfileの読み書きで待った時間
   - `database_memory`: buffer poolとtableの大きさ
 - FAILしたrunの理由とエラーの実例は、`.isuscope/parse-benchmark.sh`がベンチの出力から`message`として残す。`isuscope list`の`failure`と、`brief`の`benchmark_messages`で読む。判断材料とmessageには、適用されるルールで参加者の利用が認められた出力だけを使う。
+- ベンチ側の動き（誰が、何の後に、どれくらいの間隔で次の要求を出すか）は、毎回のrunの行動遷移（`brief`の`transitions`。遷移元→遷移先ごとの回数と、要求の開始から次の要求の開始までの間隔のp50/p95）で読む。応答の速さや内容を変えた回は、`isuscope query RUN --base BASE --view transitions`で前のrunと比べ、ベンチの反応が変わっていないか確かめる（割合の変化が大きい順に並び、消えた・現れた遷移も出る。`--label from=<route>`・`--label to=<route>`で絞る）。遷移に出ない見方（応答から次の要求までの時間、statusやsizeでの分岐、時刻ごとの主体の数）は、run directoryの`logs/nginx-log-raw-<node>-after-stdout.zst`（生のaccess log。`session`・`msec`・`reqtime`付き）を集計する。
 - アプリの中の状態（対象がどの状態にいて、いつ変わったか）は、lane `state-log`が入れた状態ログ（`docs/state-log.md`）が毎回のrunに残している。`brief`の`states`欄、`isuscope states sql`、`isuscope states timeline`で読む。状態を変える処理を書き換えるときは、呼び出しも一緒に移す。
 - より自由な分析や比較には`isuscope sql`（table定義は`--schema`）を使う。接続は読み取り専用で、データの場所は設定から解決する。
+
+## ログの残し方
+
+- 各runの`logs/*.zst`（生のaccess log、状態ログ、ベンチ出力など）は、ベンチの反応を後から比べる証拠なので全runを手元に残す。`logs/`はGitに入れず、重要なrunだけ`git add -f isuscope-data/runs/<run-id>`で残す。生のaccess logは1 runで約12MB（2 node）。
+- 状態ログのcache（`runs/<id>/logs/.state-cache/`、`cache/states/`）は1 runで約200MBになる使い捨てのSQLiteで、消しても`states sql`・`timeline`が次に読むときに保存したログから作り直す。ベンチを起動するとhookが`scripts/isuscope-prune.py`で直近3 run以外のcacheを消し（10分以内に使ったものは残す）、`isuscope-data`をSpotlightとTime Machineの対象から外す。
 
 ## 会話との紐付け
 

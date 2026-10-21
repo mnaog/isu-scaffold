@@ -11,6 +11,8 @@ observability_packages:
   - git
   # isuscopeの`network-allowance`がENAの帯域・PPS・接続追跡の上限超過counterを読む。
   - ethtool
+  # isuscopeが毎runで持ち帰る生のaccess log・状態ログを、node上で約20分の1にしてから送る。
+  - zstd
   # `linux-tools-aws`などのmeta packageは、起動中kernelと異なる世代のperfを入れることがある。
   # 実行中kernelに対応するbinaryを明示し、requiredにしたperfは`perf stat -e task-clock -- true`まで検査する。
   - "linux-tools-{{ ansible_facts['kernel'] }}"
@@ -32,6 +34,7 @@ observability_probe_commands:
   - offcputime-bpfcc
   # 準備でbuildしたaccess logの集計binary。isuscopeのalp collectorはこれが無いと失敗する。
   - isuscope-node
+  - zstd
 observability_required_commands: [sar, perf, slp, isuscope-node]
 
 # 事前に.local/toolsへ用意したbinary/scriptを全application nodeへ配置できます。

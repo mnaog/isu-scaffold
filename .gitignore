@@ -28,3 +28,5 @@ __pycache__/
 
 # `isuscope`が生成する最新runの展開ビューは再生成できる。
 /isuscope-data/latest/
+# scripts/isuscope-prune.pyがSpotlightから外す印。
+/isuscope-data/.metadata_never_index
