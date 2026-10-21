@@ -3,8 +3,8 @@
 
 isuscope links every benchmark run to the conversation that started it, from
 docs/agent-history/ of this repo (`[context.agent]`). A session started in another directory
-(practice-12-sixth: the scaffold) writes its history there, and `isuscope doctor` then fails
-in bench-check, minutes after the start. kickoff runs this first so that shows at once.
+(the scaffold, say) writes its history there, and `isuscope doctor` then fails in bench-check,
+minutes after the start. kickoff runs this first so that shows at once.
 
 Outside Claude Code (a plain terminal) there is no session to check; the benchmark
 must still be run later from a session started in this repo. AGENT_SESSION_CHECK=0 skips it.

@@ -3,7 +3,7 @@
 
 The first benchmark of a contest runs before anyone has seen its output, so the adapter leaves
 the result pending (.isuscope/benchmark.sh). This script takes that run's saved output and does
-the steps that followed by hand in practice-12-sixth:
+the steps that otherwise follow by hand:
 
   python3 scripts/benchmark-sample.py RUN
       Show the lines that carry the result and what the current BENCHMARK_*_REGEX read from them.

@@ -31,7 +31,7 @@ print(row.get("id", ""), row.get("state", ""))' 2>/dev/null || true
 }
 
 # isuscope exits 1 for any result that is not a PASS, also for one the adapter left pending
-# before the output's shape is known (practice-12-sixth). A pending baseline is the expected
+# before the output's shape is known. A pending baseline is the expected
 # first result: it is completed later with the saved output and `isuscope rescore`, so the
 # deploy after it still runs. A new run in any other state stays a failure.
 survey_run() {

@@ -37,7 +37,7 @@ load_config() {
     BENCHMARK_TIMEOUT_SECONDS=${ISUSCOPE_BENCHMARK_TIMEOUT_SECONDS}
   fi
   # An empty BENCHMARK_NODE means the only node of the inventory's benchmark group: discover names
-  # nodes per provider (practice-12-sixth: <stack>-bench), so a fixed default did not match.
+  # nodes per provider (such as <stack>-bench), so a fixed default does not match.
   if [[ "${BENCHMARK_TRANSPORT:-}" == ssh && -z "${BENCHMARK_NODE:-}" && -f "${inventory_path}" ]]; then
     BENCHMARK_NODE=$(jq -r '(.all.children.benchmark.hosts // {}) | keys | if length == 1 then .[0] else empty end' \
       "${inventory_path}")
@@ -356,9 +356,8 @@ record_run_pid() {
 }
 
 # A benchmark that runs past BENCHMARK_SLOW_FACTOR (default 2) times the baseline gets one line in
-# .local/progress.log, and the agent decides whether to stop it. practice-14-second waited out four
-# hung runs of 15.5 minutes each at the hard deadline (BENCHMARK_TIMEOUT_SECONDS), which stays as
-# the last resort. The watcher holds none of the adapter's pipes, so isuscope never waits on it.
+# .local/progress.log, and the agent decides whether to stop it. Without it a hung run is only
+# stopped at the hard deadline (BENCHMARK_TIMEOUT_SECONDS), which stays as the last resort. The watcher holds none of the adapter's pipes, so isuscope never waits on it.
 start_slow_watch() {
   local baseline factor=${BENCHMARK_SLOW_FACTOR:-2} limit
   [[ -f "${baseline_file}" ]] || return 0

@@ -388,7 +388,7 @@ def main():
     # a Rust-only change must not restart MySQL and empty its buffer pool before every run.
     reload = {'node_group': 'application', 'command': 'sudo systemctl daemon-reload', 'when': ['rust-service']}
     # Only tare's own file: `sysctl --system` also reloads the OS defaults, whose keys the instance
-    # may not have, and printed "Invalid argument" after every deploy (practice-12-sixth).
+    # may not have, and prints "Invalid argument" after every deploy.
     sysctl = {'node_group': 'application', 'command': 'sudo sysctl -q -p /etc/sysctl.d/99-tare.conf', 'when': ['tare-sysctl']}
     restart_mysql = {'node_group': 'role_mysql', 'command': 'sudo systemctl restart mysql', 'when': ['mysql-*']}
     for key in ('post_deploy_commands', 'rollback_commands'):
