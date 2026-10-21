@@ -9,7 +9,7 @@
 - 競技時間内に、最終的なスコアを最大にする。時間が最大の制約である。
 - 言語はRustを採用する。
 - 公式のレギュレーション・当日マニュアル・整合性条件・失格条件を常に守る。当日マニュアルは事前の資料より優先する。
-- 改善はmainとimproveの2つのセッションで進める。mainのセッション（このrepoで起動したClaude Code）は、merge、次に測るものの判断、deploy、ベンチ、分析、採否を受け持ち、ベンチを止めずに回す。improveのセッション（worktree `improve`で`/improve`）は、mainの分析が示す最大の制約を調べて改善を実装・ローカル検証し、投稿でmainへ渡し続ける。どちらも人間の確認を待たない。improveが動いていない間は、mainが実装も行う。
+- 改善はmainとimproveの2つのセッションで進める。mainのセッション（このrepoで起動したClaude Code）は、merge、次に測るものの判断、deploy、ベンチ、分析、採否を受け持ち、ベンチを止めずに回す。improveのセッション（worktree `improve`で`/improve`）は、mainの分析が示す最大の制約を調べて改善を実装・ローカル検証し、投稿でmainへ渡し続ける。どちらも人間の確認を待たない。mainは改善を実装しない（improveが動いていない間も同じで、人間に起動を頼む）。測るものが無い間、mainは最新の採用構成を測り直して振れ幅を調べておく。
 - mainは、このrepoのrootで起動したClaude Codeが最初に`/main`で宣言する。isuscopeは各ベンチをこのrepoの`docs/agent-history/`にある会話へ結び付けるので、別のdirectoryで起動したセッションでは`make kickoff`が止まる。目標は人間が`/main`の後に`/goal`で渡す。
 - 宣言は`.local/main-session.json`に残る。宣言がある間は、deploy・rollback・import・kickoff、ベンチ、isuscopeの記録、laneとscoutの起動・停止、`.local/operation.lock`を、ほかのセッションから`scripts/tool-guard.py`が止める。別のセッションで`/main`を打ち直すとmainが移る。
 
@@ -19,13 +19,13 @@
 - メモリ化やキャッシュは、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築を`docs/cache-design.md`へ書いてから入れる。
 - これまでの履歴、差分から、最大の制約をよく調査して考える。予想と反する事象や、説明のつかない動きは、急所である可能性が高いためよく調査する。
 - ロジックを変える案（順位付け、待ちの条件、上限など）は、実装の前に状態ログ（`brief`の`states`欄、`isuscope states`）で前提を確かめ、確かめた数字を仮説に書く。状態についての疑問のために、計測を足すrunを回さない。
-- 採否はスコアで決める。スコアが下がった変更を処理指標や状態ログ上の改善を理由に残すことは許容するが、原則的には不採用とする。同じ構成でもスコアが振れることがあり得るので、小さな差で決めない。本質をよく考える。
+- 採否はスコアで決める。スコアが下がった変更を処理指標や状態ログ上の改善を理由に残すことは許容するが、原則的には不採用とする。同じ構成でもスコアは振れる。振れ幅はmainが空き時間に最新の採用構成で測っておき、投稿のrunは1回で、その幅（`python3 scripts/spread.py`）と比べて決める。幅の内側の差は点の差として扱わず、狙った観測値と害の有無で決める。本質をよく考える。
 
 ## 流れ
 | 段階 | すること | 手順書 |
 | --- | --- | --- |
 | 準備（開始前） | 問題に依存しない道具・認証・検証を済ませる。chrome-debugでのポータルのログインと、worktree `portal`・`improve`・`human`も作っておく | [準備](docs/guides/preparation.md) |
-| kickoff | 開始と同時に、人間がroot（`/main`）・worktree `portal`（`/portal`）・worktree `improve`（`/improve`）でセッションを起動する。portalのセッションがサーバーの情報とベンチ接続を作る間に、`make kickoff`をbackgroundで始めて`.local/progress.log`を追い、サーバーの起動、portalのmergeとlane `scenario`の起動、draftの判断を進める。完全importをcommitしたら、人間の確認を待たずに`make first-bench`で初回baselineを取る。laneのcommitを観測と照合して取り込む。`state-log`・`local-env`・`n-plus-one`が終わるとlane `full-memory`が自動で全メモリ化を始める。その間もmainとimproveは改善を止めず、laneを取り込むときに後から入れた自分のcommitを全メモリ化の形へ移す | [kickoff](docs/guides/kickoff.md) |
+| kickoff | 開始と同時に、人間がroot（`/main`）・worktree `portal`（`/portal`）・worktree `improve`（`/improve`）でセッションを起動する。portalのセッションがサーバーの情報とベンチ接続を作る間に、`make kickoff`をbackgroundで始めて`.local/progress.log`を追い、サーバーの起動、portalのmergeとlane `scenario`の起動、draftの判断を進める。完全importをcommitしたら、人間の確認を待たずに`make first-bench`で初回baselineを取る。laneのcommitを観測と照合して取り込む。lane `full-memory`も先行回収と同時に全メモリ化を始め、`state-log`・`local-env`が終わったら自分で取り込んで確かめる。その間もimproveは全メモリ化が書き換えない所（設定・node分割など）の改善を止めない。laneが取り込んだ後にmainへ入った変更で全メモリ化の形へ移す必要があるものは、mainが戻してimproveへ作り直しを頼む | [kickoff](docs/guides/kickoff.md) |
 | 改善 | 観測された最大の制約から順に、継続的に構成を含めて変える。improveが作って投稿し、mainが測って分析し、採否を返す | このファイルの「判断の原則」、`/main`・`/improve`（`.claude/commands/`） |
 | 終了前 | 開始時に決めた時刻になったら新しい変更を止め、最終構成を固定し、確認のベンチを3回行う。追試で落ちる原因は`make final-check`・`make final-db-late`・`make final-reboot`で確かめる。時刻が決まっていなければ開始時に人間に確認する | [終了前](docs/guides/finish.md) |
 
@@ -49,7 +49,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 - 待つ間に、hookが渡す見取り図（`docs/benchmark-scenario.md`）、scoutの報告、worktreeからの投稿を読み、今回の仮説と次の候補が得点の仕組み・負荷の流れ・失敗の条件と合っているか確かめる。ベンチの仕様について観測と食い違う記述があれば、該当箇所を直す（runの結果や改善の効果は書かない）。次に測るものを選んだら、投稿なら`git merge --no-ff <branch>`し、`make build`しておく。sleepやpollingで待たない。
 - Monitorで`.local/progress.log`を追う。`benchmark slow`が出たら、アプリ・nginxのerror logとnodeの負荷を確かめ、止まっていれば`scripts/benchmark-stop.sh`で止める。
 - nodeの異常（deploy後にアプリが立ち上がらない、nodeが応答しない、ベンチが止まる）は、手打ちのsshより先に`make status`で全nodeを見る。全nodeを並列に20秒で打ち切り、応答しないnode、メモリ・load・失敗したunit・待ち受けport・直近のOOMとerror・MySQLの実行中のSQLを1回で返す。手でsshするときも`scripts/ssh-node.sh <node> '<command>'`を使い、待つloopには回数の上限を付ける。
-- 同じ構成はisuscopeが測り直さない。意図した測り直しだけ`--repeat "理由"`を付ける。同じ変更の比較のためにベンチを重ねない。
+- 同じ構成はisuscopeが測り直さない。測り直す（`--repeat "理由"`）のは、mainが空き時間に最新の採用構成の振れ幅を調べるときと、終了前の確認だけ。投稿やlaneの変更は1回のrunで、`python3 scripts/spread.py --base <基準> --score <得点>`の振れ幅と比べて決め、2度回さない。
 - 最後にdeployしたcommitとHEADがずれていると、ベンチは始まらない。commitして`make deploy`するか、HEADを戻す。
 
 ### isuscopeで読む・比べる

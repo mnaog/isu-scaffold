@@ -10,14 +10,15 @@ allowed-tools: Bash(python3 scripts/main-session.py claim:*)
 
 上の結果がエラーなら、理由をそのまま人間へ伝えて止まる（mainはrepoのrootで動かす）。成功していれば、このセッションがmainになった。
 
-mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。mainは次を受け持つ。
+mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。**mainは改善を実装しない。** アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`）、laneとportalの取り込みは実装に数えない。mainは次を受け持つ。
 
-- **merge**: improve・人間（worktree `human`）の投稿、laneのcommit、portalを取り込む。キューの追従と衝突の解消、取り込んだ変更の戻し（`git revert`）、build・deployが通らない小さな直しまではmainが行う。それ以上の実装はimproveへ返す。
+- **merge**: improve・人間（worktree `human`）の投稿、laneのcommit、portalを取り込む。キューの追従と衝突の解消（両方の意図を残すだけ）、取り込んだ変更の戻し（`git revert`）まで。buildやdeployが通らない投稿は直さずに戻し、理由を付けて投稿者へ返す。
 - **次に測るものの判断**: 下の「キュー」。何をまとめて測るか、測らずに返すか、保留にするかをmainが決める。
 - **deploy・ベンチ**: mainだけが、deploy・rollback・import・kickoff、ベンチ（`isuscope run`・`survey-run`・`make first-bench`）、isuscopeの記録、laneとscoutの起動・停止、`.local/operation.lock`を使う。ほかのセッションからの同じ操作は`scripts/tool-guard.py`が止める。
 - **分析と採否**: runを分析し、最大の制約を特定して`isuscope analyze`に書く。improveはこの分析から次の変更を選ぶので、根拠（run ID、node別の観測値、状態ログの数字）と、次の最大の制約をはっきり書く。
+- **振れ幅**: 測るものが無い間は、最新の採用構成を測り直して、その構成での振れ幅を先に調べておく（下の「振れ幅を測る」）。投稿はこの幅と比べて1回のrunで決め、2度は回さない。
 
-improveが動いているかは、`.local/progress.log`の`improve started`（`/improve`が宣言すると出る）・`improve working`の行で分かる。improveが動いていない（人間が起動していない、止まっている）間は、これまでどおりmainが実装も行う。
+improveが動いているかは、`.local/progress.log`の`improve started`（`/improve`が宣言すると出る）・`improve working`の行で分かる。improveが動いていない（人間が起動していない、止まっている）間も、mainは実装しない。人間に`/improve`の起動を頼み、その間は振れ幅を測る。
 
 ### キュー
 
@@ -47,18 +48,28 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
    - hookが渡す見取り図・scoutの報告・新しい投稿を読む。
    - `python3 scripts/proposal.py sync`で、待っている投稿と保留をmainのbranchへ追従させる（`.local/proposal-sync`のworktreeで、各branchへmainのbranchをmergeする）。衝突すると、そこで止まって衝突を残す。解消して`git add`し、もう一度`sync`する。処理の意味がぶつかる（同じ処理を別々に変えている）なら、`git merge --abort`して投稿者へ返す。投稿者のworktreeでcheckoutされたままのbranchは追従できないので、投稿者に離れてもらう。
    - キューを見直し、次に測るものを決めておく。
-4. 終わったら分析する。いつもの回は短く（スコア、効いた・効かなかった観測、次の最大の制約）、予想と違った回だけ深く掘る。スコアが予想と違う方向に動いた回（速くしたのに下がった、FAILした）は、採否を決める前に`isuscope query RUN --base BASE --view transitions`でベンチ側の動きの変化（どの遷移の割合・間隔が変わったか）を見る。分かったベンチの仕様は、見取り図の該当する節へ書く。seventhでは分析がベンチ以外で一番長く（60 runで52分）、改善の周回を決めていた。投稿ごとに`isuscope analyze RUN <判定> --analysis "..." --change <branch> --decision ...`を記録し（同じrunへ追記できる）、`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID> --note "理由"`で返す。不採用は`git revert -m 1 <mergeのcommit>`で戻す。ベンチが起動できなかった、中断した、ベンチの外の原因で落ちたときは、`python3 scripts/proposal.py requeue`で測定中の投稿を待ちへ戻す（投稿が原因で落ちたなら、戻さずに`rejected`で返す）。
+4. 終わったら分析する。いつもの回は短く（スコア、効いた・効かなかった観測、次の最大の制約）、予想と違った回だけ深く掘る。採否は、`python3 scripts/spread.py --base <基準の構成のrunの短縮ID> --score <得点>`で、基準の構成の平均と振れ幅に照らして1回で決める。振れ幅より上なら採用、下なら不採用。振れの内側なら点の差としては扱わず、投稿の期待した観測値が狙いどおりに動き、ほかの指標に害が無ければ採用、そうでなければ不採用にする。同じ投稿を2度測らない。スコアが予想と違う方向に動いた回（速くしたのに下がった、FAILした）は、採否を決める前に`isuscope query RUN --base BASE --view transitions`でベンチ側の動きの変化（どの遷移の割合・間隔が変わったか）を見る。分かったベンチの仕様は、見取り図の該当する節へ書く。seventhでは分析がベンチ以外で一番長く（60 runで52分）、改善の周回を決めていた。投稿ごとに`isuscope analyze RUN <判定> --analysis "..." --change <branch> --decision ...`を記録し（同じrunへ追記できる）、`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID> --note "理由"`で返す。不採用は`git revert -m 1 <mergeのcommit>`で戻す。ベンチが起動できなかった、中断した、ベンチの外の原因で落ちたときは、`python3 scripts/proposal.py requeue`で測定中の投稿を待ちへ戻す（投稿が原因で落ちたなら、戻さずに`rejected`で返す）。
 5. 分析を記録したら、キューの残り（待ちと保留）の前提がまだ成り立つかを見直し、返す・保留にする・保留から戻すを決める。そのうえでimproveへ知らせる。
 
    ```bash
    python3 scripts/progress.py emit main analyzed "<短縮ID> score <n>（<base>比 ±x%）。次の最大の制約: <node・処理・数字>"
    ```
 
-6. すぐ1へ戻る。待っている投稿が無ければ`python3 scripts/proposal.py pending`で確かめ、それでも無ければ、Monitorで追っている`.local/progress.log`に`proposal submitted`か`lane:<名前> commit`が出るまで待つ。sleepやpollingで待たない。`improve working`の行で、もうすぐ届く投稿が分かる。
+6. すぐ1へ戻る。待っている投稿が無ければ`python3 scripts/proposal.py pending`で確かめ、それでも無ければ、次の「振れ幅を測る」でベンチを使う。`proposal submitted`か`lane:<名前> commit`の行が出たら、振れ幅のrunが終わるのを待って（止めない）1へ戻る。sleepやpollingで待たない。`improve working`の行で、もうすぐ届く投稿が分かる。
+
+### 振れ幅を測る
+
+同じ構成でも点は振れる（ninthでは同じ構成の3回で643388〜720355、平均から−7%〜+4%）。投稿のrunを2回ずつ回すと周回が倍になるので、振れ幅は、ベンチが空いている時間に、最新の採用構成で先に測っておく。
+
+- 測る構成: 最後に採否を決めた後のHEAD（測定中・merge済みで未測定の投稿が無い状態）。不採用をrevertした後なら、deployが最良構成へ戻っていることを確かめる。
+- 起動: `isuscope run --repeat "振れ幅: <基準の短縮ID>と同じ構成" --hypothesis "振れ幅を測る（同じ構成のn回目）"`を`run_in_background`で。終わったら`isuscope analyze RUN skipped --analysis "振れ幅: ..."`を短く記録する（`--change`は付けない）。
+- 回数: 同じ構成で3回（採用を決めたrunを含む）までは続けて測る。3回そろったら、次の投稿か構成の変化を待つ間だけ足す。
+- 読み方: `python3 scripts/spread.py`がHEADの構成の回数・平均・平均からのずれと、判定の目安を出す。その構成の回数が3回未満の間は、直近に3回測った構成の振れ幅を借りる。
+- 測り直しは、この振れ幅のためと終了前の確認（`docs/guides/finish.md`）だけにする。投稿・laneの変更は1回で決める。
 
 ### kickoffの間
 
-worktree `portal`のセッション（`/portal`）が、サーバーの情報、ベンチ接続、当日マニュアルの順に作る。`.local/progress.log`の`portal`の行を追い、`environment`を見たらサーバーを起動する。`official`を見たら`git merge --no-ff portal`してlane `scenario`を起動し、`bench`を見たら同じくmergeして`.isuscope/benchmark.sh --check`を通す。`notice`は内容を確かめ、作業に関わるなら反映する。baselineの分析は、improveが最初の変更を選ぶ材料なので、`make first-bench`の後すぐに書いて`main analyzed`を出す。
+worktree `portal`のセッション（`/portal`）が、サーバーの情報、ベンチ接続、当日マニュアルの順に作る。`.local/progress.log`の`portal`の行を追い、`environment`を見たらサーバーを起動する。`official`を見たら`git merge --no-ff portal`してlane `scenario`を起動し、`bench`を見たら同じくmergeして`.isuscope/benchmark.sh --check`を通す。`notice`は内容を確かめ、作業に関わるなら反映する。lane `full-memory`（全メモリ化）はkickoffと同時に始まる。`lane:full-memory complete`が出たら次のベンチで最優先に測る。mergeの前に、laneの最後の回答にある取り込んだmainのhashより後にmainへ入った`webapp/`の変更を`git revert`で戻し（自分では移さない）、`main analyzed`の行で、どの投稿を全メモリ化の形で作り直してほしいかをimproveへ伝える。baselineの分析は、improveが最初の変更を選ぶ材料なので、`make first-bench`の後すぐに書いて`main analyzed`を出す。
 
 ### 終了前
 

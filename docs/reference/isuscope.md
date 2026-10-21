@@ -31,7 +31,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 - 判定には`supported`、`rejected`、`inconclusive`、`skipped`を使う。`analyze`には、実行結果か`isuscope list`で得たrun IDを明示する。本文でrunに触れるときは、isuscopeの出力が示す短縮ID（run IDの末尾8文字）にそろえる。
 - PASSしたrunは、分析を記録するまで次のベンチを開始できない。FAILまたは中断したrunに分析は不要。
 - 変更を残すか戻すかを決めたら、分析と同時に`--change <変更ID> --decision <accepted|provisional|rejected|deferred>`で記録する（`provisional`は`--revisit`必須）。仮説の判定と変更の採否は別に扱い、本文に「採用」と書くだけで済ませない。
-- 同じ配布物・計測設定のrunは、isuscopeが始めない。意図した測り直しだけ`isuscope run --repeat "理由"`を付ける。
+- 同じ配布物・計測設定のrunは、isuscopeが始めない。測り直す（`isuscope run --repeat "理由"`）のは、mainが空き時間に最新の採用構成の振れ幅を調べるときと終了前の確認だけ。振れ幅は`python3 scripts/spread.py [--base <短縮ID>] [--score <得点>]`で読む（同じ構成のrunの回数・平均・平均からのずれと、投稿の得点が幅の上・内側・下のどこか）。
 
 ## 原因を探す
 

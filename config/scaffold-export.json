@@ -168,6 +168,8 @@
     "scripts/main-session.py",
     "scripts/proposal.py",
     "scripts/runs.sh",
+    "scripts/spread.py",
+    "tests/test_spread.py",
     "tests/test_main_session.py",
     ".claude/commands/main.md",
     ".claude/commands/improve.md",
