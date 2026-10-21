@@ -1,6 +1,0 @@
-{
-  "name": "isucon-main",
-  "version": "0.1.0",
-  "description": "Marks the session that ran /main with a MAIN band above the prompt, and shows other sessions they are not main.",
-  "types": "./types/index.d.ts"
-}
