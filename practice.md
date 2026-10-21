@@ -11,6 +11,13 @@
 - 準備状況は各repoの`docs/preparation/readiness.md`と`docs/preparation/`に記録する。未確認の機能を完了扱いにしない。
 - 練習の開始は人間が宣言する。このファイルの追加は練習開始の指示ではない。
 
+## 練習のポータル
+
+- ポータルは手元の`practice-portal`が動かすisuxportalで、URLは`http://localhost:3000`（選手の画面は`/contestant`）。本番の`portal.isucon.net`や、公式の環境確認で配られたtemplateは練習で使わない。
+- chrome-debugは`localhost:3000`でログインしてある。cookieはホスト名ごとなので、`127.0.0.1:3000`では開かない。ポータルの「ログイン」（GitHubのOAuth）は練習では通らないので押さない。ログインしていなければ人間に頼む。
+- サーバーは、ポータルのサーバーリストで配られるCloudFormationのtemplateから、AWSの`default` profile・`ap-northeast-1`でstackを作って起動する。stackができると、運営がapp1〜3をポータルに登録し、ベンチを依頼できるようにする。
+- stackにはベンチnodeも入るが、運営のものなので接続しない。`practice-portal`の内部とベンチマーカーのコードは読まない。
+
 ## 閲覧・変更の制限
 
 - ベンチマーカー内部の閲覧と、ベンチマーカーへのログ追加は禁止する。練習環境の構築でソース一式が取得されても、ベンチマーカー内部を開かない。

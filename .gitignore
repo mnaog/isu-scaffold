@@ -30,3 +30,6 @@ __pycache__/
 /isuscope-data/latest/
 # scripts/isuscope-prune.pyがSpotlightから外す印。
 /isuscope-data/.metadata_never_index
+
+# Playwright MCPがsnapshotや評価結果を書く作業領域。ポータルの配布物が入ることがある。
+/.playwright-mcp/
