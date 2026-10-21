@@ -10,10 +10,10 @@ allowed-tools: Bash(python3 scripts/main-session.py claim:*)
 
 上の結果がエラーなら、理由をそのまま人間へ伝えて止まる（mainはrepoのrootで動かす）。成功していれば、このセッションがmainになった。
 
-mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。**mainは改善を実装しない。** アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`）、laneとportalの取り込み（全メモリ化laneを取り込むときに、後から入った変更を全メモリ化の形へ移すことも含む）、APIごとの待ちの表（`ISUCON_WAITS`。`scripts/waits.py set`で変える）は実装に数えない。mainは次を受け持つ。
+mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。**mainは改善を実装しない。** アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`）、laneとportalの取り込み（全メモリ化laneを取り込むときに、後から入った変更を全メモリ化の形へ移すことも含む）、投稿を取り込むための直し（衝突、取り込んで通らなくなったbuild・deploy）、APIごとの待ちの表（`ISUCON_WAITS`。`scripts/waits.py set`で変える）は実装に数えない。mainは次を受け持つ。
 
-- **merge**: improve・人間（worktree `human`）の投稿、laneのcommit、portalを取り込む。キューの追従と衝突の解消（両方の意図を残すだけ）、取り込んだ変更の戻し（`git revert`）まで。buildやdeployが通らない投稿は直さずに戻し、理由を付けて投稿者へ返す。
-- **次に測るものの判断**: 下の「キュー」。何をまとめて測るか、測らずに返すか、保留にするかをmainが決める。
+- **merge**: improve・人間（worktree `human`）の投稿、laneのcommit、portalを取り込む。キューの追従と衝突の解消（両方の意図を残す）、取り込んだ変更の戻し（`git revert`）まで。投稿は投稿者へ戻さない。buildやdeployが通らない、衝突する投稿は、直せるならmainが直し、直せないなら棄却する。
+- **次に測るものの判断**: 下の「キュー」。何をまとめて測るか、測らずに棄却するか、保留にするかをmainが決める。
 - **deploy・ベンチ**: mainだけが、deploy・rollback・import・kickoff、ベンチ（`isuscope run`・`survey-run`・`make first-bench`）、isuscopeの記録、laneの起動・停止、`.local/operation.lock`を使う。ほかのセッションからの同じ操作は`scripts/tool-guard.py`が止める。
 - **分析と採否**: runを分析し、最大の制約を特定して`isuscope analyze`に書く。improveはこの分析から次の変更を選ぶので、根拠（run ID、node別の観測値、状態ログの数字）と、次の最大の制約をはっきり書く。
 - **空き時間**: 測るものが無い間は、最新の採用構成を測り直して振れ幅を調べる（下の「振れ幅を測る」）か、APIごとの小さな待ちを1つ変えて、得点や負荷が良くなる箇所を探す（下の「waitを微調整する」）。どちらに使うかは、そのときの状況で決める。投稿は1回のrunで決め、2度は回さない。
@@ -33,9 +33,9 @@ improve・人間・worktreeの投稿は、mainのベンチを待つキューに�
 
 improveは、キューの待ちが1件以下のときだけ投稿できる（`proposal.py wait`で空きを待つ）。人間の投稿は制限しない。投稿したbranchは、採否を出すまでmainのもの。
 
-何をどの順で、どう組み合わせて測るか、測らずに返すかは、mainが自分で考えて決める。キューの並び（投稿の古い順）は表示の順で、測る順ではない。人間の投稿もimproveの投稿も、そのときの最大の制約と照らして選ぶ。
+何をどの順で、どう組み合わせて測るか、測らずに棄却するかは、mainが自分で考えて決める。キューの並び（投稿の古い順）は表示の順で、測る順ではない。人間の投稿もimproveの投稿も、そのときの最大の制約と照らして選ぶ。
 
-- **測らずに返す**: 前提が崩れた、最新の分析と合わない、確かめが足りない（ローカルでbuild・checkしていない、`docs/cache-design.md`を書かずにメモリ化している）なら、`python3 scripts/proposal.py decide <branch> rejected|deferred --note "理由"`（`--run`なし）で返す。積んでいた投稿も一緒に返る。
+- **測らずに棄却する**: ベンチの時間は、点を上げるかを確かめる測定に使う。測るまでもなく棄却できる投稿は、`python3 scripts/proposal.py decide <branch> rejected --note "理由"`（`--run`なし）で棄却する。積んでいた投稿も一緒にキューから外れる。
 - **保留にする**: 今の最大の制約ではない場所を速くする変更は、今測ると効かないと出やすい。未mergeの投稿を`python3 scripts/proposal.py hold <branch> --until "<この制約が最大になったら>"`で寝かせ、分析で制約がそこへ移ったら`unhold`で戻して先に測る。取り込み済み・測定中の投稿はholdできない。採否を決め、必要ならコードをrevertする。
 - **まとめる**: 好きな組み合わせで1回のベンチにまとめてよい。投稿ごとの期待する観測値で、それぞれに採否を付けられるかを目安にする。整合性や永続化の時機を変える投稿や、同じ制約を狙う投稿を一緒にすると、落ちたときにどれが原因か分かりにくい。
 - **FAIL・整合性エラーの修正**: 土台が揺れていると、ほかの測定が信用できない。早めに入れる。
@@ -46,10 +46,10 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 2. `isuscope run --hypothesis "$(python3 scripts/proposal.py hypothesis)"`を`run_in_background`で起動する。仮説は、取り込んだ投稿ごとの仮説と期待する観測値（ボードのベンチ待ちに出ていた文）をそのまま並べたもの。hookが、merge済みの投稿を測定中にする。
 3. 待つ間に:
    - hookが渡す見取り図・新しい投稿を読む。
-   - `python3 scripts/proposal.py sync`で、待っている投稿と保留をmainのbranchへ追従させる（`.local/proposal-sync`のworktreeで、各branchへmainのbranchをmergeする）。衝突すると、そこで止まって衝突を残す。解消して`git add`し、もう一度`sync`する。処理の意味がぶつかる（同じ処理を別々に変えている）なら、`git merge --abort`して投稿者へ返す。投稿者のworktreeでcheckoutされたままのbranchは追従できないので、投稿者に離れてもらう。
+   - `python3 scripts/proposal.py sync`で、待っている投稿と保留をmainのbranchへ追従させる（`.local/proposal-sync`のworktreeで、各branchへmainのbranchをmergeする）。衝突すると、そこで止まって衝突を残す。解消して`git add`し、もう一度`sync`する。処理の意味がぶつかる（同じ処理を別々に変えている）ときも、両方の意図を残して解く。解けないなら`git merge --abort`して棄却する。投稿したbranchは`submit`が投稿者のworktreeから外すので、そのまま追従できる。
    - キューを見直し、次に測るものを決めておく。
-4. 終わったら分析し、採否を決める。同じ投稿を2度測らない。スコアが予想と違う方向に動いた回（速くしたのに下がった、FAILした）は、採否を決める前に`isuscope query RUN --base BASE --view transitions`でベンチ側の動きの変化（どの遷移の割合・間隔が変わったか）を見る。分かったベンチの仕様は、見取り図の該当する節へ書く。投稿ごとに`isuscope analyze RUN <判定> --analysis "..." --change <branch> --decision ...`を記録し（同じrunへ追記できる）、`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID> --note "理由"`で返す。不採用は`git revert -m 1 <mergeのcommit>`で戻す。ベンチが起動できなかった、中断した、ベンチの外の原因で落ちたときは、`python3 scripts/proposal.py requeue`で測定中の投稿を待ちへ戻す（投稿が原因で落ちたなら、戻さずに`rejected`で返す）。
-5. 分析を記録したら、キューの残り（待ちと保留）の前提がまだ成り立つかを見直し、返す・保留にする・保留から戻すを決める。そのうえでimproveへ知らせる。
+4. 終わったら分析し、採否を決める。同じ投稿を2度測らない。スコアが予想と違う方向に動いた回（速くしたのに下がった、FAILした）は、採否を決める前に`isuscope query RUN --base BASE --view transitions`でベンチ側の動きの変化（どの遷移の割合・間隔が変わったか）を見る。分かったベンチの仕様は、見取り図の該当する節へ書く。投稿ごとに`isuscope analyze RUN <判定> --analysis "..." --change <branch> --decision ...`を記録し（同じrunへ追記できる）、`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID> --note "理由"`で記録する。不採用は`git revert -m 1 <mergeのcommit>`で戻す。ベンチが起動できなかった、中断した、ベンチの外の原因で落ちたときは、`python3 scripts/proposal.py requeue`で測定中の投稿を待ちへ戻す（投稿が原因で落ちたなら、直せるなら直して測り、直せないなら`rejected`にする）。
+5. 分析を記録したら、キューの残り（待ちと保留）の前提がまだ成り立つかを見直し、棄却する・保留にする・保留を解くを決める。そのうえでimproveへ知らせる。
 
    ```bash
    python3 scripts/progress.py emit main analyzed "<短縮ID> score <n>（<base>比 ±x%）。次の最大の制約: <node・処理・数字>"
@@ -88,7 +88,7 @@ worktree `portal`のセッション（`/portal`）が、サーバーの情報、
 
 ### 終了前
 
-開始時に決めた時刻になったら、`python3 scripts/proposal.py freeze --note "<最終構成のcommit>"`でimproveの新しい投稿を止め（`main freeze`の行が出る）、`docs/guides/finish.md`へ進む。キューに残った投稿は、測らずに`deferred`で返す。
+開始時に決めた時刻になったら、`python3 scripts/proposal.py freeze --note "<最終構成のcommit>"`でimproveの新しい投稿を止め（`main freeze`の行が出る）、`docs/guides/finish.md`へ進む。キューに残った投稿は、測らずに`deferred`にする。
 
 目標は人間が`/goal`で渡す。渡されるまでは、`AGENTS.md`と`docs/guides/`の手順（kickoffなら`kickoff.md`、改善はAGENTS.mdの「判断の原則」、終了前なら`finish.md`）に沿って、今の段階から進める。
 

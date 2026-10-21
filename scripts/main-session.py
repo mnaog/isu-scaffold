@@ -157,7 +157,8 @@ def badge(root, session, cwd=None):
         result['role'] = 'other'
     items = proposal.load_all(root)
     result['waiting'] = sum(1 for item in items if item.get('status') in proposal.WAITING)
-    own = next((item for item in items if item.get('branch') == branch and not result['is_root']), None)
+    mine = '' if result['is_root'] else proposal.own_branch(root, cwd)
+    own = next((item for item in items if mine and item.get('branch') == mine), None)
     result['proposal'] = {key: own.get(key) for key in ('status', 'commit', 'decision')} if own else None
     result['benchmark'] = benchmark(root)
     return result

@@ -26,7 +26,7 @@
 | --- | --- | --- |
 | 準備（開始前） | 問題に依存しない道具・認証・検証を済ませる。chrome-debugでのポータルのログインと、worktree `portal`・`improve`・`human`も作っておく | [準備](docs/guides/preparation.md) |
 | kickoff | 開始と同時に、人間がroot（`/main`）・worktree `portal`（`/portal`）・worktree `improve`（`/improve`）でセッションを起動する。portalのセッションがサーバーの情報とベンチ接続を作る間に、`make kickoff`をbackgroundで始めて`.local/progress.log`を追い、サーバーの起動、portalのmergeとlane `scenario`の起動、draftの判断を進める。完全importをcommitしたら、人間の確認を待たずに`make first-bench`で初回baselineを取る。laneのcommitを観測と照合して取り込む。lane `full-memory`も先行回収と同時に全メモリ化を始め、`state-log`・`local-env`が終わったら自分で取り込んで確かめる。その間もimproveは全メモリ化が書き換えない所（設定・node分割など）の改善を止めない。laneを取り込むとき、laneが取り込んだ後にmainへ入った変更は、mainがベンチを待つ間に自分でmergeして全メモリ化の形へ移す | [kickoff](docs/guides/kickoff.md) |
-| 改善 | 観測された最大の制約から順に、継続的に構成を含めて変える。improveが作って投稿し、mainが測って分析し、採否を返す | このファイルの「判断の原則」、`/main`・`/improve`（`.claude/commands/`） |
+| 改善 | 観測された最大の制約から順に、継続的に構成を含めて変える。improveが作って投稿し、mainが測って分析し、採否を決める | このファイルの「判断の原則」、`/main`・`/improve`（`.claude/commands/`） |
 | 終了前 | 開始時に決めた時刻になったら新しい変更を止め、最終構成を固定し、確認のベンチを3回行う。追試で落ちる原因は`make final-check`・`make final-db-late`・`make final-reboot`で確かめる。時刻が決まっていなければ開始時に人間に確認する | [終了前](docs/guides/finish.md) |
 
 コマンドと各段階の契約（kickoff、deploy、rollback、import、ベンチ接続、isuscopeの設定）は[自動化の仕様](docs/reference/automation.md)を正とする。isuscopeの読み方は[isuscopeの使い方](docs/reference/isuscope.md)にある。
@@ -64,10 +64,10 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断" --change CH
 - lane: `claude -p`が自分のworktreeとbranch（`lane/<名前>`）で1回だけ動き、commitして終わる。出力が決まった有限のタスクにだけ使い、常駐させない。mainは`python3 scripts/lane.py status <名前>`で結果を読み、根拠を照合してから取り込む。起動と取り込みの順番は[kickoff](docs/guides/kickoff.md#laneの起動と取り込み)にある。
 - improve: 準備で作ったworktree `improve`で起動したセッションが`/improve`で、最新runとmainの分析から最大の制約を選び、変更ごとのbranch（`improve-<名前>`）で実装・ローカル検証して投稿する。投稿できるのはキュー全体の待ちが1件以下のときだけで、空きは`python3 scripts/proposal.py wait`（background）で待つ。採否を待たずに次の変更へ進む。runはrootにしか無いので`scripts/runs.sh`（isuscopeの読み取り）で読む。mainとは`.local/progress.log`の行（`improve started / working`、`proposal submitted / measuring / held / synced / accepted / rejected / deferred`、`main analyzed / freeze`）で知らせ合い、Monitorで追う。
 - portal: kickoffの間、準備で作ったworktree `portal`で起動したセッションが`/portal`で、サーバーの起動に要る情報、ベンチ接続、当日マニュアルの保存の順に進め、`.local/progress.log`へ`portal environment / bench / official / notice`を書く。mainはその行を見て`git merge --no-ff portal`する（[kickoff](docs/guides/kickoff.md)）。
-- 人間: 準備で作ったworktree `human`で作業し（投稿は変更ごとのbranchから行い、投稿したら別のbranchへ移る）、コードは投稿で届く。
+- 人間: 準備で作ったworktree `human`で作業し（投稿は変更ごとのbranchから行う。投稿するとworktreeはそのbranchから外れる）、コードは投稿で届く。
 - 人間や手で動かすClaude Codeは、`make worktree BRANCH=<name> PURPOSE="..."`のworktreeで調査・実装・ローカル検証をし、変更目的ごとにcommitを分ける。ローカル環境は各worktreeで`make local-up / local-check / local-down`で使える（[ローカル実行環境](docs/local-development.md)）。
 - main以外（improve・human・worktree）は、作り始めたら`python3 scripts/proposal.py working "<狙う制約と変更>"`でボードの「作業中」に出し、誰が何をしているかを一目で分かるようにする（投稿すると消える）。
-- worktreeの変更は`python3 scripts/proposal.py submit --hypothesis ... --expect ... --verified ... --based-on <run>`で投稿し、mainのベンチを待つキューに入れる（`make proposals`、boardの上部）。投稿したbranchは採否が出るまでmainのもので、mainがベンチを待つ間に`proposal.py sync`でmainのbranchへ追従させ、衝突も解消する。mainは、何をまとめて測るか、測らずに返すか、条件付きで保留（`hold --until`）にするかを自分で決め、`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred [--run <短縮ID>]`で返す。ベンチが空いているときは、mainが`pending`で新しい投稿を受け取る。終了前は`proposal.py freeze`でimproveの投稿を止める。
+- worktreeの変更は`python3 scripts/proposal.py submit --hypothesis ... --expect ... --verified ... --based-on <run>`で投稿し、mainのベンチを待つキューに入れる（`make proposals`、boardの上部）。投稿したbranchは採否が出るまでmainのもので、mainがベンチを待つ間に`proposal.py sync`でmainのbranchへ追従させ、衝突も解消する。mainは、何をまとめて測るか、測らずに棄却するか、条件付きで保留（`hold --until`）にするかを自分で決め、`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred [--run <短縮ID>]`で記録する。投稿は投稿者へ戻さず、取り込めないものはmainが直し、直せないなら棄却する。ベンチが空いているときは、mainが`pending`で新しい投稿を受け取る。終了前は`proposal.py freeze`でimproveの投稿を止める。
 - remote変更・deploy・ベンチ・`.local/operation.lock`を使う操作はmainだけが行う（mainの宣言がある間はhookが止める）。実行中のlockは手で消さず、別の操作の終了を待つ。status・checkなどの読み取りは並行してよい。作業中の他worktreeを変更・削除しない。
 
 ## 守ること

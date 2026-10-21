@@ -49,6 +49,7 @@ class ProposalDecisionTest(unittest.TestCase):
         return result
 
     def commit_and_submit(self, path, hypothesis):
+        self.git('switch', '-q', 'human', cwd=self.worktree)  # submit left the branch; the author comes back to it
         (self.worktree / path).write_text(hypothesis + '\n')
         self.git('add', path, cwd=self.worktree)
         self.git('commit', '-qm', hypothesis, cwd=self.worktree)
@@ -78,7 +79,7 @@ class ProposalDecisionTest(unittest.TestCase):
 
         context = self.deliver()
         self.assertIn('### human', context)  # the new commit
-        self.assertIn(f'取り込んだが採否を返していない投稿: human（{batched[:8]}）', context)
+        self.assertIn(f'取り込んだが採否を記録していない投稿: human（{batched[:8]}）', context)
         self.assertIn('--run', self.decide('accepted', check=False).stderr)
         told = self.decide('accepted', '--run', 'aaaa1111', '--note', '+20%').stdout
         self.assertIn(batched[:8], told)
@@ -90,7 +91,7 @@ class ProposalDecisionTest(unittest.TestCase):
                          [(batched, 'accepted', 'aaaa1111')])
         shown = self.script('proposal.py', 'show', 'human').stdout
         self.assertIn(f'前の投稿 {batched[:8]}: accepted  run aaaa1111', shown)
-        self.assertNotIn('採否を返していない', self.deliver())
+        self.assertNotIn('採否を記録していない', self.deliver())
 
         # The MySQL change was never merged: it cannot be accepted, and a rejection is its own.
         self.assertIn('入っていない', self.decide('accepted', '--run', 'bbbb2222', check=False).stderr)
@@ -105,7 +106,7 @@ class ProposalDecisionTest(unittest.TestCase):
         self.git('merge', '-q', '--no-ff', '-m', 'Take human', 'human')
         for _ in range(2):
             self.assertIn(f'human（{commit[:8]}）', self.deliver())
-        self.assertIn('採否はまだ返っていない', self.script('proposal.py', 'show', 'human').stdout)
+        self.assertIn('採否はまだ出ていない', self.script('proposal.py', 'show', 'human').stdout)
         self.decide('accepted', '--run', 'aaaa1111')
         self.assertEqual(self.deliver(), '')
         self.assertNotIn('human', self.script('proposal.py', 'list').stdout)
@@ -119,7 +120,7 @@ class ProposalDecisionTest(unittest.TestCase):
         later = self.commit_and_submit('more.txt', 'まとめる件数を増やす')  # on top of the merged one
         self.git('merge', '-q', '--no-ff', '-m', 'Take human again', 'human')
         self.assertIn(later[:8], self.decide('accepted', '--run', 'cccc3333').stdout)
-        self.assertNotIn('採否を返していない', self.deliver())
+        self.assertNotIn('採否を記録していない', self.deliver())
 
 
 if __name__ == '__main__':

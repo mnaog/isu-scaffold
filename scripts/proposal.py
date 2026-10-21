@@ -34,9 +34,11 @@ worktrees are not limited. Submitting a branch that already waits replaces it.
 
 Once submitted, a branch is main's until it is decided. main keeps the queue mergeable while a
 benchmark runs: `sync` merges main's branch into each waiting branch in its own worktree
-(.local/proposal-sync), and leaves the first conflict there for main to resolve. main may also
-decide a proposal without measuring it. A rejected, deferred or withdrawn proposal sends back the
-waiting proposals built on it.
+(.local/proposal-sync), and leaves the first conflict there for main to resolve. Nothing goes back
+to its author: main fixes what it can (a conflict, a build that breaks once merged) and rejects what
+it cannot, or what needs no benchmark to reject. A rejected, deferred or withdrawn proposal takes the
+waiting proposals built on it out of the queue. `submit` detaches the author's worktree from the
+branch it submitted, so `sync` can move that branch.
 
 When main starts a benchmark in the background, the hook hands it the proposals it has not seen at
 their current commit that merge into main's branch without a conflict (git merge-tree); `pending`
@@ -79,9 +81,10 @@ WAIT_INTERVAL_SECONDS = 2
 HINT = ('worktreeからの投稿です（mainのbranchへ衝突なく入ることを確かめ済み）。ベンチを待つ間に読み、'
         '次に測るものを選んだら`git merge --no-ff <branch>`して`make build`しておく。'
         '何をどの順で、どう組み合わせて測るかはmainが決める（まとめたら、仮説に投稿ごとの期待を並べ、'
-        '`isuscope analyze`を投稿ごとに`--change <branch>`で記録する）。測らずに返してもよい。採否は'
+        '`isuscope analyze`を投稿ごとに`--change <branch>`で記録する）。測るまでもなく棄却できるなら測らずに棄却してよい。'
+        '取り込んでbuild・deployが通らなければmainが直し、直せなければ棄却する（投稿者へ戻さない）。採否は'
         '`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID> --note "理由"`'
-        'で投稿者へ返す（isuscopeの`analyze --change`とは別に記録する）。判断はmainへ取り込んで測ったcommitに付く。')
+        'で記録する（isuscopeの`analyze --change`とは別に記録する）。判断はmainへ取り込んで測ったcommitに付く。')
 GROUPS = {'measuring': '測定中', 'merged': '次のベンチ', 'delivered': '待ち', 'submitted': '待ち（未読）',
           'needs-sync': '待ち（衝突）', 'held': '保留'}
 
@@ -167,6 +170,16 @@ def now():
 
 def current_branch(cwd=None):
     return git('symbolic-ref', '--quiet', '--short', 'HEAD', cwd=cwd).stdout.strip()
+
+
+def own_branch(root, cwd=None):
+    """This worktree's branch, or, once `submit` left it, the branch it submitted last."""
+    branch = current_branch(cwd)
+    if branch:
+        return branch
+    here = main_session.toplevel(cwd)
+    mine = [data for data in load_all(root) if here and data.get('worktree') == str(here)]
+    return max(mine, key=lambda data: data.get('submitted_at') or '')['branch'] if mine else ''
 
 
 def is_ancestor(root, commit, of):
@@ -291,7 +304,7 @@ def submit(root, hypothesis, expect, verified, note=None, cwd=None, based_on=Non
         raise Refused(f'{base}に無いcommitが無い。変更をcommitしてから投稿する。')
     previous = load(root, branch) or {}
     if previous.get('status') == 'measuring':
-        raise Refused(f'{branch}は測定中。採否が返るまで投稿し直さない（直すなら新しいbranchで投稿する）。')
+        raise Refused(f'{branch}は測定中。採否が出るまで投稿し直さない（直すなら新しいbranchで投稿する）。')
     agent, session = main_session.current_session()
     items = load_all(root)
     improve = is_improve(root, session, here)
@@ -330,10 +343,14 @@ def submit(root, hypothesis, expect, verified, note=None, cwd=None, based_on=Non
     was_working = declared.is_file()
     declared.unlink(missing_ok=True)
     waiting = queue_count(root)
+    # The branch is main's now: leave it, so main can bring it up to its branch while it waits.
+    detached = git('switch', '--quiet', '--detach', cwd=cwd).returncode == 0
     lines = [f'{branch}（{commit[:8]}）を投稿した。キューの待ちは{waiting}件。mainが次にベンチを起動したときに渡る。'
-             '状態は`python3 scripts/proposal.py show`。投稿したbranchは採否が出るまでmainのもの（commitしない）。']
+             '状態は`python3 scripts/proposal.py show`。投稿したbranchは採否が出るまでmainのもの'
+             + ('で、このworktreeはbranchから外した（HEADは同じcommit）。次の変更は新しいbranchで作る。' if detached
+                else '（commitしない）。このworktreeをbranchから外せなかったので、`git switch --detach`で外す。')]
     if depends_on:
-        lines.append(f'取り込まれていない投稿の上に積んでいる: {", ".join(depends_on)}（それが返されると一緒に返る）。')
+        lines.append(f'取り込まれていない投稿の上に積んでいる: {", ".join(depends_on)}（それが棄却・取り下げになると一緒に外れる）。')
     if not was_working:
         lines.append('作り始めたときに`python3 scripts/proposal.py working "<狙う制約と変更>"`で宣言していなかったようです。'
                      '次の変更からは、作り始めたら宣言してください（ボードの「作業中」に出て、誰が何をしているか分かる）。')
@@ -458,13 +475,13 @@ def deliver(root, session, at=None):
         parts.append(f'mainのbranchと衝突する投稿: {", ".join(held)}。ベンチを待つ間に'
                      '`python3 scripts/proposal.py sync`で取り込み、衝突を解消する。')
     if waiting:
-        parts.append(f'取り込んだが採否を返していない投稿: {", ".join(waiting)}。測ったrunを付けて'
-                     '`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID>`で返す。')
+        parts.append(f'取り込んだが採否を記録していない投稿: {", ".join(waiting)}。測ったrunを付けて'
+                     '`python3 scripts/proposal.py decide <branch> accepted|rejected|deferred --run <短縮ID>`で記録する。')
     return '\n\n'.join(parts)
 
 
-def send_back_dependents(root, branch, reason):
-    """The waiting proposals built on one that will not be taken go back to their authors."""
+def drop_dependents(root, branch, reason):
+    """The waiting proposals built on one that will not be taken leave the queue with it."""
     returned = []
     for data in load_all(root):
         if branch in (data.get('depends_on') or []) and data.get('status') in WAITING + ('held',):
@@ -516,9 +533,9 @@ def decide(root, branch, decision, run=None, note=None, commit=None):
     if entry is not data:
         return (f'{branch}の{target[:8]}（{base}へ取り込んだcommit）を{decision}にした。'
                 f'今の投稿{data["commit"][:8]}はその後に出たもので、判断は付けていない。')
-    lines = [f'{branch}（{target[:8]}）を{decision}にした。' + ('' if run else '（ベンチにかけずに返した）')]
-    if decision != 'accepted' and (returned := send_back_dependents(root, branch, decision)):
-        lines.append(f'積んでいた投稿も返した: {", ".join(returned)}')
+    lines = [f'{branch}（{target[:8]}）を{decision}にした。' + ('' if run else '（ベンチにかけずに決めた）')]
+    if decision != 'accepted' and (dropped := drop_dependents(root, branch, decision)):
+        lines.append(f'積んでいた投稿もキューから外した: {", ".join(dropped)}')
     return '\n'.join(lines)
 
 
@@ -575,8 +592,8 @@ def withdraw(root, branch):
     data.update(status='withdrawn', withdrawn_at=now())
     save(root, data)
     progress(root, 'withdrawn', branch)
-    returned = send_back_dependents(root, branch, 'withdrawn')
-    return f'{branch}の投稿を取り下げた。' + (f'積んでいた投稿も返した: {", ".join(returned)}' if returned else '')
+    dropped = drop_dependents(root, branch, 'withdrawn')
+    return f'{branch}の投稿を取り下げた。' + (f'積んでいた投稿もキューから外した: {", ".join(dropped)}' if dropped else '')
 
 
 def worktree_branches(root):
@@ -631,13 +648,13 @@ def sync(root, branches=None):
         branch = data['branch']
         tip = git('rev-parse', '--verify', '-q', f'refs/heads/{branch}', cwd=root).stdout.strip()
         if tip != data['commit']:
-            lines.append(f'- {branch}: 投稿の後にbranchが動いた（{tip[:8] or "消えた"}）。投稿者に確かめる。')
+            lines.append(f'- {branch}: 投稿の後にbranchが動いた（{tip[:8] or "消えた"}）。投稿の`commit`と見比べて扱いを決める。')
             continue
         if is_ancestor(root, base, data['commit']):
             lines.append(f'- {branch}: 最新')
             continue
         if held_by.get(branch) and Path(held_by[branch]).resolve() != work.resolve():
-            lines.append(f'- {branch}: {held_by[branch]}でcheckoutされている。投稿者が別のbranchへ移るまで同期できない。')
+            lines.append(f'- {branch}: {held_by[branch]}でcheckoutされている（そのworktreeを変えないので、外れるまで同期しない）。')
             continue
         switched = git('switch', '--quiet', branch, cwd=work)
         if switched.returncode != 0:
@@ -654,7 +671,8 @@ def sync(root, branches=None):
             data.update(status='needs-sync', conflicts=unmerged, checked_at=now())
             save(root, data)
             lines.append(f'- {branch}: 衝突（{", ".join(unmerged)}）。{work}で解消して`git add`し、もう一度'
-                         '`python3 scripts/proposal.py sync`。処理の意味がぶつかるなら`git merge --abort`して投稿者へ返す。')
+                         '`python3 scripts/proposal.py sync`。処理の意味がぶつかるときも両方の意図を残して解く。'
+                         '解けなければ`git merge --abort`して棄却する。')
             return '\n'.join(lines)
         lines.append(record_sync(root, branch, work, base))
         git('switch', '--quiet', '--detach', cwd=work)
@@ -722,7 +740,7 @@ def describe(data):
         decision = data['decision']
         lines.append(f'  mainの判断: {decision.get("decision")}  run {decision.get("run") or "-"}  {decision.get("note") or ""}')
     elif data.get('status') in ('merged', 'measuring'):
-        lines.append('  mainへ取り込み済み。採否はまだ返っていない。')
+        lines.append('  mainへ取り込み済み。採否はまだ出ていない。')
     for entry in reversed(data.get('history') or []):
         decision = entry.get('decision') or {}
         state = (f'{decision.get("decision")}  run {decision.get("run") or "-"}  {decision.get("note") or ""}'
@@ -826,9 +844,9 @@ def main():
         elif args.action == 'hypothesis':
             print(run_hypothesis(root))
         elif args.action == 'withdraw':
-            print(withdraw(root, args.branch or current_branch()))
+            print(withdraw(root, args.branch or own_branch(root)))
         elif args.action == 'show':
-            branch = args.branch or current_branch()
+            branch = args.branch or own_branch(root)
             data = load(root, branch)
             if not data:
                 raise Refused(f'{branch}の投稿は無い。')
