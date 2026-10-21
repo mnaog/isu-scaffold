@@ -9,7 +9,7 @@
 - 競技時間内に、最終的なスコアを最大にする。時間が最大の制約である。
 - 言語はRustを採用する。
 - 公式のレギュレーション・当日マニュアル・整合性条件・失格条件を常に守る。当日マニュアルは事前の資料より優先する。
-- 改善はmainとimproveの2つのセッションで進める。mainのセッション（このrepoで起動したClaude Code）は、merge、次に測るものの判断、deploy、ベンチ、分析、採否を受け持ち、ベンチを止めずに回す。improveのセッション（worktree `improve`で`/improve`）は、mainの分析が示す最大の制約を調べて改善を実装・ローカル検証し、投稿でmainへ渡し続ける。どちらも人間の確認を待たない。mainは改善を実装しない（improveが動いていない間も同じで、人間に起動を頼む）。測るものが無い間、mainは最新の採用構成を測り直して振れ幅を調べておく。
+- 改善はmainとimproveの2つのセッションで進める。mainのセッション（このrepoで起動したClaude Code）は、merge、次に測るものの判断、deploy、ベンチ、分析、採否を受け持ち、ベンチを止めずに回す。improveのセッション（worktree `improve`で`/improve`）は、mainの分析が示す最大の制約を調べて改善を実装・ローカル検証し、投稿でmainへ渡し続ける。どちらも人間の確認を待たない。mainは改善を実装しない（improveが動いていない間も同じで、人間に起動を頼む）。測るものが無い間、mainは最新の採用構成を測り直して振れ幅を調べておき、それも済んだらAPIごとの小さな待ち（`ISUCON_WAITS`、`scripts/waits.py`）を1つずつ変えて得点が上がる箇所を探す。この待ちの表だけは、mainが値を変えてよい。
 - mainは、このrepoのrootで起動したClaude Codeが最初に`/main`で宣言する。isuscopeは各ベンチをこのrepoの`docs/agent-history/`にある会話へ結び付けるので、別のdirectoryで起動したセッションでは`make kickoff`が止まる。目標は人間が`/main`の後に`/goal`で渡す。
 - 宣言は`.local/main-session.json`に残る。宣言がある間は、deploy・rollback・import・kickoff、ベンチ、isuscopeの記録、laneとscoutの起動・停止、`.local/operation.lock`を、ほかのセッションから`scripts/tool-guard.py`が止める。別のセッションで`/main`を打ち直すとmainが移る。
 

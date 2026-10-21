@@ -6,6 +6,8 @@
 - measurement: the tracked measurement settings (.isuscope/, config/isuscope-policy.json,
   config/benchmark.env) and the generated .isuscope/config.toml
 - build: whether the servers run the distributed build or a deploy of ours
+- waits: the per-API waits (ISUCON_WAITS, scripts/waits.py) as committed, when there are any, so
+  each run records the table it ran with and a change shows as `changed identity.waits`
 
 The deployed commit itself is left out: a docs-only commit followed by a deploy that sends
 nothing must still count as the same configuration.
@@ -19,9 +21,28 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
+import shlex
 import subprocess
 
 ROOT = Path(os.environ.get('REPO_DIR') or Path(__file__).resolve().parent.parent)
+
+
+def committed_waits():
+    """The ISUCON_WAITS line as committed under config/, normalized to one line."""
+    found = subprocess.run(['git', 'grep', '-h', '-e', '^ISUCON_WAITS=', '-e', '^export ISUCON_WAITS=', 'HEAD', '--', 'config'],
+                           cwd=ROOT, capture_output=True, text=True).stdout
+    tables = []
+    for line in found.splitlines():
+        value = re.sub(r'^(HEAD:)?\s*(export\s+)?ISUCON_WAITS=', '', line)
+        try:
+            value = ' '.join(shlex.split(value))
+        except ValueError:
+            value = value.strip()
+        value = ';'.join(' '.join(rule.split()) for rule in value.split(';') if rule.strip())
+        if value and value not in tables:
+            tables.append(value)
+    return ' | '.join(tables)
 
 
 def main():
@@ -46,11 +67,15 @@ def main():
     if generated.exists():
         measurement.update(generated.read_bytes())
     deploy_record = ROOT / '.local/current-deploy-commit'
-    print(json.dumps({
+    identity = {
         'deployed_files': tree(paths - measurement_paths).hexdigest()[:16],
         'measurement': measurement.hexdigest()[:16],
         'build': 'deployed' if deploy_record.exists() else 'distributed',
-    }, sort_keys=True))
+    }
+    waits = committed_waits()
+    if waits:
+        identity['waits'] = waits
+    print(json.dumps(identity, sort_keys=True, ensure_ascii=False))
 
 
 if __name__ == '__main__':

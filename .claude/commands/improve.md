@@ -61,7 +61,7 @@ scoutと人間の報告は、rootの`.local/scout/reports.md`にある（上の4
 
 ### 1つの変更の流れ
 
-1. **選ぶ**: mainの最新の分析が示す最大の制約から選ぶ（AGENTS.mdの「判断の原則」）。分析とrunが合わない、予想と違う動きがあるときは、その理由を先に調べる。ロジックを変える案（順位付け、待ちの条件、上限など）は、実装の前に状態ログで前提を確かめ、確かめた数字を仮説に書く。キューにある投稿と同じ箇所・同じ制約を狙わない。
+1. **選ぶ**: mainの最新の分析が示す最大の制約から選ぶ（AGENTS.mdの「判断の原則」）。分析とrunが合わない、予想と違う動きがあるときは、その理由を先に調べる。ロジックを変える案（順位付け、待ちの条件、上限など）は、実装の前に状態ログで前提を確かめ、確かめた数字を仮説に書く。キューにある投稿と同じ箇所・同じ制約を狙わない。APIの前後に一律に待つだけの変更は、mainが`ISUCON_WAITS`（`scripts/waits.py`）で試すので作らない（`waits.py history`に結果がある）。応答の中身や状態で待ちを変えるものは作ってよい。
 2. **branchを切る**: `git switch -c improve-<短い名前> <mainのbranch>`（mainのbranchは上の`main-session.py show`の`branch`）。取り込み前の自分の投稿の上に積むなら、そのbranchから切る（`submit`が積んだことを記録し、土台が返されると一緒に返る）。切ったら`python3 scripts/progress.py emit improve working "<branch>: <狙う制約>"`を出す。
 3. **作る**: 変更の目的ごとにcommitを分ける。メモリ化やキャッシュは、`docs/cache-design.md`に正本・反映・無効化・再構築を書いてから入れる。
 4. **確かめる**: `make build`、テスト、`make local-up / local-check`、状態の変わり方が変わる変更は`make local-flow`と状態ログの比較（`docs/local-development.md`）。サーバーの様子は`make status`と`scripts/ssh-node.sh <node> '<読むだけのcommand>'`で見てよいが、サーバー上を変えない。

@@ -6,7 +6,7 @@
 
 また、アプリケーションコードと設定ファイルをすべてローカルリポジトリで管理し、コマンドからサーバーへデプロイできる状態を作る。
 
-SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を6本起動する。`full-memory`が全メモリ化（序盤の点の大半を決める読み取りのDB外し）を、`indexes`が索引を、`n-plus-one`がN+1を、`obvious-fixes`が索引とN+1以外の自明な修正を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書く。kickoffは、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。開始と同時に、worktree `portal`で起動したもう1つのセッションが`/portal`で、ポータルと当日マニュアルの保存、サーバーの起動に要る情報、ベンチ接続を作る。mainのセッションはその間にサーバーの起動、kickoff build設定、draftの判断を進め、portalの公式資料をmergeしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
+SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を7本起動する。`full-memory`が全メモリ化（序盤の点の大半を決める読み取りのDB外し）を、`indexes`が索引を、`n-plus-one`がN+1を、`obvious-fixes`が索引とN+1以外の自明な修正を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書き、`waits`がAPIごとの待ちの口（表`ISUCON_WAITS`は空のまま。値はmainが空き時間に変える）を入れる。kickoffは、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。開始と同時に、worktree `portal`で起動したもう1つのセッションが`/portal`で、ポータルと当日マニュアルの保存、サーバーの起動に要る情報、ベンチ接続を作る。mainのセッションはその間にサーバーの起動、kickoff build設定、draftの判断を進め、portalの公式資料をmergeしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
 
 merge・次に測るものの判断・deploy・ベンチ・分析・採否の責任はmainのセッションが持ち、改善の調査・実装・ローカル検証はimproveのセッション（`/improve`）が持つ（mainは改善を実装しない。improveが動いていなければ人間に起動を頼み、その間は最新の採用構成の振れ幅を測る）。laneの成果は根拠を照合してからmergeする。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
 
@@ -29,7 +29,8 @@ make kickoff（backgroundで実行し、.local/progress.logを追う）
     isuscopeがaccess logからinitializeと負荷走行を分けるので、初回runから要約にinitializeが混ざらない
   → 並行してlane full-memory（全メモリ化。書き込みはDBのまま）、indexes（索引を1件1commit）、
     n-plus-one（N+1を1handler1commit）、obvious-fixes（索引とN+1以外の自明な修正を1件1commit）、
-    local-env（config/local/compose.yaml）、state-log（状態ログの書き手と呼び出し、docs/state-log.md）を起動。
+    local-env（config/local/compose.yaml）、state-log（状態ログの書き手と呼び出し、docs/state-log.md）、
+    waits（APIごとの待ちの口。表は空）を起動。
     full-memoryは、state-log・local-envが終わったら自分で取り込んで確かめる
   → 全nodeのSSH確立、Ansible導入、初期収束、初期構成の調査
   → node role、同期対象、Ansible変数、log pathの候補を.local/draftへ生成
@@ -82,7 +83,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 
 ### laneの起動と取り込み
 
-- `make kickoff`が起動するlaneは`config/lanes.json`の`kickoff`（既定は`full-memory`、`indexes`、`n-plus-one`、`obvious-fixes`、`local-env`、`state-log`）。`KICKOFF_LANES=`で止め、`KICKOFF_LANES="indexes"`のように選べる。
+- `make kickoff`が起動するlaneは`config/lanes.json`の`kickoff`（既定は`full-memory`、`indexes`、`n-plus-one`、`obvious-fixes`、`local-env`、`state-log`、`waits`）。`KICKOFF_LANES=`で止め、`KICKOFF_LANES="indexes"`のように選べる。
 - `scenario`は公式資料が要るので、mainが`docs/official/`をcommitした直後に`python3 scripts/lane.py start scenario`で起動する。
 - `full-memory`（全メモリ化）は、先行回収の直後に他のkickoffのlaneと同時に始まる。序盤の点の大半はDBの読み取りで決まり、全メモリ化がそれを解くので、他のlaneの終わりを待たせない（ninthでは`state-log`・`local-env`・`n-plus-one`を待って15分遅れて始まり、測れるまで先行回収から55分かかった）。`config/lanes.json`の`joins`にある`state-log`・`local-env`は、laneが書き換えを済ませた後に、終わったかを`lane.py status`で見て自分で取り込み、書き換える前と後の状態ログを比べる。`n-plus-one`などの読み取りの修正は、mainが取り込んだ分を「最新のmainを取り込む」で受け取る。
 - 全メモリ化の間も、improveは全メモリ化が書き換えない所（設定・node分割・nginx・MySQLの設定など）の改善を止めない。laneは終わる前に最新のmainを1度だけ自分のbranchへmergeして確かめ直し、取り込んだmainのhashを最後の回答に書く。mainは自分では移さない。`git log <そのhash>..`のうち`webapp/`を変えたcommitを`git revert`で戻してから`git merge lane/full-memory`で取り込み、戻した変更を全メモリ化の形（SELECTはstoreから読む、書き込みは変更を確定する関数を通す、cacheやメモリ化はstoreへまとめる。`docs/cache-design.md`に正本と関数の場所がある）で作り直すよう、`main analyzed`の行でimproveへ頼む。
@@ -90,6 +91,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 - `scenario`は文書だけ、`local-env`はローカル環境の構成と文書だけなので、結果を読んで終わり次第mainへmergeしてよい。
 - `state-log`は書き手のmoduleと呼び出しを2つのcommitにする。baselineの後の最初のdeployで、他のlaneより先に`git merge --no-ff lane/state-log`で取り込む（全メモリ化も同じbranchをmergeしているので、cherry-pickにしない）。取り込む前に、`docs/state-log.md`と最後の回答で、lockの中に残した呼び出しや`entered`にした箇所を確かめる。
 - `n-plus-one`は1handler1commitで積む。baselineの後の最初のdeployで、`state-log`の次に`git merge --no-ff lane/n-plus-one`で丸ごと取り込む（buildが通らない・応答を変えるcommitがあれば、mergeの後に`git revert`する）。全メモリ化が入ると読み取りはstoreへ移るので、全メモリ化が先に終わっていれば取り込まなくてよい。
+- `waits`はmoduleとmiddlewareの1commit。表が空なら挙動を変えないので、baselineの後の最初のdeployで`git merge --no-ff lane/waits`で取り込む。表に書けるrouteの一覧はlaneの最後の回答にある。
 - `indexes`と`obvious-fixes`は1件1commitで積み、commitのたびに`.local/progress.log`へ`lane:<名前> commit <hash>`が出る。初回baselineの分析の後、観測と照合して効くcommitから`git cherry-pick`で取り込み（laneの完了は待たない）、deployして`isuscope run`で測る。laneの最後の回答にある「実装しなかった候補」も次の変更を選ぶ材料にする。
 
 ## ローカル実行環境を構築する

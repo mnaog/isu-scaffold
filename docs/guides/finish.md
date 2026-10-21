@@ -25,6 +25,7 @@
 ## 2. 最終構成を選んで固定する
 
 - isuscopeの履歴から、採用するrunとcommitを決める。未採用の実験や一時的な設定を取り除き、全サーバーがそのcommitの内容で動いていることを確かめる。
+- APIごとの待ちの表（`ISUCON_WAITS`）は最終構成の一部なので外さない。`python3 scripts/waits.py show`が採用した表と一致し、最後のrunの`identity.waits`と同じであることを確かめる。表はアプリのEnvironmentFileにあり、再起動の後も同じ表で動く（`make final-reboot`の後の3回目のrunで確かめられる）。
 - `make scout-stop`で定期探索を止め、`make scout-status`で止まったことを確かめる。最新の報告が`docs/scout-reports.md`へ残るので、commitに含める。
 - 計測を外す。NginxのLTSV access logと、有効にしていればMySQL slow logは、`ansible/playbooks/group_vars/all.yml`の`observability_nginx_ltsv`と`observability_mysql_slow_log`をfalseにし、bootstrapを該当tagだけ再実行して撤去する（手順は`docs/reference/automation.md`）。profiler、デバッグログ、調査用processも止める。障害調査に最低限要るログは残す。計測の有無を比べるためのベンチは回さない。
 - `make final-check`を通す（再起動しない。数十秒）。FAILを全部直し、WARNは理由を確かめる。見る項目は次のとおり。

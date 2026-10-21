@@ -10,13 +10,14 @@ allowed-tools: Bash(python3 scripts/main-session.py claim:*)
 
 上の結果がエラーなら、理由をそのまま人間へ伝えて止まる（mainはrepoのrootで動かす）。成功していれば、このセッションがmainになった。
 
-mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。**mainは改善を実装しない。** アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`）、laneとportalの取り込みは実装に数えない。mainは次を受け持つ。
+mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。**mainは改善を実装しない。** アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`）、laneとportalの取り込み、APIごとの待ちの表（`ISUCON_WAITS`。`scripts/waits.py set`で変える）は実装に数えない。mainは次を受け持つ。
 
 - **merge**: improve・人間（worktree `human`）の投稿、laneのcommit、portalを取り込む。キューの追従と衝突の解消（両方の意図を残すだけ）、取り込んだ変更の戻し（`git revert`）まで。buildやdeployが通らない投稿は直さずに戻し、理由を付けて投稿者へ返す。
 - **次に測るものの判断**: 下の「キュー」。何をまとめて測るか、測らずに返すか、保留にするかをmainが決める。
 - **deploy・ベンチ**: mainだけが、deploy・rollback・import・kickoff、ベンチ（`isuscope run`・`survey-run`・`make first-bench`）、isuscopeの記録、laneとscoutの起動・停止、`.local/operation.lock`を使う。ほかのセッションからの同じ操作は`scripts/tool-guard.py`が止める。
 - **分析と採否**: runを分析し、最大の制約を特定して`isuscope analyze`に書く。improveはこの分析から次の変更を選ぶので、根拠（run ID、node別の観測値、状態ログの数字）と、次の最大の制約をはっきり書く。
 - **振れ幅**: 測るものが無い間は、最新の採用構成を測り直して、その構成での振れ幅を先に調べておく（下の「振れ幅を測る」）。投稿はこの幅と比べて1回のrunで決め、2度は回さない。
+- **waitの微調整**: 振れ幅が3回そろった後も測るものが無ければ、APIごとの小さな待ちを1つずつ変えて、得点や負荷が良くなる箇所を探す（下の「waitを微調整する」）。最新の構成ごとに効き方が変わり、ベンチの回数が要るので、いちばん後回しにする。
 
 improveが動いているかは、`.local/progress.log`の`improve started`（`/improve`が宣言すると出る）・`improve working`の行で分かる。improveが動いていない（人間が起動していない、止まっている）間も、mainは実装しない。人間に`/improve`の起動を頼み、その間は振れ幅を測る。
 
@@ -55,7 +56,7 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
    python3 scripts/progress.py emit main analyzed "<短縮ID> score <n>（<base>比 ±x%）。次の最大の制約: <node・処理・数字>"
    ```
 
-6. すぐ1へ戻る。待っている投稿が無ければ`python3 scripts/proposal.py pending`で確かめ、それでも無ければ、次の「振れ幅を測る」でベンチを使う。`proposal submitted`か`lane:<名前> commit`の行が出たら、振れ幅のrunが終わるのを待って（止めない）1へ戻る。sleepやpollingで待たない。`improve working`の行で、もうすぐ届く投稿が分かる。
+6. すぐ1へ戻る。待っている投稿が無ければ`python3 scripts/proposal.py pending`で確かめ、それでも無ければ、次の「振れ幅を測る」、振れ幅が3回そろっていれば「waitを微調整する」でベンチを使う。`proposal submitted`か`lane:<名前> commit`の行が出たら、そのrunが終わるのを待って（止めない）分析と採否を記録し、1へ戻る。sleepやpollingで待たない。`improve working`の行で、もうすぐ届く投稿が分かる。
 
 ### 振れ幅を測る
 
@@ -66,6 +67,23 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 - 回数: 同じ構成で3回（採用を決めたrunを含む）までは続けて測る。3回そろったら、次の投稿か構成の変化を待つ間だけ足す。
 - 読み方: `python3 scripts/spread.py`がHEADの構成の回数・平均・平均からのずれと、判定の目安を出す。その構成の回数が3回未満の間は、直近に3回測った構成の振れ幅を借りる。
 - 測り直しは、この振れ幅のためと終了前の確認（`docs/guides/finish.md`）だけにする。投稿・laneの変更は1回で決める。
+
+### waitを微調整する
+
+応答の中身を変えずに、APIごとに少しだけ待たせる。ベンチの利用者は応答を待ってから次の要求を出すので、点にならない要求（空振りのpolling、繰り返しの一覧取得）が減り、ベンチとサーバーの手が点になる処理へ回ることがある（過去の練習でも、回数の多いAPIに数十〜100ms足して得点が上がった）。効くかどうかは構成ごとに変わるので、投稿も振れ幅の測り直しも無いときにだけ、1回に1つずつ試し、結果をisuscopeに残して次の判断に使う。
+
+- **仕組み**: lane `waits`がアプリに口を入れる（`config/waits/waits.rs`。表が空なら何もしない）。表は環境変数`ISUCON_WAITS`で、アプリのunitが読むEnvironmentFileに置く。起動時に1度だけ読むので、deploy（buildなし、アプリの再起動）で変わり、OSの再起動・主催者の追試でも同じ表で動く。1つの規則は2000msまで。
+- **どこを試すか**: 最新のrunの`isuscope query latest --view http`で回数の多いrouteのうち、点に直結しないもの（polling、一覧、見積もり）から。`python3 scripts/waits.py history`で、前に試した値と結果を先に見る。同じ構成で試して効かなかった値は繰り返さない。
+- **値の進め方**: `after 10` → `30` → `100`のように増やし、振れ幅より上が続く間だけ進める。空の応答だけを待たせるなら`--max-body <空の一覧のバイト数>`を付ける。
+- **1回の手順**:
+  1. `python3 scripts/waits.py set GET /api/... --after 30`（routeはisuscopeのroute名をそのまま書ける）
+  2. commitして`make deploy`
+  3. `isuscope run --tag wait --tag "wait:GET /api/..." --hypothesis "wait: GET /api/... after 0→30ms。基準 <短縮ID>（平均、±x%）。期待: このrouteの回数が減り、<点になる処理>が増える"`をbackgroundで起動する
+- **採否**: `python3 scripts/spread.py --base <基準> --score <得点>`で、振れ幅より上なら採用して残す。内側か下なら`git revert`で前の値へ戻す（待ちは危険も持つので、内側では残さない）。
+  - 分析は`isuscope analyze RUN supported|rejected --change <waits.py setが出すwait-...のID> --decision accepted|rejected`で記録する。
+  - 本文には、基準の平均からの差、振れ幅の上・内側・下、そのrouteと点になるrouteの回数の変化（`isuscope query RUN --base BASE --view http --label route=...`）、`--view transitions`で変わった遷移を書く。後で`waits.py history`と`isuscope change list`で読み返すので、構成（基準の短縮ID）と値を必ず入れる。
+- **測り直す時機**: 投稿の採用で点が振れ幅を超えて動いたら、それまでに採用した待ちが今も効くとは限らない。次に空いたときに、採用済みの待ちを1つずつ`--off`にして測る（下がれば戻す）。
+- **終了前**: 表は最終構成の一部で、計測ではないので外さない。`docs/guides/finish.md`の手順で、最後のrunの`identity.waits`と`waits.py show`が採用した表と一致することを確かめる。
 
 ### kickoffの間
 

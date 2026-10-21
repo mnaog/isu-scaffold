@@ -48,7 +48,8 @@
     "n-plus-one",
     "obvious-fixes",
     "local-env",
-    "state-log"
+    "state-log",
+    "waits"
   ],
   "lanes": {
     "indexes": {
@@ -75,6 +76,11 @@
       "purpose": "状態を持つ対象の状態の変化をisuscopeの状態ログへ書く呼び出しを入れる（baselineまでdeployしない）",
       "prompt": "config/lanes/state-log.md",
       "timeout_minutes": 45
+    },
+    "waits": {
+      "purpose": "APIごとの待ちの口を入れる: config/waits/waits.rsを写し、すべてのrouteを通るmiddlewareを足す（表ISUCON_WAITSは空のまま。値はmainがscripts/waits.pyで変える）",
+      "prompt": "config/lanes/waits.md",
+      "timeout_minutes": 30
     },
     "full-memory": {
       "purpose": "全メモリ化: 状態をすべてメモリに置き、読み取りと判定をメモリで行い、書き込みはDBに残す書き換えを作り、最後に最新のmainを1度だけ取り込む（先行回収と同時に始まり、state-log・local-envが終わったら自分で取り込んで確かめる。その後にmainへ入った変更はmainが戻してimproveへ返す）",
