@@ -49,11 +49,14 @@ make final-check
 `make final-reboot`がすること:
 
 - 再起動の前に、DBのnodeで各表の行数を数えて`.local/final-snapshot.json`へ残す。
+- DBの検出や行数の取得ができなければFAILにして、再起動を始めない。取得失敗を空のDBとして扱わない。
 - 全台へ同時に`sudo systemctl reboot`を送り、boot IDが変わるまで待つ（`reboot_timeout_seconds`、既定600秒）。戻らないnodeはFAILにして、戻ったnodeは続けて確かめる。
 - 戻ったら、`make final-check`のnodeの項目、`envcheck_command`、`http_checks`（initializeを呼ばない）、各表の行数が減っていないことを確かめる。
 - `settle_seconds`（既定300秒）待って、unitをもう一度確かめる。起動完了を通知できずに15分後に止められたDB（ISUCON10予選）のように、遅れて落ちるものを捕まえるため。`--settle 0`で飛ばせる。
 
 行数は減っていないことしか確かめない。write-behindで書き込みを遅らせるアプリは、停止時に書き切ることまで確かめる（`docs/cache-design.md`）。主催者は再起動の後に長く置くこともある（ISUCON10〜12本選は10分以上、2回目の後は翌日）。
+
+nodeの診断は、SSHの失敗・時間切れ・空の出力・途中で終わった出力もFAILにする。`final-db-late`は、DB停止とアプリ再起動の成否を確かめ、試験前に動いていたDBのunitを最後に起動する。途中の例外・Ctrl-C・SIGTERMでも復旧を試み、起動できなければFAILとして残す。強制終了（SIGKILL）や端末停止では復旧処理を実行できないので、再接続後に`make status`で確認する。
 
 - 3回ともPASSし、スコアが揃うことを確かめる。大きく崩れた回があれば、原因を調べて直す。
 - 整合性エラー、失格条件、タイムアウト、CPU・メモリ・ディスク・ログ容量の余裕、ベンチ後のserviceの状態を確かめる。

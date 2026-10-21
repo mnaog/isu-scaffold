@@ -28,6 +28,9 @@ MYSQL_METRICS = ['mysql.threads_running', 'mysql.threads_connected',
                  'mysql.row_lock_time_ms_per_second', 'mysql.log_waits_per_second',
                  'mysql.buffer_pool_reads_per_second', 'mysql.buffer_pool_read_requests_per_second',
                  'mysql.data_fsyncs_per_second']
+# brief's host CPU: busy percent before total percent, and host-sampler before sysstat before others.
+CPU_METRICS = ['host.cpu_busy_percent', 'host.cpu_percent']
+CPU_COLLECTORS = ['host-sampler', 'sysstat']
 
 
 def restore_full_text(read, brief):
@@ -161,6 +164,8 @@ def measure(read, prefix, run_id, base, limit, brief):
         'graph_http': ['query', run_id, '--view', 'http', '--limit', '500'],
         'timeline': ['series', run_id, '--window', series_window, '--bucket', '5', '--limit', '1000'],
         'mysql': mysql_args,
+        'cpu': ['series', run_id, '--window', series_window, '--bucket', '1',
+                *(arg for metric in CPU_METRICS for arg in ('--metric', metric)), '--limit', '20000'],
     }
     # These reads are independent and never start collectors or a benchmark.
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -168,8 +173,38 @@ def measure(read, prefix, run_id, base, limit, brief):
         futures = {name: pool.submit(read, argv) for name, argv in queries.items()}
         futures['survey'] = pool.submit(survey, read)
         result = {name: future.result() for name, future in futures.items()}
+        result['cpu_p95'] = cpu_p95(result.pop('cpu'))
         result['sections'] = {name: {'command': prefix + sections[name], 'data': future.result()}
                               for name, future in section_futures.items()}
+    return result
+
+
+def percentile(values, fraction):
+    """Linear interpolation between the closest ranks, as numpy's default."""
+    ordered = sorted(values)
+    rank = fraction * (len(ordered) - 1)
+    low = int(rank)
+    high = min(low + 1, len(ordered) - 1)
+    return ordered[low] + (ordered[high] - ordered[low]) * (rank - low)
+
+
+def cpu_p95(series):
+    """Each node's p95 of 1-second CPU busy samples, from the source brief's average and peak use.
+    Only the p95 is kept, so a cached run does not hold every sample."""
+    result = {'window': series.get('window'), 'truncated': bool(series.get('truncated')), 'nodes': {}}
+    if series.get('error'):
+        return {**result, 'error': series['error']}
+    samples = {}
+    for row in table_rows(series):
+        if row.get('value') is None or row.get('metric') not in CPU_METRICS:
+            continue
+        collector = (row.get('labels') or {}).get('collector')
+        source = (CPU_METRICS.index(row['metric']),
+                  CPU_COLLECTORS.index(collector) if collector in CPU_COLLECTORS else len(CPU_COLLECTORS))
+        samples.setdefault(row.get('node'), {}).setdefault(source, []).append(row['value'])
+    for node, sources in samples.items():
+        values = sources[min(sources)]
+        result['nodes'][node] = {'p95_percent': round(percentile(values, 0.95), 2), 'samples': len(values)}
     return result
 
 
@@ -186,7 +221,8 @@ def survey(read):
 
 def complete(measurements):
     """Errors may be transient and a later survey-run may appear, so neither is kept."""
-    parts = [measurements['graph_http'], measurements['timeline'], measurements['mysql'], measurements['survey'],
+    parts = [measurements['graph_http'], measurements['timeline'], measurements['mysql'], measurements['cpu_p95'],
+             measurements['survey'],
              measurements['survey'].get('quality') or {},
              *(section['data'] for section in measurements['sections'].values())]
     return measurements['survey'].get('run') is not None and not any(part.get('error') for part in parts)

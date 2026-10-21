@@ -18,6 +18,7 @@ import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import sys
 import time
@@ -35,7 +36,7 @@ NODE_TIMEOUT = 30
 SYSCTL_DRIFT = r"""files=$(for dir in /usr/lib/sysctl.d /run/sysctl.d /etc/sysctl.d; do for file in "$dir"/*.conf; do [ -r "$file" ] && echo "${file##*/} $file"; done; done | awk '{path[$1] = $2} END {for (name in path) print name, path[name]}' | sort | cut -d' ' -f2)
 [ -r /etc/sysctl.conf ] && files="$files /etc/sysctl.conf"
 drift=$(awk '{line = $0; sub(/^[ \t]+/, "", line); if (line == "" || line ~ /^[#;]/) next; if (substr(line, 1, 1) == "-") line = substr(line, 2); at = index(line, "="); if (!at) next; key = substr(line, 1, at - 1); value = substr(line, at + 1); gsub(/[ \t]/, "", key); gsub(/^[ \t]+|[ \t]+$/, "", value); gsub(/[ \t]+/, " ", value); want[key] = value} END {for (key in want) print key "\t" want[key]}' $files 2>/dev/null | while IFS="$(printf '\t')" read -r key want; do
-  case "$key" in *'*'*) continue ;; esac
+  case "$key" in (*'*'*) continue ;; esac
   now=$(sysctl -n "$key" 2>/dev/null | tr -s ' \t' ' ')
   [ -n "$now" ] && [ "$now" != "$want" ] && printf ' %s=%s(file:%s)' "$key" "$now" "$want"
 done)
@@ -96,6 +97,8 @@ def ssh(node, script, timeout=NODE_TIMEOUT):
         return done.returncode, done.stdout, done.stderr
     except subprocess.TimeoutExpired:
         return None, '', f'no answer within {timeout}s'
+    except OSError as error:
+        return None, '', str(error)
 
 
 def on_nodes(nodes, work):
@@ -147,10 +150,14 @@ def node_script(config, units, http, envcheck=False, settled=False):
         '    *) ;;',
         '  esac',
         'done',
-        'failed=$(t systemctl --failed --no-legend --plain 2>/dev/null | awk \'{print $1}\' | paste -sd" " -)',
-        '[ -n "$failed" ] && say FAIL "failed units" "$failed" || say OK "failed units" none',
-        'stuck=$(t systemctl list-jobs --no-legend 2>/dev/null | awk \'{print $2 " " $3}\' | paste -sd", " -)',
-        '[ -n "$stuck" ] && say ' + ('FAIL' if settled else 'WARN') + ' "pending systemd jobs" "$stuck"',
+        'if failed=$(t systemctl --failed --no-legend --plain 2>/dev/null); then',
+        '  failed=$(printf "%s" "$failed" | awk \'{print $1}\' | paste -sd" " -)',
+        '  [ -n "$failed" ] && say FAIL "failed units" "$failed" || say OK "failed units" none',
+        'else say FAIL "failed units" "could not query systemd"; fi',
+        'if stuck=$(t systemctl list-jobs --no-legend 2>/dev/null); then',
+        '  stuck=$(printf "%s" "$stuck" | awk \'{print $2 " " $3}\' | paste -sd", " -)',
+        '  [ -n "$stuck" ] && say ' + ('FAIL' if settled else 'WARN') + ' "pending systemd jobs" "$stuck"',
+        'else say FAIL "pending systemd jobs" "could not query systemd"; fi',
         # 計測と調査用のprocessは外す（追試の再現スコアを下げる）。
         '[ -f /etc/nginx/conf.d/00-isuscope-log.conf ] && say WARN "nginx LTSV access log" "still on; set observability_nginx_ltsv false and rerun bootstrap with --tags observability_nginx_log"',
         'if command -v nginx >/dev/null 2>&1; then out=$(t sudo -n nginx -t 2>&1) && say OK "nginx -t" ok || say FAIL "nginx -t" "$(printf "%s" "$out" | tail -n 1)"; fi',
@@ -188,6 +195,7 @@ def node_script(config, units, http, envcheck=False, settled=False):
     if envcheck and config.get('envcheck_command'):
         lines.append(f'out=$(t {config["envcheck_command"]} 2>&1) && say OK envcheck ok '
                      '|| say FAIL envcheck "$(printf "%s" "$out" | tail -n 2 | tr "\\n" " " | cut -c1-200)"')
+    lines.extend(['printf "ISUSCOPE_FINAL_CHECK_COMPLETE\\n"', 'exit 0'])
     return '\n'.join(lines) + '\n'
 
 
@@ -208,13 +216,21 @@ def check_nodes(report, config, groups, nodes, envcheck=False, settled=False):
         return ssh(node, node_script(config, units, http_for(config, groups, node), envcheck, settled))
 
     for node, (code, out, err) in on_nodes(nodes, work).items():
-        if code is None or (code == 255 and not out):
-            report.add('FAIL', node, 'ssh', (err.strip().splitlines() or ['no answer'])[-1])
-            continue
+        if code != 0:
+            report.add('FAIL', node, 'node checks', command_error(code, out, err))
+        received = 0
         for line in out.splitlines():
             parts = line.split('\t', 2)
             if len(parts) == 3 and parts[0] in ('OK', 'WARN', 'FAIL', 'INFO'):
                 report.add(parts[0], node, parts[1], parts[2])
+                received += 1
+        if not received or 'ISUSCOPE_FINAL_CHECK_COMPLETE' not in out.splitlines():
+            report.add('FAIL', node, 'node checks', 'missing or incomplete diagnostic output')
+
+
+def command_error(code, out, err):
+    detail = (err.strip().splitlines() or out.strip().splitlines() or ['no output'])[-1]
+    return f'exit {code if code is not None else "timeout/unavailable"}: {detail[:240]}'
 
 
 def check_local(report, config, nodes):
@@ -307,26 +323,65 @@ def check_aws(report, config, nodes):
     report.add('INFO', 'aws', 'security groups', ' '.join(groups) + ' (compare their rules with the manual)')
 
 
-def db_nodes(nodes):
-    script = 'systemctl is-active -q mysql 2>/dev/null || systemctl is-active -q mariadb 2>/dev/null && echo db'
-    return [node for node, (code, out, _) in on_nodes(nodes, lambda node: ssh(node, script)).items() if 'db' in out]
+def db_nodes(report, nodes):
+    script = r"""for unit in mysql mariadb; do
+  state=$(systemctl is-active "$unit" 2>/dev/null)
+  code=$?
+  case "$state:$code" in
+    active:0) printf 'db\t%s\n' "$unit"; exit 0 ;;
+    inactive:3|inactive:4|unknown:3|unknown:4) ;;
+    *) echo "cannot identify database: $unit is $state (exit $code)" >&2; exit 1 ;;
+  esac
+done
+printf 'no-db\n'
+"""
+    databases = {}
+    for node, (code, out, err) in on_nodes(nodes, lambda node: ssh(node, script)).items():
+        if code == 0 and out.strip() in ('db\tmysql', 'db\tmariadb'):
+            databases[node] = out.strip().split('\t')[1]
+        elif code == 0 and out.strip() == 'no-db':
+            report.add('INFO', node, 'database', 'no active mysql or mariadb')
+        else:
+            report.add('FAIL', node, 'database discovery', command_error(code, out, err))
+    return databases
 
 
 COUNT_SCRIPT = r"""
 t() { if command -v timeout >/dev/null 2>&1; then timeout 60 "$@"; else "$@"; fi; }
-query=$(t sudo -n mysql -N -e "SET SESSION group_concat_max_len = 1048576; SELECT GROUP_CONCAT(CONCAT('SELECT ''', table_schema, '.', table_name, ''', COUNT(*) FROM \`', table_schema, '\`.\`', table_name, '\`') SEPARATOR ' UNION ALL ') FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')" 2>/dev/null)
-[ -n "$query" ] && [ "$query" != NULL ] && t sudo -n mysql -N -e "$query"
+query=$(t sudo -n mysql -N -e "SET SESSION group_concat_max_len = 1048576; SELECT GROUP_CONCAT(CONCAT('SELECT ''', table_schema, '.', table_name, ''', COUNT(*) FROM \`', table_schema, '\`.\`', table_name, '\`') SEPARATOR ' UNION ALL ') FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')") || exit $?
+if [ "$query" = NULL ]; then
+  printf 'ISUSCOPE_TABLE_COUNTS_EMPTY\n'
+else
+  [ -n "$query" ] || exit 1
+  t sudo -n mysql -N -e "$query" || exit $?
+fi
+printf 'ISUSCOPE_TABLE_COUNTS_COMPLETE\n'
 """
 
 
-def table_counts(nodes):
+def table_counts(report, nodes):
     counts = {}
-    for node, (code, out, _) in on_nodes(nodes, lambda node: ssh(node, COUNT_SCRIPT, timeout=120)).items():
-        counts[node] = {}
-        for line in out.splitlines():
+    for node, (code, out, err) in on_nodes(nodes, lambda node: ssh(node, COUNT_SCRIPT, timeout=120)).items():
+        counts[node] = None
+        lines = out.splitlines()
+        if code != 0 or not lines or lines[-1] != 'ISUSCOPE_TABLE_COUNTS_COMPLETE':
+            report.add('FAIL', node, 'table counts', command_error(code, out, err))
+            continue
+        if lines[:-1] == ['ISUSCOPE_TABLE_COUNTS_EMPTY']:
+            counts[node] = {}
+            report.add('INFO', node, 'table counts', 'no application tables')
+            continue
+        tables = {}
+        for line in lines[:-1]:
             parts = line.split('\t')
-            if len(parts) == 2 and parts[1].isdigit():
-                counts[node][parts[0]] = int(parts[1])
+            if len(parts) != 2 or not parts[0] or not parts[1].isdigit() or parts[0] in tables:
+                break
+            tables[parts[0]] = int(parts[1])
+        else:
+            if tables:
+                counts[node] = tables
+                continue
+        report.add('FAIL', node, 'table counts', 'missing or malformed row counts')
     return counts
 
 
@@ -354,12 +409,98 @@ def wait_for_boot(report, nodes, before, timeout):
 
 def compare_counts(report, before, after):
     for node, tables in before.items():
+        if tables is None or after.get(node) is None:
+            report.add('FAIL', node, 'data after reboot', 'row counts unavailable; cannot compare')
+            continue
+        missing = sorted(set(tables) - set(after[node]))
+        if missing:
+            report.add('FAIL', node, 'data after reboot', 'tables missing: ' + ', '.join(missing[:8]))
+            continue
         lost = [f'{table} {count}->{after.get(node, {}).get(table, 0)}' for table, count in tables.items()
                 if after.get(node, {}).get(table, 0) < count]
         if lost:
             report.add('FAIL', node, 'data after reboot', 'rows lost: ' + ', '.join(lost[:8]))
         elif tables:
             report.add('OK', node, 'data after reboot', f'{len(tables)} tables, no table lost rows')
+
+
+def node_commands(report, commands, name, timeout):
+    """Collect every node's result, including a failure on another node."""
+    def work(node):
+        try:
+            return ssh(node, commands[node], timeout=timeout)
+        except Exception as error:
+            return None, '', str(error)
+
+    results = on_nodes(list(commands), work)
+    for node, (code, out, err) in results.items():
+        report.add('OK' if code == 0 else 'FAIL', node, name,
+                   out.strip() if code == 0 else command_error(code, out, err))
+    return results
+
+
+def db_late(report, config, groups, nodes):
+    databases = db_nodes(report, nodes)
+    if report.failed():
+        return
+    if not databases:
+        report.add('FAIL', 'db-late', 'database', 'no active mysql or mariadb; test not performed')
+        return
+    protected = {unit if '.' in unit else unit + '.service' for unit in config.get('protected_units', [])}
+    units = [unit for unit in unit_names(config)
+             if unit.endswith('.service') and unit.removesuffix('.service') not in MIDDLEWARE
+             and unit not in protected]
+    if not units:
+        report.add('FAIL', 'db-late', 'app units', 'no application services to restart')
+        return
+    restart = ' '.join(shlex.quote(unit) for unit in units)
+    try:
+        stopped = node_commands(report, {
+            node: f'sudo -n systemctl stop {unit} || exit $?; '
+                  f'state=$(systemctl is-active {unit}); '
+                  '[ "$state" = inactive ] || { echo "database is $state" >&2; exit 1; }'
+            for node, unit in databases.items()
+        }, 'stop database', 120)
+        if any(code != 0 for code, _, _ in stopped.values()):
+            return
+        restarted = node_commands(report, {
+            node: f'for unit in {restart}; do '
+                  'if systemctl is-enabled -q "$unit" 2>/dev/null; then '
+                  'sudo -n systemctl restart "$unit" || exit $?; '
+                  'printf "restarted\\t%s\\n" "$unit"; fi; done; '
+                  'printf "ISUSCOPE_APP_RESTART_COMPLETE\\n"'
+            for node in nodes
+        }, 'restart app without database', 120)
+        tested = False
+        for node, (code, out, _) in restarted.items():
+            if code == 0 and 'ISUSCOPE_APP_RESTART_COMPLETE' not in out.splitlines():
+                report.add('FAIL', node, 'restart app without database', 'incomplete restart output')
+            tested |= any(line.startswith('restarted\t') for line in out.splitlines())
+        if not tested:
+            report.add('FAIL', 'db-late', 'app units', 'no enabled application service was restarted')
+        if report.failed():
+            return
+        time.sleep(15)
+    except (Exception, KeyboardInterrupt) as error:
+        report.add('FAIL', 'db-late', 'interrupted', str(error) or type(error).__name__)
+    finally:
+        # Even a failed/timed-out stop may have stopped the DB remotely. Restore every
+        # database that was active before the test, and keep failures visible.
+        node_commands(report, {
+            node: f'sudo -n systemctl start {unit} && systemctl is-active --quiet {unit}'
+            for node, unit in databases.items()
+        }, 'restore database', 180)
+    if report.failed():
+        return
+    deadline = time.monotonic() + 90
+    while True:
+        attempt = Report(quiet=True)
+        check_nodes(attempt, config, groups, nodes, envcheck=False)
+        if not attempt.failed() or time.monotonic() > deadline:
+            break
+        time.sleep(10)
+    for line in attempt.lines:
+        report.add(*line)
 
 
 def lock_or_exec():
@@ -383,6 +524,10 @@ def main():
         return 2
     nodes = groups.get('application', [])
     report = Report()
+    if not nodes:
+        report.add('FAIL', 'inventory', 'application nodes', 'no nodes to check')
+        report.summary()
+        return 1
     if args.command in ('reboot', 'db-late'):
         if not args.yes:
             print(f'{args.command} touches every node ({" ".join(nodes)}); rerun with --yes', file=sys.stderr)
@@ -393,8 +538,11 @@ def main():
         check_local(report, config, nodes)
         check_nodes(report, config, groups, nodes, envcheck=False)
     elif args.command == 'reboot':
-        databases = db_nodes(nodes)
-        before = table_counts(databases)
+        databases = db_nodes(report, nodes)
+        before = table_counts(report, list(databases))
+        if report.failed():
+            report.summary()
+            return 1
         SNAPSHOT.write_text(json.dumps({'taken_at': time.time(), 'counts': before}, indent=2))
         report.add('INFO', 'reboot', 'snapshot', f'row counts of {sum(len(t) for t in before.values())} tables on {" ".join(databases) or "no DB node"}')
         booted = boot_ids(nodes)
@@ -407,41 +555,21 @@ def main():
         if back:
             check_nodes(report, config, groups, back, envcheck=True)
             returned = [node for node in databases if node in back]
-            compare_counts(report, {node: before[node] for node in returned}, table_counts(returned))
+            compare_counts(report, {node: before[node] for node in returned}, table_counts(report, returned))
             settle = config['settle_seconds'] if args.settle is None else args.settle
             if settle > 0:
                 report.add('INFO', 'reboot', 'settle', f'checking again in {settle}s (units that fail late, like a DB stopped after its start timeout)')
                 time.sleep(settle)
                 check_nodes(report, config, groups, back, envcheck=False, settled=True)
     elif args.command == 'db-late':
-        # 主催者は再起動の順序を保証しない。DBが後から上がっても、アプリが自分で立ち直るか。
-        databases = db_nodes(nodes)
-        if not databases:
-            report.add('WARN', 'db-late', 'database', 'no node runs mysql or mariadb')
-        else:
-            units = [unit for unit in unit_names(config)
-                     if unit.removesuffix('.service') not in MIDDLEWARE and unit not in config.get('protected_units', [])]
-            on_nodes(databases, lambda node: ssh(
-                node, 'sudo -n systemctl stop mysql 2>/dev/null || sudo -n systemctl stop mariadb', timeout=120))
-            report.add('INFO', 'db-late', 'stopped', 'the database on ' + ' '.join(databases))
-            restart = ' '.join(shlex.quote(unit) for unit in units)
-            on_nodes(nodes, lambda node: ssh(
-                node, f'for unit in {restart}; do systemctl is-enabled -q "$unit" 2>/dev/null && '
-                      f'sudo -n systemctl restart "$unit"; done; true', timeout=120))
-            report.add('INFO', 'db-late', 'restarted', 'the app units while the database is down: ' + ' '.join(units))
-            time.sleep(15)
-            on_nodes(databases, lambda node: ssh(
-                node, 'sudo -n systemctl start mysql 2>/dev/null || sudo -n systemctl start mariadb', timeout=180))
-            report.add('INFO', 'db-late', 'started', 'the database again; the apps must recover without a restart')
-            deadline = time.monotonic() + 90
-            while True:
-                attempt = Report(quiet=True)
-                check_nodes(attempt, config, groups, nodes, envcheck=False)
-                if not attempt.failed() or time.monotonic() > deadline:
-                    break
-                time.sleep(10)
-            for line in attempt.lines:
-                report.add(*line)
+        def interrupted(signum, frame):
+            raise KeyboardInterrupt(f'interrupted by signal {signum}')
+
+        previous = signal.signal(signal.SIGTERM, interrupted)
+        try:
+            db_late(report, config, groups, nodes)
+        finally:
+            signal.signal(signal.SIGTERM, previous)
     report.summary()
     return 1 if report.failed() else 0
 

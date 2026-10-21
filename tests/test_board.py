@@ -251,7 +251,9 @@ class BoardTests(unittest.TestCase):
         self.assertIn(self.cfg['isuscope'] + ['query', 'resolved-candidate', '--view', 'http', '--limit', '500'], [c for c, _ in calls])
         self.assertIn(self.cfg['isuscope'] + ['query', 'initial-survey', '--metric-prefix', 'transition.', '--limit', '1000'], [c for c, _ in calls])
         series = [c for c, _ in calls if 'series' in c]
-        self.assertEqual(len(series), 2)
+        self.assertEqual(len(series), 3)
+        cpu = next(c for c in series if '--bucket' in c and c[c.index('--bucket') + 1] == '1')
+        self.assertIn('host.cpu_busy_percent', cpu)
         self.assertTrue(all(c[2] == 'resolved-candidate' and '--limit' in c and '--window' in c for c in series))
         self.assertTrue(all(c[1] in ('brief', 'query', 'series', 'sql') for c, _ in calls))
 
@@ -276,6 +278,18 @@ class BoardTests(unittest.TestCase):
         self.assertNotIn('error', data['sections']['http']['data'])
         self.assertEqual(data['timeline']['error'], 'load window unavailable')
         self.assertIsNone(data['survey']['run'])
+
+    def test_board_cpu_headline_is_the_p95_of_the_source_brief_prefers(self):
+        def row(node, value, collector, metric='host.cpu_busy_percent'):
+            return {'node': node, 'metric': metric, 'value': value, 'labels': {'collector': collector}}
+        rows = [row('app1', v, 'host-sampler') for v in range(1, 101)]
+        # sysstat and the total percent are fallbacks only, as in brief.
+        rows += [row('app1', 100, 'sysstat'), row('app1', 100, 'host-sampler', 'host.cpu_percent')]
+        rows += [row('app2', v, 'sysstat') for v in (10, 20)]
+        result = board_data.cpu_p95({'window': 'load', 'truncated': False, 'rows': rows})
+        self.assertEqual(result['nodes']['app1'], {'p95_percent': 95.05, 'samples': 100})
+        self.assertEqual(result['nodes']['app2'], {'p95_percent': 19.5, 'samples': 2})
+        self.assertEqual(board_data.cpu_p95({'error': 'busy'})['error'], 'busy')
 
     def test_board_selection_is_bounded_and_cannot_inject_cli_options(self):
         for params in ({}, {'run': ['--help']}, {'run': ['a', 'b']}, {'run': ['a'], 'limit': ['9999']},

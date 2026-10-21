@@ -15,6 +15,8 @@ other session, and scripts/bench-hook.py hands worktree proposals (scripts/propo
 alone. With no main declared nothing is refused, as before /main existed.
 """
 import argparse
+from datetime import datetime
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -122,9 +124,28 @@ def release(root, session, force=False):
     return 'mainの宣言を外した。'
 
 
+BENCH_OPERATIONS = {'isuscope run': 'run', 'isuscope survey-run': 'survey-run'}
+
+
+def benchmark(root):
+    """The benchmark holding the operation lock now, read the way the board does, or None."""
+    spec = importlib.util.spec_from_file_location('board_activity', SCRIPTS / 'board' / 'activity.py')
+    activity = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(activity)
+    held = activity.operation(Path(root)) or {}
+    kind = BENCH_OPERATIONS.get(held.get('operation'))
+    if not kind:
+        return None
+    try:
+        elapsed = max(0, int(time.time() - datetime.strptime(held['started_at'], '%Y-%m-%dT%H:%M:%S%z').timestamp()))
+    except (KeyError, TypeError, ValueError):
+        elapsed = None
+    return {'kind': kind, 'started_at': held.get('started_at'), 'elapsed_seconds': elapsed}
+
+
 def badge(root, session, cwd=None):
-    """What the Claude Code mod draws above the prompt: this session's role and what waits for it."""
-    import importlib.util
+    """What the Claude Code mod draws above the prompt: this session's role, what waits for it,
+    and the benchmark running now."""
     spec = importlib.util.spec_from_file_location('proposal', SCRIPTS / 'proposal.py')
     proposal = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(proposal)
@@ -143,6 +164,7 @@ def badge(root, session, cwd=None):
     result['waiting'] = sum(1 for item in items if item.get('status') in proposal.WAITING)
     own = next((item for item in items if item.get('branch') == branch and not result['is_root']), None)
     result['proposal'] = {key: own.get(key) for key in ('status', 'commit', 'decision')} if own else None
+    result['benchmark'] = benchmark(root)
     return result
 
 

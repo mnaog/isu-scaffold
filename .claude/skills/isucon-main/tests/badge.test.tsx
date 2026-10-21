@@ -27,6 +27,7 @@ function badge(over: Partial<IsuconMainBadge>): IsuconMainBadge {
     main: { agent: 'claude', session: 'S-main-0001', branch: 'main', claimed_at: '' },
     waiting: 0,
     proposal: null,
+    benchmark: null,
     ...over,
   }
 }
@@ -80,5 +81,31 @@ test('with no main declared the band says how to declare one', async ($, on) => 
   await $.turn.complete(TURN)
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: /\/main/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a running benchmark is shown first, to main and to the other sessions', async ($, on) => {
+  host(on, badge({ benchmark: { kind: 'run', started_at: '', elapsed_seconds: 135 } }))
+  await $.turn.complete(TURN)
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /ベンチ実行中 2分15秒/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /MAIN/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a worktree session also sees the benchmark run', async ($, on) => {
+  host(on, badge({ role: 'other', is_root: false, branch: 'idea/x',
+                   benchmark: { kind: 'survey-run', started_at: '', elapsed_seconds: 12 } }))
+  await $.turn.complete(TURN)
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /初回ベンチ実行中 12秒/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('no benchmark, no running badge', async ($, on) => {
+  host(on, badge({}))
+  await $.turn.complete(TURN)
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /実行中/ })).toBeUndefined()
   await ui.unmount()
 })

@@ -457,6 +457,12 @@ def decide(root, branch, decision, run=None, note=None, commit=None):
 
 def hold(root, branch, until, note=None):
     data = load(root, branch)
+    if data:
+        data = refresh(root, data)
+    if data and (data.get('status') in ('merged', 'measuring')
+                 or is_ancestor(root, data['commit'], main_session.main_branch(root))):
+        raise Refused(f'{branch}はmainへ取り込み済みなので保留にできない。'
+                      'コードを含んだまま測定対象から外さず、採否を決めて必要ならrevertする。')
     if not data or data.get('status') not in WAITING:
         raise Refused(f'{branch}はキューで待っていない（`python3 scripts/proposal.py list`）。')
     data.update(status='held', hold={'until': until, 'note': note or '', 'at': now(), 'from': data.get('status')})

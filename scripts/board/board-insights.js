@@ -51,12 +51,15 @@ function renderTimeline(parent,data={}){
  const specs=[['リクエスト数','件/区間','http_requests'],['応答時間 p95の最大','ms','http_p95_max_ms'],['HTTPエラー数','件/区間','http_errors'],['CPU 平均','%','cpu_busy_avg_percent'],['SQL 呼び出し数','回/区間','db_calls'],['SQL 合計時間','ms/区間','db_duration_total_ms'],['メモリ使用量 平均','MiB','memory_used_avg_mib'],['Disk util. 最大','%','disk_util_max_percent']];
  for(const [title,unit,key]of specs)lineChart(grid,title,unit,nodes.map(node=>({name:node,points:rows.filter(r=>r.node===node).map(r=>({x:r.from_seconds,y:r[key]}))})),data.range);
 }
-function renderHosts(parent,b){
+function renderHosts(parent,b,cpu={}){
  const panel=insightPanel(parent,'hosts','ホスト・サービスの負荷',(b.hosts?.window||'whole').toUpperCase()),grid=el('div',null,'insight-grid');panel.append(grid);
+ if(cpu.error)panel.append(el('p','CPU p95を取得できないため平均を表示しています: '+cpu.error,'insight-warning'));
+ else if(cpu.truncated)panel.append(el('p','CPUの1秒区間が上限で切られたため、p95は一部の区間から求めています。','insight-warning'));
  for(const h of b.hosts?.items||[]){
-  const card=el('div',null,'insight-card');grid.append(card);card.append(el('h3',h.node),el('div',percentText(h.cpu_busy_avg_percent),'insight-number'),el('p','CPU 平均'));
-  const bar=el('div',null,'insight-bar'),fill=el('i');fill.style.width=Math.min(100,Math.max(0,h.cpu_busy_avg_percent||0))+'%';bar.append(fill);card.append(bar);
-  dataList(card,[['CPU peak',percentText(h.cpu_busy_max_percent)],['最繁忙core',percentText(h.busiest_core_max_percent)],['I/O wait',percentText(h.iowait_avg_percent)],['steal',percentText(h.steal_avg_percent)],['メモリpeak',h.memory_used_max_mib==null?'—':num(h.memory_used_max_mib,1)+' MiB'],['Disk peak',percentText(h.disk_util_max_percent)],['Load peak',num(h.load1_max,2)],['PSI',h.pressure?`${h.pressure.resource} ${num(h.pressure.max_percent,1)}%`:'—']]);
+  const p95=cpu.nodes?.[h.node]?.p95_percent,headline=p95??h.cpu_busy_avg_percent;
+  const card=el('div',null,'insight-card');grid.append(card);card.append(el('h3',h.node),el('div',percentText(headline),'insight-number'),el('p',p95==null?'CPU 平均':'CPU p95（1秒区間）'));
+  const bar=el('div',null,'insight-bar'),fill=el('i');fill.style.width=Math.min(100,Math.max(0,headline||0))+'%';bar.append(fill);card.append(bar);
+  dataList(card,[...(p95==null?[]:[['CPU 平均',percentText(h.cpu_busy_avg_percent)]]),['CPU peak',percentText(h.cpu_busy_max_percent)],['最繁忙core',percentText(h.busiest_core_max_percent)],['I/O wait',percentText(h.iowait_avg_percent)],['steal',percentText(h.steal_avg_percent)],['メモリpeak',h.memory_used_max_mib==null?'—':num(h.memory_used_max_mib,1)+' MiB'],['Disk peak',percentText(h.disk_util_max_percent)],['Load peak',num(h.load1_max,2)],['PSI',h.pressure?`${h.pressure.resource} ${num(h.pressure.max_percent,1)}%`:'—']]);
   for(const service of h.top_services||[])card.append(el('p',`${service.service} · CPU peak ${num(service.cpu_max_cores,2)} cores`));
  }
  const quiet=b.quiet_hosts;
@@ -78,7 +81,7 @@ function renderMysql(parent,data={}){
 function renderExpandedMetrics(root,q,position){
  const b=q.brief||{};
  if(position==='before'){
-  renderScenarioGraph(root,q);renderHosts(root,b);renderTimeline(root,q.timeline);return;
+  renderScenarioGraph(root,q);renderHosts(root,b,q.cpu_p95);renderTimeline(root,q.timeline);return;
  }
  renderMysql(root,q.mysql);
  const upstream=insightPanel(root,'upstream','nginx upstream','試行単位 · 選択run');sectionNotice(upstream,b.upstreams);

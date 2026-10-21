@@ -6,6 +6,7 @@ import type { IsuconMainBadge } from '../types'
 // The session that ran /main gets a MAIN band above its prompt and a status line entry, so a
 // person with several Claude Code windows sees at a glance which one deploys and benchmarks.
 // Other sessions in the repository say they are not main and how their proposal stands.
+// While a benchmark holds the operation lock, every session's band says so first.
 // scripts/main-session.py badge holds the logic; this module only draws what it prints.
 
 const badge = atom({ plugin: 'isucon-main', key: 'badge' } as const, null)
@@ -25,6 +26,15 @@ const STATUS_WORDS: Record<string, string> = {
   withdrawn: '取り下げ',
 }
 
+function benchmarkText(value: IsuconMainBadge): string | null {
+  const bench = value.benchmark
+  if (!bench) return null
+  const name = bench.kind === 'survey-run' ? '初回ベンチ実行中' : 'ベンチ実行中'
+  const s = bench.elapsed_seconds
+  const since = s == null ? '' : s < 60 ? ` ${s}秒` : ` ${Math.floor(s / 60)}分${s % 60}秒`
+  return `▶ ${name}${since}`
+}
+
 async function refresh($: EngineInterface): Promise<void> {
   const session = await $.session.id()
   const top = await $.process.run(['git', 'rev-parse', '--show-toplevel'])
@@ -40,7 +50,8 @@ async function refresh($: EngineInterface): Promise<void> {
   const value: IsuconMainBadge | null =
     result.exitCode === 0 ? (JSON.parse(result.stdout) as IsuconMainBadge) : null
   await update($, badge, () => value)
-  $.ui.status(value?.role === 'main' ? '★ MAIN' : undefined)
+  const running = value?.benchmark ? ' · ▶ ベンチ実行中' : ''
+  $.ui.status(value?.role === 'main' ? `★ MAIN${running}` : undefined)
 }
 
 export const register: Register = on => {
@@ -68,10 +79,17 @@ export const register: Register = on => {
       return next(e)
     }
     const { Box, Text } = $.ui.resolve(e)
+    const bench = benchmarkText(value)
+    const benchBadge = bench ? (
+      <Text bold inverse color="warning">
+        {` ${bench} `}
+      </Text>
+    ) : null
 
     if (value.role === 'main') {
       return (
-        <Box borderStyle="bold" borderColor="success" paddingX={1} gap={2}>
+        <Box borderStyle="bold" borderColor={bench ? 'warning' : 'success'} paddingX={1} gap={2}>
+          {benchBadge}
           <Text bold inverse color="success">
             {' ★ MAIN '}
           </Text>
@@ -85,6 +103,7 @@ export const register: Register = on => {
     if (value.role === 'unclaimed') {
       return (
         <Box paddingX={1} gap={2}>
+          {benchBadge}
           <Text color="warning">mainは未宣言</Text>
           <Text dimColor>
             {value.is_root ? 'mainにするなら /main' : 'repoのrootのセッションで /main'}
@@ -97,6 +116,7 @@ export const register: Register = on => {
     const own = value.proposal
     return (
       <Box paddingX={1} gap={2}>
+        {benchBadge}
         <Text bold color="subtle">
           {value.is_root ? 'NOT MAIN' : 'WORKTREE'}
         </Text>

@@ -1,3 +1,4 @@
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,8 @@ class MainSessionTest(unittest.TestCase):
         (self.repo / 'scripts').mkdir(parents=True)
         for name in ('main-session.py', 'proposal.py', 'progress.py', 'runs.sh'):
             shutil.copy2(ROOT / 'scripts' / name, self.repo / 'scripts' / name)
+        (self.repo / 'scripts' / 'board').mkdir()
+        shutil.copy(ROOT / 'scripts' / 'board' / 'activity.py', self.repo / 'scripts' / 'board' / 'activity.py')
         (self.repo / 'app.txt').write_text('a\nb\nc\n')
         (self.repo / '.gitignore').write_text('.local/\n')
         self.env = {k: v for k, v in os.environ.items()
@@ -80,6 +83,23 @@ class MainSessionTest(unittest.TestCase):
                                 capture_output=True, env=env)
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)['hookSpecificOutput']['permissionDecisionReason'] if result.stdout.strip() else None
+
+    def test_the_badge_shows_a_benchmark_only_while_it_holds_the_operation_lock(self):
+        lock = self.repo / '.local' / 'operation.lock'
+        lock.mkdir(parents=True)
+        (lock / 'owner').write_text('pid=1\nstarted_at=2026-10-16T08:00:00+0900\noperation=isuscope run\n')
+        badge = json.loads(self.script('main-session.py', 'badge', '--session', 'S').stdout)
+        self.assertIsNone(badge['benchmark'])
+        with (lock / 'lock').open('wb') as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            badge = json.loads(self.script('main-session.py', 'badge', '--session', 'S', cwd=self.worktree).stdout)
+        self.assertEqual((badge['benchmark']['kind'], badge['benchmark']['started_at']), ('run', '2026-10-16T08:00:00+0900'))
+        self.assertGreater(badge['benchmark']['elapsed_seconds'], 0)
+        (lock / 'owner').write_text('pid=1\nstarted_at=2026-10-16T08:00:00+0900\noperation=deploy.sh\n')
+        with (lock / 'lock').open('wb') as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            badge = json.loads(self.script('main-session.py', 'badge', '--session', 'S').stdout)
+        self.assertIsNone(badge['benchmark'])
 
     def test_main_is_claimed_in_the_root_and_taken_over_by_claiming_again(self):
         refused = self.script('main-session.py', 'claim', cwd=self.worktree, session='S-worker', check=False)
