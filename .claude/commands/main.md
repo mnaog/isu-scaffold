@@ -15,7 +15,7 @@ mainは、ベンチを止めずに回し、その結果を正しく読む。改�
 - **merge**: improve・人間（worktree `human`）の投稿、laneのcommit、portalを取り込む。キューの追従と衝突の解消（両方の意図を残す）、取り込んだ変更の戻し（`git revert`）まで。投稿は投稿者へ戻さない。buildやdeployが通らない、衝突する投稿は、直せるならmainが直し、直せないなら棄却する。
 - **次に測るものの判断**: 下の「キュー」。何をまとめて測るか、測らずに棄却するか、保留にするかをmainが決める。
 - **deploy・ベンチ**: mainだけが、deploy・rollback・import・kickoff、ベンチ（`isuscope run`・`survey-run`・`make first-bench`）、isuscopeの記録、laneの起動・停止、`.local/operation.lock`を使う。ほかのセッションからの同じ操作は`scripts/tool-guard.py`が止める。
-- **分析と採否**: runを分析し、最大の制約を特定して`isuscope analyze`に書く。improveはこの分析から次の変更を選ぶので、根拠（run ID、node別の観測値、状態ログの数字）と、次の最大の制約をはっきり書く。
+- **分析と採否**: runを分析し、最大の制約を特定して`isuscope analyze`に書く。improveはこの分析だけを読んで次の変更を選ぶので、そこから次の最大の制約と、その根拠を自分で確かめられるように書く。
 - **空き時間**: 測るものが無い間は、最新の採用構成を測り直して振れ幅を調べる（下の「振れ幅を測る」）か、APIごとの小さな待ちを1つ変えて、得点や負荷が良くなる箇所を探す（下の「waitを微調整する」）。どちらに使うかは、そのときの状況で決める。投稿は1回のrunで決め、2度は回さない。
 
 improveが動いているかは、`.local/progress.log`の`improve started`（`/improve`が宣言すると出る）・`improve working`の行と、ボードの「作業中」で分かる。improveが動いていない（人間が起動していない、止まっている）間も、mainは実装しない。人間に`/improve`の起動を頼み、その間のベンチは空き時間と同じように使う。
@@ -38,7 +38,6 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 - **測らずに棄却する**: ベンチの時間は、点を上げるかを確かめる測定に使う。測るまでもなく棄却できる投稿は、`python3 scripts/proposal.py decide <branch> rejected --note "理由"`（`--run`なし）で棄却する。積んでいた投稿も一緒にキューから外れる。
 - **保留にする**: 今の最大の制約ではない場所を速くする変更は、今測ると効かないと出やすい。未mergeの投稿を`python3 scripts/proposal.py hold <branch> --until "<この制約が最大になったら>"`で寝かせ、分析で制約がそこへ移ったら`unhold`で戻して先に測る。取り込み済み・測定中の投稿はholdできない。採否を決め、必要ならコードをrevertする。
 - **まとめる**: 好きな組み合わせで1回のベンチにまとめてよい。投稿ごとの期待する観測値で、それぞれに採否を付けられるかを目安にする。整合性や永続化の時機を変える投稿や、同じ制約を狙う投稿を一緒にすると、落ちたときにどれが原因か分かりにくい。
-- **FAIL・整合性エラーの修正**: 土台が揺れていると、ほかの測定が信用できない。早めに入れる。
 
 ### ベンチの1周
 
@@ -79,7 +78,7 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
   3. `isuscope run --tag wait --tag "wait:GET /api/..." --hypothesis "wait: GET /api/... after <前>→<後>ms。基準 <短縮ID>。期待: ..."`をbackgroundで起動する
 - **採否**: 投稿と同じく1回で決める。不採用なら`git revert`で前の値へ戻す。
   - 分析は`isuscope analyze RUN supported|rejected --change <waits.py setが出すwait-...のID> --decision accepted|rejected`で記録する。
-  - 本文には、基準からの得点の差、そのrouteと点になるrouteの回数の変化（`isuscope query RUN --base BASE --view http --label route=...`）、`--view transitions`で変わった遷移を書く。後で`waits.py history`と`isuscope change list`で読み返すので、構成（基準の短縮ID）と値を必ず入れる。
+  - 本文は、後で`waits.py history`と`isuscope change list`から読み返したときに、何を変えて何が起きたかが分かり、次に試す値を決められるように書く。
 - **終了前**: 表は最終構成の一部で、計測ではないので外さない。`docs/guides/finish.md`の手順で、最後のrunの`identity.waits`と`waits.py show`が採用した表と一致することを確かめる。
 
 ### kickoffの間
