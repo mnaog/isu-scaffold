@@ -1,0 +1,33 @@
+{
+  "description": "Who acts on each line of .local/progress.log, and what to do. `python3 scripts/progress.py follow <role>` prints only the lines routed to that role, with its note; the file keeps every line as the record. A line is matched against `lines` (\"<source> <state>\", fnmatch patterns) top to bottom, and the first rule that matches decides; `to` maps each role that should act to its note, and an empty `to` routes the line to nobody. A line no rule matches goes to main. A role never gets the lines it wrote itself.",
+  "rules": [
+    {"lines": ["benchmark slow"], "to": {"main": "ベンチが遅い。アプリ・nginxのerror logとnodeの負荷を確かめ、止まっていれば`scripts/benchmark-stop.sh`で止める"}},
+    {"lines": ["* failed", "* blocked", "* draft-failed"], "to": {"main": "段階が失敗した。本文とログで原因を見て直す"}},
+    {"lines": ["kickoff code-ready"], "to": {
+      "main": "コードとschemaが入った。laneが動き出す",
+      "improve": "コードとschemaが入った。読み始める"}},
+    {"lines": ["first-bench baseline-ready"], "to": {
+      "main": "初回runができた。すぐ分析を書く",
+      "improve": "初回runができた。mainの分析を待つ間にrunを読む"}},
+    {"lines": ["kickoff *", "kickoff-build *", "first-bench *"], "to": {"main": "kickoffの段階が進んだ。`docs/guides/kickoff.md`の次の手へ"}},
+    {"lines": ["portal environment"], "to": {"main": "サーバーの起動に要る情報がそろった。サーバーを起動する"}},
+    {"lines": ["portal official"], "to": {"main": "公式資料が保存された。`git merge --no-ff portal`してlane `scenario`を起動する"}},
+    {"lines": ["portal bench"], "to": {"main": "ベンチ接続ができた。`git merge --no-ff portal`して`.isuscope/benchmark.sh --check`を通す"}},
+    {"lines": ["portal notice"], "to": {
+      "main": "当日の告知。内容を確かめ、作業に関わるなら反映する",
+      "improve": "当日の告知。作業に関わるか確かめる"}},
+    {"lines": ["lane:* commit", "lane:* complete"], "to": {
+      "main": "laneの結果が出た。`python3 scripts/lane.py status <名前>`で読み、根拠を照合して取り込む",
+      "improve": "laneの結果が出た。同じ変更を作らない"}},
+    {"lines": ["lane:* *"], "to": {}},
+    {"lines": ["proposal submitted"], "to": {"main": "新しい投稿。次に測るものを選び直す"}},
+    {"lines": ["proposal accepted", "proposal rejected", "proposal deferred"], "to": {"improve": "自分の投稿なら、理由とrunを読んで次に活かす（deferredには、積んでいた土台が外れて一緒に外れたものも入る）"}},
+    {"lines": ["proposal held"], "to": {"improve": "自分の投稿なら、保留の条件（どの制約になったら測るか）を読む"}},
+    {"lines": ["proposal *"], "to": {}},
+    {"lines": ["main analyzed"], "to": {"improve": "mainの分析。行とrunの分析を読み、次の変更を選び直す"}},
+    {"lines": ["main freeze"], "to": {"improve": "終了前の固定。新しい変更を止める"}},
+    {"lines": ["main *"], "to": {}},
+    {"lines": ["improve started"], "to": {"main": "improveが動き始めた"}},
+    {"lines": ["improve *", "worktree *"], "to": {}}
+  ]
+}

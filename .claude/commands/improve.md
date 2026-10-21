@@ -31,18 +31,7 @@ allowed-tools: Bash(git rev-parse:*), Bash(python3 scripts/progress.py path), Ba
 
 ### 知らせの受け取り
 
-上の4行目が、mainと共有する`.local/progress.log`。Monitorで`tail -n 0 -f <その場所>`を追い、次の行で動く。sleepやpollingで待たない。
-
-| 行 | すること |
-| --- | --- |
-| `kickoff code-ready` | コードとschemaが入った。読み始める（下の「kickoffの間」） |
-| `first-bench baseline-ready` | 初回runができた。mainの分析を待つ間にrunを読む |
-| `main analyzed` | mainが分析を記録した。行（run・スコア・分析の冒頭）とrunの分析を読み、次の変更を選び直す |
-| `proposal accepted / rejected / deferred` | 自分の投稿なら、理由とrunを読む。`deferred`には、積んでいた投稿が棄却・取り下げになって一緒に外れたものも入る |
-| `proposal held` | 自分の投稿が保留になった。条件（どの制約になったら測るか）を読む |
-| `lane:<名前> commit / complete` | laneの内容を確かめ、同じ変更を作らない |
-| `portal notice` | 当日の告知。作業に関わるか確かめる |
-| `main freeze` | 終了前。新しい変更を止める |
+Monitorで`python3 scripts/progress.py follow improve`を追う。`.local/progress.log`のうちimprove宛ての行だけが、何をするかの一言と一緒に出る（宛先と一言は`config/progress.json`）。sleepやpollingで待たない。
 
 ### runの読み方
 

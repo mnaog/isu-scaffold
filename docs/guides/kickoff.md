@@ -64,7 +64,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 
 ### 待ち時間を使う
 
-時間の大半は「`make kickoff`が終わるのを待つ間」と「deployから初回ベンチまで」に出る。mainのセッションは`make kickoff`の終了を待たず、`.local/progress.log`の行（`portal official / environment / bench / notice`、`code-ready`、`initialize-route`、`kickoff-build configured / needs_configuration / complete / failed`、`lane:<名前> complete / failed`、`draft-ready / draft-failed`、段階の`failed`）を見て次の操作へ移る。`make kickoff`は`run_in_background`で起動し、Monitorで`tail -n +1 -f .local/progress.log`を追う。
+時間の大半は「`make kickoff`が終わるのを待つ間」と「deployから初回ベンチまで」に出る。mainのセッションは`make kickoff`の終了を待たず、`.local/progress.log`の行を見て次の操作へ移る。`make kickoff`は`run_in_background`で起動し、Monitorで`python3 scripts/progress.py follow main --from-start`を追う（main宛ての行だけが、何をするかの一言と一緒に出る。宛先と一言は`config/progress.json`）。
 
 - 公式資料とベンチ接続は`make kickoff`の結果を使わないので、portalのセッションが開始と同時に始める。
 - `make first-bench`は段階の間でAIの手番を待たない。

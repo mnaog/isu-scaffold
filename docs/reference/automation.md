@@ -14,7 +14,7 @@ cp config/environment.example.env .local/environment.env
 kickoffは次の2コマンドで進めます。採用言語はRustに固定しており、`config/application.env`の`APPLICATION_LANGUAGE=rust`、`APPLICATION_PATH=webapp/rust`を使います。問題にRust実装がない場合だけ、このファイルを書き換えてから始めます。
 
 ```bash
-make kickoff   # バックグラウンドで実行し、tail -n +1 -f .local/progress.log を追う
+make kickoff   # バックグラウンドで実行し、python3 scripts/progress.py follow main --from-start を追う
 # 先行回収・commit後に、kickoff buildの調査とAI lane（indexes、n-plus-one、obvious-fixes、local-env、state-log）が並行で始まる
 # 実行中に: 公式資料を保存・commitして python3 scripts/lane.py start scenario
 # 実行中に: config/benchmark.env・benchmark-contract、benchmark.sh --check/--probe
@@ -95,7 +95,7 @@ python3 scripts/proposal.py withdraw [<branch>]
 - **追従**: 投稿したbranchは採否が出るまでmainのものです。`sync`は`.local/proposal-sync`のworktree（detached）で、待っている投稿と保留の各branchへmainのbranchを`--no-ff`でmergeし、投稿の`commit`をそのmergeへ進めます（mainが読んだ印も移すので、追従しただけでは渡し直しません）。衝突しないものから順に行い、衝突したら衝突をworktreeに残して止まります。解消して`git add`し、もう一度`sync`するとcommitして続けます。投稿の後にbranchが動いたもの、どこかのworktreeでcheckoutされているものは飛ばして理由を出します（`submit`は投稿者のworktreeをbranchから外すので、通常は起きません）。
 - **積み重ね**: 取り込み前の投稿の上に積んだ投稿は、`submit`が`depends_on`に記録します。土台が`rejected`・`deferred`・取り下げになると、積んだ投稿も`deferred`でキューから外れます。
 - **投稿者へ戻さない**: mainは、取り込めない投稿（衝突、取り込んで通らなくなったbuild・deploy）を直せるなら直し、直せないなら棄却します。`decide rejected`は`--run`なしでも使えるので、測るまでもなく棄却できる投稿はベンチにかけずに棄却します。
-- **知らせ**: `submit`・`sync`・`hold`・`unhold`・`requeue`・`decide`・`withdraw`とhookは`proposal <submitted|synced|held|unheld|requeued|measuring|accepted|rejected|deferred|withdrawn>`、`improve`は`improve started`、`freeze`は`main freeze`の行を`.local/progress.log`へ書きます。`main analyzed`は、mainの`isuscope analyze`の後にhook（`bench-hook.py --post`）が書きます。hookはまず、測定中の投稿ごとに、isuscopeのchange（IDはbranch名。`/`などは`-`に置き換える）に測定の開始より後に記録された採否を`decide`で写します（`provisional`はコードを残すので`accepted`）。測定中の投稿が残っていなければ、最後に記録された分析のrun・得点・冒頭を1回だけ書きます。測らずに棄却する、終了前に`deferred`にするなど、runの無い判断だけ`decide`を直接使います。`working`は`improve working`（improve）か`worktree working`（それ以外）を書きます。両者はMonitorでこのfileを追い、pollingしません。
+- **知らせ**: `submit`・`sync`・`hold`・`unhold`・`requeue`・`decide`・`withdraw`とhookは`proposal <submitted|synced|held|unheld|requeued|measuring|accepted|rejected|deferred|withdrawn>`、`improve`は`improve started`、`freeze`は`main freeze`の行を`.local/progress.log`へ書きます。`main analyzed`は、mainの`isuscope analyze`の後にhook（`bench-hook.py --post`）が書きます。hookはまず、測定中の投稿ごとに、isuscopeのchange（IDはbranch名。`/`などは`-`に置き換える）に測定の開始より後に記録された採否を`decide`で写します（`provisional`はコードを残すので`accepted`）。測定中の投稿が残っていなければ、最後に記録された分析のrun・得点・冒頭を1回だけ書きます。測らずに棄却する、終了前に`deferred`にするなど、runの無い判断だけ`decide`を直接使います。`working`は`improve working`（improve）か`worktree working`（それ以外）を書きます。fileには全部の行が残り、mainとimproveはMonitorで`python3 scripts/progress.py follow <main|improve>`を追います。`follow`は`config/progress.json`の宛先の表で、その役割宛ての行だけを何をするかの一言と一緒に出し、自分が書いた行は出しません（表に無い行はmainへ）。
 - **作業中**: worktree（improve・human・`make worktree`）は、作り始めたら`working "<狙う制約と変更>"`で`.local/proposal-state/working/<worktree名>.json`（名前は、repo名-の後ろ。`human`など）へ書き、ボードの「作業中」に出します。`submit`で消え、`working --done`でも消せます。worktreeが無くなったものは出しません。rootからは書けません（mainは実装しない）。
 - **仮説**: `hypothesis`は、次のベンチへ取り込んだ（`merged`の）投稿の仮説と期待する観測値を`<branch>: <仮説> 期待: <観測値>`で並べます。mainは`isuscope run --hypothesis "$(python3 scripts/proposal.py hypothesis)"`で使い、runの仮説をベンチ待ちに出ていた文と同じにします。
 - **runの読み取り**: isuscopeの設定（`.isuscope/config.toml`、discoverが書き、Gitに入れない）とrunはrootにしかありません。`scripts/runs.sh`はisuscopeの読み取り（`list`・`brief`・`query`・`sql`・`series`・`states`・`change list / show`）だけをrootで実行し、worktreeから同じrunを読めるようにします。

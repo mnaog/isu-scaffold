@@ -59,7 +59,7 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 - ベンチ（`isuscope run`・`survey-run`・`make first-bench`）は、Bashの`run_in_background`で起動する（foregroundはhookが止める）。`kickoff`・`bootstrap`・`bench-check`・laneからは起動しない。
 - PASSしたrunは、分析を記録するまで次のベンチを始められない。FAILと中断のrunに分析は要らない。仮説の判定（`supported`・`rejected`・`inconclusive`・`skipped`）と変更の採否（`accepted`・`provisional`・`rejected`・`deferred`）は別に記録する。`provisional`には`--revisit`が要る。runの読み方は`docs/reference/isuscope.md`。
 - 最後にdeployしたcommitとHEADがずれていると、ベンチは始まらない。commitして`make deploy`するか、HEADを戻す。
-- Monitorで`.local/progress.log`を追う。`benchmark slow`が出たら、アプリ・nginxのerror logとnodeの負荷を確かめ、止まっていれば`scripts/benchmark-stop.sh`で止める。
+- Monitorで`python3 scripts/progress.py follow main`を追う。`.local/progress.log`のうちmain宛ての行（投稿、laneの結果、段階の失敗、`benchmark slow`など）だけが、何をするかの一言と一緒に出る（宛先と一言は`config/progress.json`）。
 - nodeの異常（deploy後にアプリが立ち上がらない、nodeが応答しない、ベンチが止まる）は、まず`make status`で全nodeを見る（応答しないnode、メモリ・load・失敗したunit・待ち受けport・直近のOOMとerror・MySQLの実行中のSQLを1回で返す）。手でsshするときも`scripts/ssh-node.sh <node> '<command>'`を使い、待つloopには回数の上限を付ける。
 - 見取り図（`docs/benchmark-scenario.md`）は、ベンチの仕様について観測と食い違う記述だけを直す。runの結果や改善の効果は`isuscope analyze`へ書く。
 
