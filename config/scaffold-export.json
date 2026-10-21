@@ -160,6 +160,7 @@
     "scripts/waits.py",
     "tests/test_waits.py",
     "config/waits/waits.rs",
+    "config/claude/session.json",
     "config/lanes/waits.md",
     "tests/test_main_session.py",
     ".claude/commands/main.md",

@@ -62,6 +62,13 @@
 - 開始用repoで`make worktree BRANCH=human PURPOSE="人間の作業場所"`を作っておく。人間は競技中ずっとここを触り、mainの作業ツリーには触れない。
 - 作り始めたら`python3 scripts/proposal.py working "<狙う制約と変更>"`でボードの「作業中」に出す。コードの変更は投稿（`scripts/proposal.py submit`）でmainへ渡す（投稿すると作業中の表示は消える）。投稿は変更ごとのbranch（`git switch -c human-<名前> <mainのbranch>`）から行い、投稿するとworktreeはそのbranchから外れる（投稿したbranchは、採否が出るまでmainが追従させる）。
 
+## セッションの名前と、セッション同士の話
+
+- main・improve・portal・humanのセッションは、役割の名前を付けて起動する。各worktreeで`claude --name <main|improve|portal|human> --settings config/claude/session.json`。Claude Code v2.1.224以降が要る（`claude --version`）。起動したら`/list-agents`で、互いの名前が見えることを確かめる。
+- `config/claude/session.json`は、ほかのセッションからのメッセージをそのまま受け取る設定（`crossSessionInbound: accept`）。確認なしで動かすセッションでも、人間の承認を待たずに届く。project settings（`.claude/settings.json`）の`accept`は使われないので、`--settings`で渡す。
+- 名前があると、`@main`のように宛先を指してメッセージを送れる（Claudeが`SendMessage`で送り、相手は作業の合間に読む）。人間の意見や止めてほしいことは、humanのセッションで「`@main`に…と伝えて」と打つか、mainのセッションへ直接打つ。
+- 投稿・採否・kickoffとlaneの進み具合は、これまでどおりキュー（`scripts/proposal.py`）と`.local/progress.log`で知らせ合う。メッセージは、それに載らない話（質問、頼みごと、人間の意見）に使う。
+
 ## 開始後へ残すもの
 
 開始後に公開されるAMI・サーバー情報・正式手順を受け取り、サーバー起動、SSH確立、コード/schema先行回収、remoteのtoolchain・計測導入、実設定照合、完全import、deploy、初回baselineへ進む。実アプリ固有の依存解決・シナリオ読解・route設定・collectorの実データ検証も開始後に行う（[kickoff](kickoff.md)）。開始前に利用できない問題情報を使って先に済ませない。

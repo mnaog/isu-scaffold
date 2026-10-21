@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import time
+from variance import spread
 
 # The board reads isuscope from PATH, like every other script in the repository.
 ISUSCOPE = ['isuscope']
@@ -86,6 +87,12 @@ def metrics(repo, cfg, stop=None):
         return result
     fields = ('id', 'short_id', 'started_at', 'score', 'passed', 'state', 'commit_hash', 'dirty', 'hypothesis', 'analysis_status')
     result['score_history'] = [{key: run.get(key) for key in fields} for run in reversed(completed)]
+    try:
+        known = spread(repo)
+    except Exception:  # the history still draws without the swing
+        known = {}
+    for entry in result['score_history']:
+        entry.update(known.get(entry['id']) or {})
     run = completed[0]
     result['latest'] = run
     result['brief'] = read(prefix + ['brief', run['id'], '--limit', '5'])

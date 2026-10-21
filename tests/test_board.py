@@ -452,7 +452,7 @@ class BoardTests(unittest.TestCase):
             url=p.stdout.readline().strip()
             with urllib.request.urlopen(url+'/api/board') as r:
                 data=json.load(r)
-                self.assertEqual(set(data),{'metrics','activity','queue'})
+                self.assertEqual(set(data),{'metrics','activity','queue','waits'})
                 self.assertEqual((data['queue']['waiting'],data['queue']['items']),(0,[]))
             with urllib.request.urlopen(url+'/api/records') as r:
                 self.assertEqual(len(json.load(r)['records']), len(records.declared(SOURCE)))

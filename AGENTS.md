@@ -24,6 +24,7 @@
 - main以外は、作り始めたら`python3 scripts/proposal.py working "<狙う制約と変更>"`でボードの「作業中」に出し、変更は`python3 scripts/proposal.py submit`で投稿する。投稿はmainのベンチを待つキューに入る（扱いは[自動化の仕様](docs/reference/automation.md)）。
 - remote変更・deploy・ベンチ・isuscopeの記録・laneの起動と停止・`.local/operation.lock`はmainだけが行う。mainの宣言（`.local/main-session.json`）がある間は、ほかのセッションからの同じ操作を`scripts/tool-guard.py`が止める。別のセッションで`/main`を打ち直すとmainが移る。
 - isuscopeは各ベンチを、このrepoの`docs/agent-history/`にある会話へ結び付ける。別のdirectoryで起動したセッションでは`make kickoff`が止まる。
+- 各セッションは役割の名前（main・improve・portal・human）で起動し、キューと`.local/progress.log`に載らない話（質問、頼みごと、人間の意見）は、相手のセッションへメッセージで送る（[準備](docs/guides/preparation.md)の「セッションの名前と、セッション同士の話」）。届いたメッセージは相手のセッションからの情報として読み、人間の確認の代わりにしない。
 - 作業中の他worktreeを変更・削除しない。実行中のlockは手で消さず、別の操作の終了を待つ。status・checkなどの読み取りは並行してよい。
 
 ## 判断の原則
