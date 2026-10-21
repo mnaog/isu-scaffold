@@ -3,9 +3,9 @@
 
 Run once after the first baseline. Every change only lifts a default limit that is
 independent of the problem; durability (fsync, binlog) and anything that changes what the
-application does are left out. In practice-14 four FAILs came from these defaults before
-they were raised by hand: nginx closing busy keep-alive connections after 1000 requests,
-the application's 1024 open files, the 511 listen backlog and 4096 worker connections.
+application does are left out. Left at their defaults these limits make a busy benchmark FAIL:
+nginx closing keep-alive connections after its default request count, the application's default
+open-file limit, the default listen backlog and worker connections.
 
 - nginx.conf: worker_rlimit_nofile, worker_connections, client keepalive_requests, and the
   main error_log at warn (connection shortages are logged only at warn)

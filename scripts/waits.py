@@ -7,8 +7,8 @@
 
 The app reads ISUCON_WAITS once at start (config/waits/waits.rs, wired in by lane `waits`), so the
 table lives in the EnvironmentFile its unit reads: the same file deploy sends, the servers keep across
-a reboot, and the organizers' re-test starts the app with. This script edits that line in the repo; a
-commit and `make deploy` (no build) put it on the servers. scripts/benchmark-identity.py reports the
+a reboot, and the organizers' re-test starts the app with. This script edits that line in the repo; it
+commits that file alone, and `make deploy` (no build) puts it on the servers. scripts/benchmark-identity.py reports the
 table as `identity.waits`, so every run records the waits it ran with, and a change shows as
 `changed identity.waits`. Record each try as an isuscope change `wait-<method>-<path>-<phase>-<ms>`
 on a run tagged `wait` and `wait:<METHOD PATH>`; `history` reads both back.
@@ -200,8 +200,14 @@ def set_rule(root, args):
     phase = 'before' if args.before is not None else 'after'
     what = 'off' if args.off else f'{phase} {phase_ms(before, args, phase)}→{phase_ms(after, args, phase)}ms'
     base = latest_run(root_repo())
+    message = f'Wait {route}: {describe(changed) if changed and changed["ms"] else "off"}'
+    # Only the table's file: other changes in the worktree are not part of this try.
+    committed = subprocess.run(['git', 'commit', '-q', '-m', message, '--', str(path)], cwd=root,
+                               capture_output=True, text=True)
+    print(f'commit: {message}' if committed.returncode == 0
+          else f'commitできなかった（{(committed.stderr or committed.stdout).strip()[:200]}）。`git commit -m "{message}" -- {path.relative_to(root)}`')
     print('次:')
-    print(f'  git commit -am "Wait {route}: {describe(changed) if changed and changed["ms"] else "off"}" && make deploy')
+    print('  make deploy（buildは要らない）')
     print(f'  isuscope run --tag wait --tag "wait:{route}" --hypothesis "wait: {route} {what}。'
           f'基準 {base or "<短縮ID>"}。期待: "（run_in_background。期待だけを書き足す）')
     print(f'  isuscope analyze RUN ... --change {record[:100]} --decision accepted|rejected')

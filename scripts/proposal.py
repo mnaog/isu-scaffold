@@ -55,6 +55,7 @@ proposals' own hypothesis and expected observation, so the run reads as the queu
 """
 import argparse
 import contextlib
+import fcntl
 from datetime import datetime
 import importlib.util
 import io
@@ -709,7 +710,19 @@ def sync_dir(root):
 
 
 def sync(root, branches=None):
-    """Merge main's branch into each waiting proposal, in a worktree of main's own; stop at a conflict."""
+    """Merge main's branch into each waiting proposal, in a worktree of main's own; stop at a conflict.
+    One at a time: the hook starts it in the background when a benchmark starts, and main may run it too."""
+    lock_path = Path(root) / '.local/proposal-sync.lock'
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return '別のsyncが動いている（ベンチの起動時にhookが始めたもの）。結果は`.local/proposal-sync.log`。'
+        return sync_locked(root, branches)
+
+
+def sync_locked(root, branches=None):
     base = main_session.main_branch(root)
     work = sync_dir(root)
     if not (work / '.git').exists():
@@ -792,16 +805,17 @@ def record_sync(root, branch, work, base):
     return f'- {branch}: {base}を取り込んだ（{new[:8]}）'
 
 
-def wait(root, timeout=3600, interval=WAIT_INTERVAL_SECONDS):
-    """Return once the queue has room for improve's next proposal, or when main freezes."""
-    deadline = time.time() + timeout
+def wait(root, timeout=None, interval=WAIT_INTERVAL_SECONDS):
+    """Return once the queue has room for improve's next proposal, or when main freezes. It runs in the
+    background, so by default it waits as long as it takes."""
+    deadline = None if timeout is None else time.time() + timeout
     while True:
         if frozen(root):
             raise Refused('mainが終了前の固定（freeze）に入った。新しい変更は投稿しない。', FROZEN_EXIT)
         waiting = queue_count(root)
         if waiting <= IMPROVE_ROOM:
             return f'キューの待ちは{waiting}件。投稿できる。'
-        if time.time() >= deadline:
+        if deadline is not None and time.time() >= deadline:
             raise Refused(f'{timeout}秒待っても、キューの待ちが{waiting}件のまま。', 2)
         time.sleep(interval)
 
@@ -881,7 +895,7 @@ def main():
     p = sub.add_parser('show')
     p.add_argument('branch', nargs='?')
     p = sub.add_parser('wait')
-    p.add_argument('--timeout', type=int, default=3600)
+    p.add_argument('--timeout', type=int, help='この秒数で諦める（既定は空きが出るまで待つ）')
     sub.add_parser('improve')
     sub.add_parser('pending')
     p = sub.add_parser('sync')

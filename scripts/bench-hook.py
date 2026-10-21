@@ -146,6 +146,21 @@ def waiting_context(root, session='', now=None):
     return '\n\n'.join(parts) or None
 
 
+def start_sync(repo):
+    """Bring the waiting proposals up to main's branch while the benchmark runs, in the background.
+    It stops at the first conflict and leaves it in .local/proposal-sync; the output says which."""
+    if os.environ.get('PROPOSAL_AUTO_SYNC') == '0':  # tests that drive sync step by step
+        return
+    log = repo / '.local/proposal-sync.log'
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open('w') as out:
+            subprocess.Popen([sys.executable, str(Path(__file__).with_name('proposal.py')), 'sync'], cwd=repo,
+                             stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass  # main can still run it by hand
+
+
 def started(root, session):
     """A benchmark started in the background: the merged proposals are measured now, then the waiting context."""
     repo = main_worktree(root)
@@ -163,14 +178,14 @@ def started(root, session):
         except proposal.Refused:
             requeued = []
         measuring = proposal.start_measuring(repo)
+        start_sync(repo)
     else:
         measuring = []
     context = waiting_context(root, session)
     if measuring:
         named = ', '.join(f'{branch}（--change {proposal.change_id(branch)}）' for branch in measuring)
         again = f'前のrunで採否の付かなかった{", ".join(requeued)}も、もう一度このベンチで測る。' if requeued else ''
-        note = (f'このベンチで測る投稿: {named}（キューから外し、測定中にした）。{again}'
-                'ベンチを待つ間に`python3 scripts/proposal.py sync`で待っている投稿をmainのbranchへ追従させる。')
+        note = f'このベンチで測る投稿: {named}（キューから外し、測定中にした）。{again}'
         context = '\n\n'.join(part for part in (note, context) if part)
     return context
 

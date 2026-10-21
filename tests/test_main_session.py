@@ -72,7 +72,7 @@ class MainSessionTest(unittest.TestCase):
         """What bench-hook --post hands this session when it starts a benchmark in the background."""
         payload = {'tool_name': 'Bash', 'session_id': session, 'cwd': str(self.repo),
                    'tool_input': {'command': 'isuscope run --hypothesis x', 'run_in_background': True}}
-        env = dict(self.env, TOOL_GUARD_ROOT=str(self.repo))
+        env = dict(self.env, TOOL_GUARD_ROOT=str(self.repo), PROPOSAL_AUTO_SYNC='0')
         result = subprocess.run(['python3', str(HOOK), '--post'], input=json.dumps(payload), text=True,
                                 capture_output=True, env=env)
         self.assertEqual(result.returncode, 0, result.stderr)

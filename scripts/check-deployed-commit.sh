@@ -4,8 +4,8 @@ set -euo pipefail
 # 最後に成功したdeployのcommit（.local/current-deploy-commit）と、今のHEADと作業ツリーを、
 # サーバーへ配る対象（sync.jsonのitem、local buildのDockerfile、sync.json自身）に限って比べます。
 # isuscopeはrunをHEADのcommitとして記録するので、ここがずれたままベンチを回すと、
-# 記録上のcommitとサーバーで動いているcommitが違うrunになります（practice-14のeb28e94aは、
-# deployが未commitの変更で拒否された後に回し、記録はe7b0cfe、サーバーは10c48ccでした）。
+# 記録上のcommitとサーバーで動いているcommitが違うrunになります（deployが未commitの変更で拒否された後に
+# 回したときなど）。
 # docsやisuscope-dataだけのcommitは配る対象に入らないので、止めません。
 # 最初のdeployの前は、make first-benchが配布状態のまま動いていると確かめたcommit
 # （.local/current-import-commit、完全importと同じ内容）を、deployしたcommitの代わりに使います。

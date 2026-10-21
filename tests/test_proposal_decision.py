@@ -4,6 +4,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -64,7 +65,7 @@ class ProposalDecisionTest(unittest.TestCase):
         payload = {'tool_name': 'Bash', 'session_id': 'S-main', 'cwd': str(self.repo),
                    'tool_input': {'command': 'isuscope run --hypothesis x', 'run_in_background': True}}
         result = subprocess.run(['python3', str(HOOK), '--post'], input=json.dumps(payload), text=True,
-                                capture_output=True, env=dict(self.env, TOOL_GUARD_ROOT=str(self.repo)))
+                                capture_output=True, env=dict(self.env, TOOL_GUARD_ROOT=str(self.repo), PROPOSAL_AUTO_SYNC='0'))
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)['hookSpecificOutput']['additionalContext'] if result.stdout.strip() else ''
 
@@ -160,6 +161,24 @@ class ProposalDecisionTest(unittest.TestCase):
         self.assertEqual(len(analyzed), 1)
         self.assertIn('0000aaaa score 720000: 次の最大の制約: POST /coordinate', analyzed[0])
         self.assertEqual(self.analyze(), '')  # the same analysis again: nothing new to copy or tell
+
+    def test_a_benchmark_start_brings_waiting_proposals_up_to_main_in_the_background(self):
+        self.commit_and_submit('insert.txt', '座標をまとめてINSERTする')
+        (self.repo / 'main.txt').write_text('m\n')
+        self.git('add', 'main.txt')
+        self.git('commit', '-qm', 'Main moves on')
+        payload = {'tool_name': 'Bash', 'session_id': 'S-main', 'cwd': str(self.repo),
+                   'tool_input': {'command': 'isuscope run --hypothesis x', 'run_in_background': True}}
+        subprocess.run(['python3', str(HOOK), '--post'], input=json.dumps(payload), text=True, capture_output=True,
+                       env=dict(self.env, TOOL_GUARD_ROOT=str(self.repo)), check=True)
+        log = self.repo / '.local/proposal-sync.log'
+        for _ in range(100):
+            if 'human' in (log.read_text() if log.exists() else ''):
+                break
+            time.sleep(0.1)
+        self.assertIn('human', log.read_text())
+        merged = subprocess.run(['git', 'merge-base', '--is-ancestor', 'main', 'human'], cwd=self.repo)
+        self.assertEqual(merged.returncode, 0)  # the proposal now holds main's commit
 
 
 if __name__ == '__main__':

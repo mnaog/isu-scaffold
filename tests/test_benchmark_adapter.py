@@ -314,14 +314,14 @@ class AdapterTest(unittest.TestCase):
         self.run_adapter()
         self.assertFalse((self.root / '.local/benchmark-baseline-seconds').exists())
 
-    def test_a_benchmark_past_twice_the_baseline_is_reported_and_left_running(self):
+    def test_a_benchmark_past_the_slow_factor_is_reported_and_left_running(self):
         self.slow_setup(f'sleep 3; printf "%s\\n" "$(cat {self.output})"', baseline=1)
         completed = self.run_adapter()
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertTrue(json.loads(completed.stdout.strip().splitlines()[-1])['pass'])
         fields = self.progress.read_text().splitlines()[-1].split('\t')
         self.assertEqual(fields[1:3], ['benchmark', 'slow'])
-        self.assertIn('2x the 1s baseline', fields[3])
+        self.assertIn('1.3x the 1s baseline', fields[3])
         self.assertIn('scripts/benchmark-stop.sh', fields[3])
 
     def test_a_quick_benchmark_leaves_no_watcher_behind(self):

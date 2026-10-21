@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse hook that stops the practice rule violations seen so far.
+"""PreToolUse hook that stops operations the rules forbid (practice rules included).
 
 Claude Code (.claude/settings.json) and Codex (.codex/hooks.json) pass the tool call as
 JSON on stdin. A denied call prints a PreToolUse decision with the reason; anything

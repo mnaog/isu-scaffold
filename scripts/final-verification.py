@@ -5,11 +5,10 @@
   python3 scripts/final-verification.py reboot   # make final-reboot: 全台を再起動して、戻った後と数分後を確かめる
   python3 scripts/final-verification.py db-late  # make final-db-late: DBが後から起動してもアプリが立ち直るか
 
-ISUCON9〜14の追試は、全台の再起動（順序は保証されない。poweroffの後10分以上置いた回もある）→ envcheck →
-最後の負荷走行の対象へのベンチ（再現スコアが75〜85%以下ならfail）→ もう一度再起動 → 書いたデータが
-残っているか → フロントエンド、だった。実際の失格・事故は、enableしていないservice、DBより先に起動して
-落ちるアプリ、15分後に止められたDB（起動完了を通知できなかった）、再起動で消える設定、追試の2回目の
-ベンチで落ちるアプリ、だった。問題ごとの値（envcheckのcommand、管理ユーザー、確かめるURL、インスタンス
+追試は、全台の再起動（順序は保証されず、長く置かれることもある）→ envcheck → 最後の負荷走行の対象へのベンチ
+（再現スコアが規定のしきい値を下回ればfail）→ もう一度再起動 → 書いたデータが残っているか → フロントエンド、
+という流れで行われる。落ちる原因は、enableしていないservice、DBより先に起動して落ちるアプリ、起動完了を
+通知できずに後から止められるDB、再起動で消える設定、追試の2回目のベンチで落ちるアプリ。問題ごとの値（envcheckのcommand、管理ユーザー、確かめるURL、インスタンス
 種別）はconfig/final-check.jsonに書く。結果は1行ずつOK・WARN・FAIL・INFOで出し、FAILがあれば1で終わる。
 """
 import argparse
@@ -508,6 +507,11 @@ def db_late(report, config, groups, nodes):
         report.add(*line)
 
 
+def emit_progress(state, message):
+    subprocess.run([sys.executable, str(ROOT / 'scripts/progress.py'), 'emit', 'final', state, message],
+                   cwd=ROOT, capture_output=True)
+
+
 def lock_or_exec():
     """再起動とDBの停止は、deployやベンチと重ならないよう操作lockの中で行う。"""
     if os.environ.get('ISUSCOPE_LOCK_HELD') != '1':
@@ -517,7 +521,8 @@ def lock_or_exec():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=['check', 'reboot', 'db-late'])
+    parser.add_argument('command', choices=['check', 'reboot', 'db-late', 'settled'])
+    parser.add_argument('--nodes', help='settled: 確かめるnode（reboot が渡す）')
     parser.add_argument('--settle', type=int, help='再起動の後、もう一度確かめるまでの秒数（既定は設定のsettle_seconds）')
     parser.add_argument('--yes', action='store_true', help='全台を再起動する・DBを止めることの確認を省く')
     args = parser.parse_args()
@@ -563,9 +568,23 @@ def main():
             compare_counts(report, {node: before[node] for node in returned}, table_counts(report, returned))
             settle = config['settle_seconds'] if args.settle is None else args.settle
             if settle > 0:
-                report.add('INFO', 'reboot', 'settle', f'checking again in {settle}s (units that fail late, like a DB stopped after its start timeout)')
-                time.sleep(settle)
-                check_nodes(report, config, groups, back, envcheck=False, settled=True)
+                # The later check only reads, so it waits outside the operation lock: benchmarks and
+                # deploys need not wait for it. Its result comes as a progress line.
+                with (LOCAL / 'final-settle.log').open('w') as out:
+                    subprocess.Popen([sys.executable, str(Path(__file__).resolve()), 'settled', '--settle', str(settle),
+                                      '--nodes', ','.join(back)], cwd=ROOT, stdout=out, stderr=subprocess.STDOUT,
+                                     stdin=subprocess.DEVNULL, start_new_session=True,
+                                     env={k: v for k, v in os.environ.items() if k != 'ISUSCOPE_LOCK_HELD'})
+                report.add('INFO', 'reboot', 'settle', f'checking again in {settle}s in the background (units that fail '
+                           'late, like a DB stopped after its start timeout); the result comes as `final settled` or '
+                           '`final failed` in .local/progress.log, details in .local/final-settle.log')
+    elif args.command == 'settled':
+        time.sleep(args.settle or 0)
+        check_nodes(report, config, groups, [n for n in (args.nodes or '').split(',') if n] or nodes, envcheck=False, settled=True)
+        failed = [line for line in report.lines if line[0] == 'FAIL']
+        emit_progress('failed' if failed else 'settled',
+                      f'after {args.settle}s: ' + ('; '.join(f'{line[1]} {line[2]}: {line[3]}' for line in failed)[:300]
+                                                  if failed else 'every unit still up'))
     elif args.command == 'db-late':
         def interrupted(signum, frame):
             raise KeyboardInterrupt(f'interrupted by signal {signum}')

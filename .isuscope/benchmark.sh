@@ -302,7 +302,7 @@ if [[ "${1:-}" == --cleanup ]]; then
   load_config
   if [[ "${BENCHMARK_TRANSPORT:-}" == ssh && -n "${BENCHMARK_NODE:-}" ]]; then
     ISUCON_ALLOW_BENCHMARK_NODE=1 "${project_root}/scripts/ssh-node.sh" "${BENCHMARK_NODE}" \
-      "pid=\$(cat ${remote_pid_file} 2>/dev/null) || exit 0; for signal in TERM KILL; do sudo -n kill -\$signal -- -\$pid 2>/dev/null || kill -\$signal -- -\$pid 2>/dev/null || true; sleep 5; done; rm -f ${remote_pid_file}" ||
+      "pid=\$(cat ${remote_pid_file} 2>/dev/null) || exit 0; alive() { sudo -n kill -0 -- -\$pid 2>/dev/null || kill -0 -- -\$pid 2>/dev/null; }; for signal in TERM KILL; do alive || break; sudo -n kill -\$signal -- -\$pid 2>/dev/null || kill -\$signal -- -\$pid 2>/dev/null || true; for i in 1 2 3 4 5 6 7 8 9 10; do alive || break; sleep 0.5; done; done; rm -f ${remote_pid_file}" ||
       echo "cleanup: could not reach ${BENCHMARK_NODE}" >&2
   fi
   stale_lock=${project_root}/.local/benchmark.lock
@@ -355,15 +355,16 @@ record_run_pid() {
   done
 }
 
-# A benchmark that runs past BENCHMARK_SLOW_FACTOR (default 2) times the baseline gets one line in
+# A benchmark that runs past BENCHMARK_SLOW_FACTOR (default 1.3; a normal run stays within about 1.1) times the baseline gets one line in
 # .local/progress.log, and the agent decides whether to stop it. Without it a hung run is only
 # stopped at the hard deadline (BENCHMARK_TIMEOUT_SECONDS), which stays as the last resort. The watcher holds none of the adapter's pipes, so isuscope never waits on it.
 start_slow_watch() {
-  local baseline factor=${BENCHMARK_SLOW_FACTOR:-2} limit
+  local baseline factor=${BENCHMARK_SLOW_FACTOR:-1.3} limit
   [[ -f "${baseline_file}" ]] || return 0
   baseline=$(tr -d '[:space:]' <"${baseline_file}")
-  [[ "${baseline}" =~ ^[0-9]+$ && "${baseline}" -gt 0 && "${factor}" =~ ^[0-9]+$ && "${factor}" -gt 0 ]] || return 0
-  limit=$((baseline * factor))
+  [[ "${baseline}" =~ ^[0-9]+$ && "${baseline}" -gt 0 && "${factor}" =~ ^[0-9]+(\.[0-9]+)?$ ]] || return 0
+  limit=$(awk -v b="${baseline}" -v f="${factor}" 'BEGIN { printf "%d", b * f + 0.5 }')
+  [[ "${limit}" -gt 0 ]] || return 0
   (
     exec </dev/null >/dev/null 2>&1
     sleep "${limit}"

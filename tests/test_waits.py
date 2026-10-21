@@ -37,7 +37,8 @@ class WaitsScriptTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def waits(self, *args, ok=True):
-        result = subprocess.run(['python3', 'scripts/waits.py', *args], cwd=self.repo, capture_output=True, text=True)
+        result = subprocess.run(['python3', 'scripts/waits.py', *args], cwd=self.repo, capture_output=True, text=True,
+                                env=self.env)
         if ok:
             self.assertEqual(result.returncode, 0, result.stderr)
         return result
@@ -52,11 +53,22 @@ class WaitsScriptTests(unittest.TestCase):
 
     def test_set_finds_the_unit_s_environment_file_and_edits_one_line(self):
         self.assertNotIn('waits', self.identity())  # no table, no field
+        (self.repo / 'other.txt').write_text('a\n')
+        subprocess.run(['git', 'add', 'other.txt'], cwd=self.repo, check=True)
+        self.commit('Other')
+        (self.repo / 'other.txt').write_text('changed\n')  # someone's unrelated edit
         out = self.waits('set', 'GET', '/api/app/nearby-chairs', '--after', '30').stdout
         self.assertIn('--change wait-get-api-app-nearby-chairs-after-30', out)
         self.assertIn('--hypothesis "wait: GET /api/app/nearby-chairs after 0→30ms。基準 <短縮ID>。期待: "', out)
         env = (self.repo / 'config/app/env.sh').read_text()
         self.assertIn('ISUCON_DB_HOST=127.0.0.1\n', env)
+        # set commits the table's file alone; the unrelated edit stays out of it.
+        self.assertIn('commit: Wait GET /api/app/nearby-chairs', out)
+        shown = subprocess.run(['git', 'show', '--stat', '--format=%s', 'HEAD'], cwd=self.repo, capture_output=True,
+                               text=True).stdout
+        self.assertIn('config/app/env.sh', shown)
+        self.assertNotIn('other.txt', shown)
+        self.assertEqual((self.repo / 'other.txt').read_text(), 'changed\n')
         self.assertIn('ISUCON_WAITS="GET /api/app/nearby-chairs after 30"', env)
         # The same route and phase is replaced, a placeholder spelled differently is the same route.
         self.waits('set', 'POST', '/api/app/rides/:ride_id/evaluation', '--before', '5')
@@ -65,14 +77,12 @@ class WaitsScriptTests(unittest.TestCase):
         self.assertEqual((self.repo / 'config/app/env.sh').read_text().count('ISUCON_WAITS='), 1)
         line = [l for l in (self.repo / 'config/app/env.sh').read_text().splitlines() if l.startswith('ISUCON_WAITS=')]
         self.assertEqual(line, ['ISUCON_WAITS="POST /api/app/rides/{id}/evaluation before 10;GET /api/app/nearby-chairs after 100"'])
-        self.commit('Wait')
         self.assertEqual(self.identity()['waits'],
                          'POST /api/app/rides/{id}/evaluation before 10;GET /api/app/nearby-chairs after 100')
         # 0 drops one phase, --off drops the route.
         self.waits('set', 'POST', '/api/app/rides/:ride_id/evaluation', '--before', '0')
         self.waits('set', 'GET', '/api/app/nearby-chairs', '--off')
         self.assertIn('ISUCON_WAITS=""', (self.repo / 'config/app/env.sh').read_text())
-        self.commit('No waits')
         self.assertNotIn('waits', self.identity())
 
     def test_a_wrong_rule_is_refused_before_it_reaches_the_app(self):

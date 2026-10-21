@@ -4,7 +4,7 @@ set -euo pipefail
 # isuscopeの[benchmark] prepare_commandとして、毎回のベンチの前（collectorより前、isuscopeの
 # lockの中）に動きます。deployしたcommitとHEADを照合し（check-deployed-commit.sh）、動いているアプリのunitを再起動し、そのprocessがportをlistenするまで
 # 待ちます。前のベンチが途中で切ったrequestのtransactionが接続poolに残り、次のinitializeの
-# DROP TABLEを止めること（practice-14の初回survey-run）を防ぎます。止めてあるunitは起動しません。
+# DROP TABLEを止めることを防ぎます。止めてあるunitは起動しません。
 # REQUIRE_ACTIVE=1なら、止まっているunitも失敗にします（make first-benchが配布状態で測る前の確認）。
 #
 # 前回のベンチと同じ配布物・計測設定での再測定は、isuscopeがidentity_command

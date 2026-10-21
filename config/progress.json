@@ -2,6 +2,7 @@
   "description": "Who acts on each line of .local/progress.log, and what to do. `python3 scripts/progress.py follow <role>` prints only the lines routed to that role, with its note; the file keeps every line as the record. A line is matched against `lines` (\"<source> <state>\", fnmatch patterns) top to bottom, and the first rule that matches decides; `to` maps each role that should act to its note, and an empty `to` routes the line to nobody. A line no rule matches goes to main. A role never gets the lines it wrote itself.",
   "rules": [
     {"lines": ["benchmark slow"], "to": {"main": "ベンチが遅い。アプリ・nginxのerror logとnodeの負荷を確かめ、止まっていれば`scripts/benchmark-stop.sh`で止める"}},
+    {"lines": ["final settled"], "to": {"main": "再起動の後、時間を置いた確認も通った"}},
     {"lines": ["* failed", "* draft-failed"], "to": {"main": "段階が失敗した。本文とログで原因を見て直す"}},
     {"lines": ["kickoff code-ready"], "to": {
       "main": "コードとschemaが入った。laneが動き出す",
