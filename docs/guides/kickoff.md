@@ -58,7 +58,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
   → lane indexes・obvious-fixesのcommitをbaselineの観測と照合して選んで取り込む（laneの途中でもcommit単位で取り込める）
   → 全メモリ化の間もimproveは全メモリ化が書き換えない所の改善を止めない。lane full-memoryが終わったら（mainを1度だけ取り込み済み）、
     mainへmergeし、laneが取り込んだ後にmainへ入ったwebapp/の変更をベンチを待つ間に全メモリ化の形へ移し、
-    確かめてからdeployして次のベンチで最優先に測る
+    deployして次のベンチで最優先に測る
   → deployし、通常のisuscope runでbaselineと比較して、仮説の判定と変更の採否を記録する。障害があれば原因調査から修正・再評価まで続ける
 ```
 
@@ -68,7 +68,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 
 - 公式資料とベンチ接続は`make kickoff`の結果を使わないので、portalのセッションが開始と同時に始める。
 - `make first-bench`は段階の間でAIの手番を待たない。
-- 本番当日はRustのkickoff build（キャッシュなしで4〜5分）が最も長い待ちになる。最初のdeploy前はサーバーが配布状態のまま動いていることを使い、baselineをbuildとdeployの前に取る。
+- 本番当日はRustのkickoff buildが最も長い待ちになる。最初のdeploy前はサーバーが配布状態のまま動いていることを使い、baselineをbuildとdeployの前に取る。
 - `bench-check`はdeployに依存しないので、deployの前に流す。deployで設定（nginx、MySQL、unit）を変えたときだけ再実行する。
 - 段階を個別にやり直すときは`make bench-check`、`make deploy`、`isuscope survey-run`を直接使う。
 
@@ -132,7 +132,7 @@ portalのセッション（`/portal`）が、大会運営から提供された�
 - `make kickoff`が出す`.local/draft/review.md`のFAILはすべて直し、WARNは内容を読んで判断してから`make kickoff-apply`へ進む。draftのremote path、owner、service、roleは推測にすぎない
 - nodeの分類が誤っている場合はprovider入力やdraftを直して再生成し、生成物を手作業で直し続けない
 - importで配布先のdigestが一致しない場合は、sourceを確認するまで進めない
-- 初期状態をcommitし、`make deploy`、`make status`、明示的な`make rollback`で稼働プロセスまで旧構成へ戻ることを確認する
+- 初期状態をcommitする（`make rollback`で、その状態へ稼働プロセスまで戻せる）
 - 計測と運用の土台（計測tool、LTSV access log、時刻同期、journal、自動更新停止）はkickoffのAnsibleで固定化される。SQLはisuscopeがperformance_schemaから取るので、slow logは既定で無効。レギュレーションで禁止された項目だけ変数で外す
 - 性能を変える設定（`config/nginx/tare`、networking sysctl、MySQLの性能設定）は、初回baselineの後に1つの変更として入れる
 - ベンチ接続はisuscopeの`command` modeを標準とし、手動入力の`external` modeを通常運用にしない
@@ -195,38 +195,13 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 APIの一覧には、各APIのhandler（`file:line`）と主なSQL・外部処理を付ける。シナリオ → API → handler → SQL → 得点・失敗のつながりは、この見取り図だけに置く（コードの地図は別に作らない）。
 
-## 自明なボトルネックを一掃する
-
-次をコードから調べ、初回baselineの観測と照合して実装する。
-
-- WHERE、JOIN、ORDER BYに対する明らかなインデックス不足
-- ループ内SQLや要素ごとの更新などのN+1
-- 同一request内の重複query・重複計算
-- 単一行のカウンタや必要以上のlocking readによる直列化
-- 一括INSERT・UPDATE・UPSERTに置き換えられる逐次write
-- transaction内の不要な処理とDB往復
-- 明らかに不要なカラム、全件走査、外部呼び出し
-
-インデックスの根拠（対象のSQLと選んだ理由）はcommit messageに、効果と採否は測ったrunのisuscope `analyze --change`に残す。読み取りのキャッシュ・メモリ化と、DB・アプリ・nginxを別のnodeへ分ける配置変更は、次節の条件でkickoffのうちに入れてよい。整合性条件を変えるもの、非同期化、write-behindなど永続化の時機を変えるものは、次節で最大の制約がそこにあると示せるまで実装しない。
-
-この一掃はkickoffの待ち時間と並行して進める作業であり、次の判断を止めるgateではない。先行回収の直後からlane `indexes`が`lane/indexes`へ索引を、lane `n-plus-one`が`lane/n-plus-one`へN+1の修正を、lane `obvious-fixes`が`lane/obvious-fixes`へそれ以外の修正を、1件1commitで実装する（deployはしない）。commitのたびに`.local/progress.log`へ`lane:<名前> commit`が出るので、初回runから得た上位SQL・HTTP・エラーと照合し、効くcommitからlaneの完了を待たずに`git cherry-pick`する。根拠が弱い変更は保留する。変更を反映した最初の`isuscope run`で大きく改善することを確認し、その後はボトルネックごとの短いサイクルに切り替える。
-
 ## baselineの後に次の変更を選ぶ
 
-mainは初回baselineの分析で、SQLの候補を消化する前に、観測された最大の制約を特定し、根拠（node別の観測値）とともに初回runの`isuscope analyze`の分析に書く（survey-runがPASSなら、分析を記録するまで次のベンチは始められない）。`isuscope brief`のnode別CPU・iowait・disk util・network、`database_io`、`logs`から、少なくとも次を確認する。
+mainは初回baselineの分析で、観測された最大の制約を特定し、根拠とともに初回runの`isuscope analyze`に書く。improveはこの分析から最初の変更を選ぶ。node別のCPU・iowait・disk・network、`database_io`、`logs`など、読める欄は[isuscopeの使い方](../reference/isuscope.md)にある。
 
-- 負荷が1台に集中し、他のnodeが空いていないか
-- CPUよりI/O待ち（iowait、disk util、COMMITやfile待ち）が支配的でないか
-- ネットワーク帯域・接続数・エラーが得点を止めていないか
+接続・fdの上限（nginxのworker_connections・backlog・keepalive、アプリのLimitNOFILE、sysctl、MySQLのmax_connectionsとbuffer pool）は問題に依存しない既定値で、`make tare`が1つのcommitにする。baselineの後に早めにdeployして`isuscope run`で測る。
 
-接続・fdの上限（nginxのworker_connections・backlog・keepalive、アプリのLimitNOFILE、sysctl、MySQLのmax_connectionsとbuffer pool）は問題に依存しない既定値で、`make tare`が1つのcommitにする。baselineの後に早めにdeployして`isuscope run`で測る。practice-14ではこの既定値（keepalive_requests 1000、アプリのfd 1024、listen backlog 511、worker_connections 4096）で、後からFAILが4回出た。
-
-最大の制約がSQL・index・N+1なら、それを次の変更にする。最大の制約が1台への集中や繰り返しの読み取りなら、残りのSQL候補を一掃するまで待たず、次のどちらかを入れてよい。
-
-- DB・アプリ・nginxを別のnodeへ分ける配置変更
-- 読み取りのキャッシュ・メモリ化
-
-improveはこの分析から次の変更を選ぶ。どちらも根拠（run ID、node別の観測値、期待する効果）を投稿に残し、mainが通常の`isuscope run`で測る。全メモリ化はlane `full-memory`に任せ、improveはそれと重なるメモリ化を作らない。それ以外のメモリ化は1つの読み取り経路ずつ進め、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築方法を`docs/cache-design.md`へ書いてから入れる。WALなどでDBを外すのは、書き込みが律速だと測れてからにする。非同期化やwrite-behindなど、整合性条件や永続化の時機を変える変更が必要なら、根拠をrunの分析に残し、AGENTS.mdの「判断の原則」に沿って入れる。
+次の変更の選び方は`AGENTS.md`の「判断の原則」に従う。全メモリ化はlane `full-memory`が行うので、improveはそれと重なるメモリ化を作らない。
 
 ## 残すもの
 
@@ -240,24 +215,6 @@ improveはこの分析から次の変更を選ぶ。どちらも根拠（run ID�
 - 初期状態のコードと設定
 - ローカルから実行できるデプロイコマンド
 - 初期状態へ戻せるGitコミット
-
-## kickoffで揃えるもの
-
-- 公式から提供された一次情報が`docs/official/`に揃っている
-- コードと設定ファイルがローカルリポジトリで管理されている
-- ローカル環境で改善を検証できる（構築できなければ、理由と代わりの検証手段を初回runの分析に書く）
-- ローカルからコマンドでデプロイできる
-- サーバーを直接編集せずに構成を再現できる
-- 初期状態へ戻せる
-- isuscopeでベンチと計測を実行できる
-- 許可された資料・計測で確認できる得点、失敗条件、主要シナリオを説明でき、推測と不明点を記録している
-- 確認できた主要シナリオとアプリ内の処理経路が対応付けられている
-- 初回baselineで観測された最大の制約と、その根拠が初回runの分析に記録されている
-- 主要SQLの明らかなインデックス不足が解消されている
-- 高頻度経路の主要なN+1、重複処理、逐次writeが解消されている
-- 自明な修正を統合したrunをbaselineと比較し、採否を記録している
-
-これは区切りや移行の条件ではない。揃えるのを待たずに、観測された最大の制約から順に改善へ進む（「baselineの後に次の変更を選ぶ」）。
 
 ## 非同期buildの開始と確認
 

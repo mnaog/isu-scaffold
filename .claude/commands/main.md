@@ -47,9 +47,9 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 2. `isuscope run --hypothesis "$(python3 scripts/proposal.py hypothesis)"`を`run_in_background`で起動する。仮説は、取り込んだ投稿ごとの仮説と期待する観測値（ボードのベンチ待ちに出ていた文）をそのまま並べたもの。hookが、merge済みの投稿を測定中にする。
 3. 待つ間に:
    - hookが渡す見取り図・新しい投稿を読む。
-   - `python3 scripts/proposal.py sync`で、待っている投稿と保留をmainのbranchへ追従させる（`.local/proposal-sync`のworktreeで、各branchへmainのbranchをmergeする）。衝突すると、そこで止まって衝突を残す。解消して`git add`し、もう一度`sync`する。処理の意味がぶつかる（同じ処理を別々に変えている）ときも、両方の意図を残して解く。解けないなら`git merge --abort`して棄却する。投稿したbranchは`submit`が投稿者のworktreeから外すので、そのまま追従できる。
+   - ベンチを起動すると、hookが待っている投稿と保留をmainのbranchへ追従させる`proposal.py sync`をbackgroundで始める（`.local/proposal-sync`のworktreeで各branchへmainのbranchをmergeし、結果は`.local/proposal-sync.log`）。衝突するとそこで止まって衝突を残すので、解消して`git add`し、`python3 scripts/proposal.py sync`で続ける。処理の意味がぶつかる（同じ処理を別々に変えている）ときも、両方の意図を残して解く。解けないなら`git merge --abort`して棄却する。投稿したbranchは`submit`が投稿者のworktreeから外すので、そのまま追従できる。
    - キューを見直し、次に測るものを決めておく。
-4. 終わったら分析し、採否を決める。同じ投稿を2度測らない。スコアが予想と違う方向に動いた回（速くしたのに下がった、FAILした）は、採否を決める前に`isuscope query RUN --base BASE --view transitions`でベンチ側の動きの変化（どの遷移の割合・間隔が変わったか）を見る。分かったベンチの仕様は、見取り図の該当する節へ書く。採否は投稿ごとに`isuscope analyze RUN <判定> --analysis "..." --change <change ID> --decision ...`で記録する（同じrunへ追記できる。change IDは、ベンチを起動したときにhookが投稿ごとに示す）。mainが書くのはこれだけで、hookがその採否・理由・runを投稿へ写す。不採用は`git revert -m 1 <mergeのcommit>`で戻す。ベンチが起動できなかった、中断した、落ちたときの測定中の投稿は、次のベンチの起動時にhookが待ちへ戻して測り直す（すぐ戻すなら`python3 scripts/proposal.py requeue`。投稿が原因で落ちたなら、直せるなら直して測り、直せないなら`rejected`にする）。
+4. 終わったら分析し、採否を決める。同じ投稿を2度測らない。ベンチ側の動きの変化は`isuscope query RUN --base BASE --view transitions`で比べられる（`docs/reference/isuscope.md`）。分かったベンチの仕様は、見取り図の該当する節へ書く。採否は投稿ごとに`isuscope analyze RUN <判定> --analysis "..." --change <change ID> --decision ...`で記録する（同じrunへ追記できる。change IDは、ベンチを起動したときにhookが投稿ごとに示す）。mainが書くのはこれだけで、hookがその採否・理由・runを投稿へ写す。不採用は`git revert -m 1 <mergeのcommit>`で戻す。ベンチが起動できなかった、中断した、落ちたときの測定中の投稿は、次のベンチの起動時にhookが待ちへ戻して測り直す（すぐ戻すなら`python3 scripts/proposal.py requeue`。投稿が原因で落ちたなら、直せるなら直して測り、直せないなら`rejected`にする）。
 5. 分析を記録したら、キューの残り（待ちと保留）の前提がまだ成り立つかを見直し、棄却する・保留にする・保留を解くを決める。測定中の投稿の採否がそろうと、hookが最後の分析の冒頭を`main analyzed`の行でimproveへ知らせる。improveはまずこの行を読むので、分析の冒頭に次の最大の制約が分かるように書く。
 
 6. すぐ1へ戻る。待っている投稿が無ければ`python3 scripts/proposal.py pending`で確かめ、それでも無ければ、上の「空き時間」のとおりベンチを使う。`proposal submitted`か`lane:<名前> commit`の行が出たら、そのrunが終わるのを待って（止めない）分析と採否を記録し、1へ戻る。sleepやpollingで待たない。もうすぐ届く投稿は、ボードの「作業中」で分かる。
@@ -78,10 +78,11 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 応答の中身を変えずに、APIごとに少しだけ待たせる。ベンチの利用者は応答を待ってから次の要求を出すので、点にならない要求（空振りのpolling、繰り返しの一覧取得）が減り、ベンチとサーバーの手が点になる処理へ回ることがある。効くかどうかは構成ごとに変わるので、投稿が無いときに1回に1つずつ試し、結果をisuscopeに残して次の判断に使う。
 
 - **仕組み**: lane `waits`がアプリに口を入れる（`config/waits/waits.rs`。表が空なら何もしない）。表は環境変数`ISUCON_WAITS`で、アプリのunitが読むEnvironmentFileに置く。起動時に1度だけ読むので、deploy（buildなし、アプリの再起動）で変わり、OSの再起動・主催者の追試でも同じ表で動く。
+- **どこを試すか**: 処理は、得点する処理、得点の前提になる処理（ログイン、登録、予約など）、得点しない処理に分かれる（見取り図`docs/benchmark-scenario.md`）。待たせて資源が回るのは得点しない処理だけで、前の2つを遅らせると点が減る。失敗が確定した応答（在庫切れ、枠の競合など）も、待たせる候補になる。待ちは外れると大きく損をし、練習のベンチの負荷に合わせすぎやすく、構成が変わると効き方も変わる。
 - **前に試したこと**: `python3 scripts/waits.py history`で、前に試した値と結果を読める。
 - **1回の手順**:
   1. `python3 scripts/waits.py set GET /api/... --after <ms>`（routeはisuscopeのroute名をそのまま書ける）
-  2. commitして`make deploy`
+  2. `make deploy`（`waits.py set`が表のfileだけをcommitする）
   3. `waits.py set`が出す`isuscope run`（tagと、変えた値・基準を埋めた仮説）に期待を書き足し、backgroundで起動する
 - **採否**: 投稿と同じく1回で決める。不採用なら`git revert`で前の値へ戻す。
   - 分析は`isuscope analyze RUN supported|rejected --change <waits.py setが出すwait-...のID> --decision accepted|rejected`で記録する。

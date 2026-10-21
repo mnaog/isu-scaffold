@@ -47,7 +47,7 @@ python3 scripts/progress.py emit portal <environment|bench|official|notice> "<�
 
 ### 4. その後の見張り
 
-- 数分おきに、ポータルの告知・質問への回答・通知を見る。新しいものがあれば原文を`docs/official/`へ足してcommitし、`portal notice "<要約と、作業に関わるか>"`。
+- 告知・質問への回答・通知を早く拾えるよう、ポータルを見続ける。新しいものがあれば原文を`docs/official/`へ足してcommitし、`portal notice "<要約と、作業に関わるか>"`。
 - cookieが切れたら`scripts/portal-cookie.py`を流し直す。ログインし直しが要るなら人間に頼む。
 - mainのbranchの変更が要るときは`git merge main`する。質問をポータルへ送るかどうかは、人間とmainに任せる。
 

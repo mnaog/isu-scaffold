@@ -15,9 +15,9 @@
 | MySQL（`mysql.conf.d/zz-tare.cnf`） | `max_connections 1000`、`innodb_buffer_pool_size`（DB nodeのメモリの40%、MySQLだけのnodeなら70%） |
 | deployのcommand | 先頭に`daemon-reload`と`sysctl -q -p /etc/sysctl.d/99-tare.conf`、MySQLの`is-active`の前に`restart mysql`。それぞれ`when`（`rust-service`、`tare-sysctl`、`mysql-*`）付きで、そのitemが変わったdeployでだけ動く |
 
-fsync・binlogなど耐久性を変える設定と、下のB1のsendfileなどは入れない。practice-14ではこれらの既定値（keepalive_requests 1000、アプリのfd 1024、listen backlog 511、worker_connections 4096）で、後からFAILが4回出た。
+fsync・binlogなど耐久性を変える設定と、下のB1のsendfileなどは入れない。これらの上限が既定値のままだと、負荷が上がったときに接続やfdが足りずにFAILする。
 
-## B1. ほぼ常に入れてよい（まとめて1回）
+## B1. 問題に依存しない設定（ファイル）
 
 `worker_connections`、`worker_rlimit_nofile`、`keepalive_requests`、upstreamのkeepaliveは`make tare`が入れる。
 
@@ -29,23 +29,20 @@ fsync・binlogなど耐久性を変える設定と、下のB1のsendfileなど�
 
 入れ方: sync.jsonへ`config/nginx/tare/10-tare.conf`などのitemを足し、`post_deploy_commands`に`sudo nginx -t`と`sudo systemctl daemon-reload`、`sudo systemctl reload nginx`（LimitNOFILEの変更時は`restart`）を置く。`rollback_commands`にも同じ検証とreloadを置く。
 
-根拠: practice-12はworker 4096とupstream keepalive 128の構成で366,502点まで到達した。practice-13はFD上限65,535を前提に各設定を積み上げた。
 
-## B2. 問題によって効く（計測を見て1つずつ）
+## B2. 問題によって効く設定
 
-| 設定 | 効く条件 | 根拠 |
-| --- | --- | --- |
-| 静的ファイルをNginxで配信（`root`/`try_files`/`expires`） | 画像やJSをappが返している | practice-13でiconの304をNginx化し621,753→734,162点（+18%） |
-| `open_file_cache`（FD上限とセット） | 静的ファイルへのアクセスが多い | practice-13で採用 |
-| APIのgzipを止める | CPUが律速で帯域に余裕がある | practice-13でOFFにして+1.75〜2.34%。levelを3や6へ上げると−1〜1.5% |
-| HTTP/2 | TLSがあり、clientが対応している | practice-13で+0.8% |
-| TLS 1.3をAES-128-GCMに固定 | TLS終端のCPUが重い | practice-13で+1.28% |
-| `client_body_buffer_size`の拡大 | 大きいbodyのPOSTがある | practice-13のicon uploadで一時fileへの書き出しを回避 |
+| 設定 | 効く条件 |
+| --- | --- |
+| 静的ファイルをNginxで配信（`root`/`try_files`/`expires`） | 画像やJSをappが返している |
+| `open_file_cache`（FD上限とセット） | 静的ファイルへのアクセスが多い |
+| APIのgzipを止める | CPUが律速で帯域に余裕がある（levelを上げると逆にCPUを使う） |
+| HTTP/2 | TLSがあり、clientが対応している |
+| TLS 1.3をAES-128-GCMに固定 | TLS終端のCPUが重い |
+| `client_body_buffer_size`の拡大 | 大きいbodyのPOSTがあり、一時fileへ書き出している |
 
-## B3. 入れない（効かなかった、または壊した）
+## B3. 効きにくい、または副作用のあるもの
 
-- TLS session cache（微減）、`ssl_buffer_size 4k`、`proxy_buffering off`、proxy bufferの128KiB化、gzip levelの引き上げ
-- Nginx→appのUnix domain socket化、request headerのallowlist
-- FD上限を上げずに`open_file_cache`だけ入れる
-
-practice-13では、これらは誤差か微減で、実装や運用の複雑さに見合わなかった。同じ提案を繰り返す前にここを確認する。
+- TLS session cache、`ssl_buffer_size 4k`、`proxy_buffering off`、proxy bufferの拡大、gzip levelの引き上げ：差が出にくく、bufferやCPUの使い方が変わる
+- Nginx→appのUnix domain socket化、request headerのallowlist：実装と運用が複雑になる割に差が出にくい
+- FD上限を上げずに`open_file_cache`だけ入れる：FDが枯渇する
