@@ -3,7 +3,7 @@
   "claude": {
     "command": "claude",
     "model": "claude-opus-5-5",
-    "effort": "medium",
+    "effort": "high",
     "permission_mode": "dontAsk",
     "allowed_tools": [
       "Read",
