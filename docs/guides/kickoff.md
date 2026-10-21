@@ -6,7 +6,7 @@
 
 また、アプリケーションコードと設定ファイルをすべてローカルリポジトリで管理し、コマンドからサーバーへデプロイできる状態を作る。
 
-SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を7本起動する。`full-memory`が全メモリ化（序盤の点の大半を決める読み取りのDB外し）を、`indexes`が索引を、`n-plus-one`がN+1を、`obvious-fixes`が索引とN+1以外の自明な修正を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書き、`waits`がAPIごとの待ちの口（表`ISUCON_WAITS`は空のまま。値はmainが空き時間に変える）を入れる。kickoffは、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。開始と同時に、worktree `portal`で起動したもう1つのセッションが`/portal`で、ポータルと当日マニュアルの保存、サーバーの起動に要る情報、ベンチ接続を作る。mainのセッションはその間にサーバーの起動、kickoff build設定、draftの判断を進め、portalの公式資料をmergeしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
+SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を7本起動する。`full-memory`が全メモリ化（読み取りと状態の判定をメモリへ移す）を、`indexes`が索引を、`n-plus-one`がN+1を、`obvious-fixes`が索引とN+1以外の自明な修正のうち全メモリ化の後も残るもの（書き込みと、DBを読まない処理）を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書き、`waits`がAPIごとの待ちの口（表`ISUCON_WAITS`は空のまま。値はmainが空き時間に変える）を入れる。kickoffは、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。開始と同時に、worktree `portal`で起動したもう1つのセッションが`/portal`で、ポータルと当日マニュアルの保存、サーバーの起動に要る情報、ベンチ接続を作る。mainのセッションはその間にサーバーの起動、kickoff build設定、draftの判断を進め、portalの公式資料をmergeしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせる。
 
 merge・次に測るものの判断・deploy・ベンチ・分析・採否の責任はmainのセッションが持ち、改善の調査・実装・ローカル検証はimproveのセッション（`/improve`）が持つ（mainは改善を実装しない。improveが動いていなければ人間に起動を頼み、その間は最新の採用構成の振れ幅を測る）。laneの成果は根拠を照合してからmergeする。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
 
@@ -28,7 +28,7 @@ make kickoff（backgroundで実行し、.local/progress.logを追う）
   → initializeの経路がコードに1つだけなら.isuscope/routes.tomlの[initialize]へ書いてcommit（initialize-route）。
     isuscopeがaccess logからinitializeと負荷走行を分けるので、初回runから要約にinitializeが混ざらない
   → 並行してlane full-memory（全メモリ化。書き込みはDBのまま）、indexes（索引を1件1commit）、
-    n-plus-one（N+1を1handler1commit）、obvious-fixes（索引とN+1以外の自明な修正を1件1commit）、
+    n-plus-one（N+1を1handler1commit）、obvious-fixes（索引とN+1以外の、全メモリ化の後も残る自明な修正を1件1commit）、
     local-env（config/local/compose.yaml）、state-log（状態ログの書き手と呼び出し、docs/state-log.md）、
     waits（APIごとの待ちの口。表は空）を起動。
     full-memoryは、state-log・local-envが終わったら自分で取り込んで確かめる

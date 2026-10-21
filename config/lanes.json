@@ -63,7 +63,7 @@
       "timeout_minutes": 15
     },
     "obvious-fixes": {
-      "purpose": "索引とN+1以外の自明なボトルネックを1件1commitで先行実装する（baselineまでdeployしない）",
+      "purpose": "索引とN+1以外の自明なボトルネックのうち、全メモリ化の後も残るもの（書き込みと、DBを読まない処理）を1件1commitで先行実装する（baselineまでdeployしない）",
       "prompt": "config/lanes/obvious-fixes.md",
       "timeout_minutes": 90
     },
