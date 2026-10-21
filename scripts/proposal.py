@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Proposals: the queue of changes waiting for main's benchmark, and main's decisions on them.
 
-  proposal.py submit --hypothesis TEXT --expect TEXT --verified TEXT [--based-on RUN] [--note TEXT]
+  proposal.py submit --hypothesis TEXT --expect TEXT [--verified TEXT] [--based-on RUN] [--note TEXT]
   proposal.py list [--all]                 the queue: measuring, next, waiting, held (--all: decided too)
   proposal.py show [BRANCH]                one proposal (default: this worktree's branch)
   proposal.py wait [--timeout SECONDS]     improve: return once the queue has room for its next proposal
@@ -550,7 +550,7 @@ def deliver(root, session, at=None):
             f'{author.get("role") or "worktree"} {author.get("agent") or "?"}）',
             f'- 仮説: {data.get("hypothesis")}',
             f'- 期待する観測: {data.get("expect")}',
-            f'- 確かめたこと: {data.get("verified")}',
+            *([f'- 確かめたこと: {data["verified"]}'] if data.get('verified') else []),
             *([f'- 根拠のrun: {data["based_on"]}'] if data.get('based_on') else []),
             *([f'- 積んでいる投稿: {", ".join(data["depends_on"])}'] if data.get('depends_on') else []),
             *([f'- 補足: {data["note"]}'] if data.get('note') else []),
@@ -816,7 +816,7 @@ def queue(root):
 def describe(data):
     lines = [f'{data["branch"]}  {data.get("status")}  {data["commit"][:8]}  投稿 {age(data.get("submitted_at"))}',
              f'  仮説: {data.get("hypothesis")}', f'  期待する観測: {data.get("expect")}',
-             f'  確かめたこと: {data.get("verified")}']
+             *([f'  確かめたこと: {data["verified"]}'] if data.get('verified') else [])]
     if data.get('based_on'):
         lines.append(f'  根拠のrun: {data["based_on"]}')
     if data.get('depends_on'):
@@ -866,7 +866,7 @@ def main():
     p = sub.add_parser('submit')
     p.add_argument('--hypothesis', required=True, help='何を変えて、なぜ速くなる（点が上がる）と考えるか')
     p.add_argument('--expect', required=True, help='期待する観測値（route、SQL、CPUなど、briefとqueryで確かめられるもの）')
-    p.add_argument('--verified', required=True, help='ローカルで確かめたこと（build、test、local-check、local-flowなど）')
+    p.add_argument('--verified', default='', help='ローカルで確かめたことがあれば')
     p.add_argument('--based-on', help='根拠にしたrunの短縮ID（mainが前提の古さを確かめる）')
     p.add_argument('--note')
     p = sub.add_parser('list')

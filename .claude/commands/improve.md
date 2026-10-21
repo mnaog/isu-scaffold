@@ -46,7 +46,7 @@ allowed-tools: Bash(git rev-parse:*), Bash(python3 scripts/progress.py path), Ba
 
 ### runの読み方
 
-runはrootにしか無いので、`scripts/runs.sh`で読む（isuscopeの読み取りをrootで実行する）。
+runはrootにしか無いので、`scripts/runs.sh`で読む（isuscopeの読み取りをrootで実行する）。何をどう読むかは`docs/reference/isuscope.md`。
 
 ```bash
 scripts/runs.sh list --limit 5
@@ -64,15 +64,16 @@ laneは`make lanes`。
 1. **選ぶ**: mainの最新の分析が示す最大の制約から選ぶ（AGENTS.mdの「判断の原則」）。分析とrunが合わない、予想と違う動きがあるときは、その理由を先に調べる。ロジックを変える案（順位付け、待ちの条件、上限など）は、実装の前に状態ログで前提を確かめ、確かめた数字を仮説に書く。キューにある投稿とは、作業が重ならず、一緒に測っても効果を切り分けられるものを選ぶ。APIの前後に一律に待つだけの変更は、mainが`ISUCON_WAITS`（`scripts/waits.py`）で試すので作らない（`waits.py history`に結果がある）。応答の中身や状態で待ちを変えるものは作ってよい。
 2. **branchを切る**: `git switch -c improve-<短い名前> <mainのbranch>`（mainのbranchは上の`main-session.py show`の`branch`）。取り込み前の自分の投稿の上に積むなら、そのbranchから切る（`submit`が積んだことを記録し、土台が棄却・取り下げになると一緒にキューから外れる）。切ったら`python3 scripts/proposal.py working "<狙う制約と変更>"`で、ボードの「作業中」に出す（`improve working`の行も出る。投稿すると消え、やめたら`working --done`）。
 3. **作る**: 変更の目的ごとにcommitを分ける。メモリ化やキャッシュは、`docs/cache-design.md`に正本・反映・無効化・再構築を書いてから入れる。
-4. **確かめる**: `make build`、テスト、`make local-up / local-check`、状態の変わり方が変わる変更は`make local-flow`と状態ログの比較（`docs/local-development.md`）。サーバーの様子は`make status`と`scripts/ssh-node.sh <node> '<読むだけのcommand>'`で見てよいが、サーバー上を変えない。
+4. **確かめる**: 最後に判定するのはmainのベンチなので、ここで要るのは、buildが通り、ベンチを落とさない（応答と状態の変わり方を壊さない）と分かっていることまで。使える道具は`make build`、テスト、`make local-up / local-check`、`make local-flow`と状態ログの比較（`docs/local-development.md`）。サーバーの様子は`make status`と`scripts/ssh-node.sh <node> '<読むだけのcommand>'`で見てよいが、サーバー上を変えない。
 5. **投稿する**:
 
    ```bash
    python3 scripts/proposal.py submit --based-on <根拠のrunの短縮ID> \
      --hypothesis "何を変えて、なぜ点が上がるか（確かめた数字）" \
-     --expect "期待する観測値（route・SQL・CPUなど、briefとqueryで確かめられるもの）" \
-     --verified "ローカルで確かめたこと"
+     --expect "期待する観測値（route・SQL・CPUなど、briefとqueryで確かめられるもの）"
    ```
+
+   ローカルで確かめたことがあれば`--verified "..."`で添える（mainが読む）。
 
    終了コード3（キューが埋まっている）なら、上の「キュー」のとおり`wait`をbackgroundで起動する。
 6. **次へ**: `submit`がこのworktreeを投稿したbranchから外す（HEADは同じcommit）。次のbranchを切り、採否を待たずに次の候補を進めてよい。調整の続きのように直前の結果を見ないと作れない変更は、結果を待つか、その間に別の制約を調べる。

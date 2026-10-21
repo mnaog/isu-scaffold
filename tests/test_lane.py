@@ -93,7 +93,7 @@ class LaneTests(unittest.TestCase):
         self.assertEqual(call['lane'], 'code-map')
         self.assertIsNone(call['claudecode'])
         argv = call['argv']
-        for flag, value in [('--model', 'claude-opus-5-5'), ('--effort', 'high'), ('--permission-mode', 'dontAsk')]:
+        for flag, value in [('--model', 'claude-opus-5-5'), ('--effort', 'medium'), ('--permission-mode', 'dontAsk')]:
             self.assertEqual(argv[argv.index(flag) + 1], value)
         self.assertIn('Bash(cargo:*)', argv[argv.index('--allowedTools') + 1])
         self.assertEqual(argv[-2], '--allowedTools')

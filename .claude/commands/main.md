@@ -52,6 +52,15 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 
 6. すぐ1へ戻る。待っている投稿が無ければ`python3 scripts/proposal.py pending`で確かめ、それでも無ければ、振れ幅の測り直しかwaitの微調整のどちらかにベンチを使う（どちらにするかはそのときの状況で決める）。`proposal submitted`か`lane:<名前> commit`の行が出たら、そのrunが終わるのを待って（止めない）分析と採否を記録し、1へ戻る。sleepやpollingで待たない。`improve working`・`worktree working`の行とボードの「作業中」で、もうすぐ届く投稿が分かる。
 
+### ベンチを回すときの決まり
+
+- ベンチ（`isuscope run`・`survey-run`・`make first-bench`）は、Bashの`run_in_background`で起動する（foregroundはhookが止める）。`kickoff`・`bootstrap`・`bench-check`・laneからは起動しない。
+- PASSしたrunは、分析を記録するまで次のベンチを始められない。FAILと中断のrunに分析は要らない。仮説の判定（`supported`・`rejected`・`inconclusive`・`skipped`）と変更の採否（`accepted`・`provisional`・`rejected`・`deferred`）は別に記録する。`provisional`には`--revisit`が要る。runの読み方は`docs/reference/isuscope.md`。
+- 最後にdeployしたcommitとHEADがずれていると、ベンチは始まらない。commitして`make deploy`するか、HEADを戻す。
+- Monitorで`.local/progress.log`を追う。`benchmark slow`が出たら、アプリ・nginxのerror logとnodeの負荷を確かめ、止まっていれば`scripts/benchmark-stop.sh`で止める。
+- nodeの異常（deploy後にアプリが立ち上がらない、nodeが応答しない、ベンチが止まる）は、まず`make status`で全nodeを見る（応答しないnode、メモリ・load・失敗したunit・待ち受けport・直近のOOMとerror・MySQLの実行中のSQLを1回で返す）。手でsshするときも`scripts/ssh-node.sh <node> '<command>'`を使い、待つloopには回数の上限を付ける。
+- 見取り図（`docs/benchmark-scenario.md`）は、ベンチの仕様について観測と食い違う記述だけを直す。runの結果や改善の効果は`isuscope analyze`へ書く。
+
 ### 振れ幅を測る
 
 同じ構成でも点は振れる。投稿のrunを2回ずつ回すと周回が倍になるので、振れ幅は、ベンチが空いている時間に、最新の採用構成で先に測っておく。
@@ -79,7 +88,7 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 
 ### kickoffの間
 
-worktree `portal`のセッション（`/portal`）が、サーバーの情報、ベンチ接続、当日マニュアルの順に作る。`.local/progress.log`の`portal`の行を追い、`environment`を見たらサーバーを起動する。`official`を見たら`git merge --no-ff portal`してlane `scenario`を起動し、`bench`を見たら同じくmergeして`.isuscope/benchmark.sh --check`を通す。`notice`は内容を確かめ、作業に関わるなら反映する。lane `full-memory`（全メモリ化）はkickoffと同時に始まる。`lane:full-memory complete`が出たら次のベンチで最優先に測る。`git merge lane/full-memory`で取り込み、laneの最後の回答にある取り込んだmainのhashより後にmainへ入った`webapp/`の変更は、ベンチを待つ間に自分で全メモリ化の形へ移す（SELECTはstoreから読む、書き込みは変更を確定する関数を通す、cacheやメモリ化はstoreへまとめる。`docs/cache-design.md`に正本と関数の場所がある）。移したら`make local-flow`と`make local-state-log`、`scripts/state-log-compare.py`で状態の変化が漏れていないことを確かめてからdeployする。移す手間より測った改善が小さい変更は、移さずに捨ててよい。baselineの分析は、improveが最初の変更を選ぶ材料なので、`make first-bench`の後すぐに書いて`main analyzed`を出す。
+`docs/guides/kickoff.md`に沿って進める（portalの行を見てのサーバーの起動とmerge、laneの取り込み、全メモリ化の取り込みと、その後に入った変更の移し方）。baselineの分析は、improveが最初の変更を選ぶ材料なので、`make first-bench`の後すぐに書く。
 
 ### 終了前
 

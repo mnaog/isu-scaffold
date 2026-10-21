@@ -72,7 +72,7 @@ LANE_ISUSCOPE = {'list', 'brief', 'query', 'sql', 'series', 'help', '--help', '-
 READ_CHANGE = {'list', 'show', 'help', '--help', '-h'}
 LANE_PROGRAMS = {'ansible', 'ansible-playbook', 'aws', 'gh', 'claude', 'codex', 'opencode'}
 MAIN_HINT = ('この操作はmainのセッション（/mainで宣言したセッション）だけが行う。'
-             'worktreeの変更はcommitして`python3 scripts/proposal.py submit --hypothesis ... --expect ... --verified ...`'
+             'worktreeの変更はcommitして`python3 scripts/proposal.py submit --hypothesis ... --expect ...`'
              'で投稿すると、mainがベンチを起動したときに渡る。mainを引き継ぐならrepoのrootで/mainを打つ。')
 # What only main does while a main is declared: changes to remote nodes, the benchmark and its records.
 MAIN_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-apply.sh', 'bootstrap.sh',

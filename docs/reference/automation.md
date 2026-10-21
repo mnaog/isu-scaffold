@@ -72,7 +72,7 @@ mainはrepoのrootで動くClaude Codeのセッション1つです。`/main`（`
 
 ```bash
 python3 scripts/main-session.py show
-python3 scripts/proposal.py submit --hypothesis "..." --expect "..." --verified "..." [--based-on <短縮ID>]   # worktreeで
+python3 scripts/proposal.py submit --hypothesis "..." --expect "..." [--verified "..."] [--based-on <短縮ID>]   # worktreeで
 make proposals                                  # 投稿の一覧（python3 scripts/proposal.py list [--all]）
 python3 scripts/proposal.py show [<branch>]     # 1件の状態とmainの判断
 python3 scripts/proposal.py wait [--timeout 3600]                       # improveが、キューの空きを待つ（background）
