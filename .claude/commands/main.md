@@ -10,12 +10,12 @@ allowed-tools: Bash(python3 scripts/main-session.py claim:*)
 
 上の結果がエラーなら、理由をそのまま人間へ伝えて止まる（mainはrepoのrootで動かす）。成功していれば、このセッションがmainになった。
 
-mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。mainは改善を実装しない。 アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`、`make durability`）、laneとportalの取り込み（全メモリ化laneを取り込むときに、後から入った変更を全メモリ化の形へ移すことも含む）、投稿を取り込むための直し（衝突、取り込んで通らなくなったbuild・deploy）、APIごとの待ちの表（`ISUCON_WAITS`。`scripts/waits.py set`で変える）は実装に数えない。mainは次を受け持つ。
+mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。mainは改善を実装しない。実装に手を取られるとベンチの周回が止まるため。アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`、`make durability`）、laneとportalの取り込み（全メモリ化laneを取り込むときに、後から入った変更を全メモリ化の形へ移すことも含む）、投稿を取り込むための直し（衝突、取り込んで通らなくなったbuild・deploy）、APIごとの待ちの表（`ISUCON_WAITS`。`scripts/waits.py set`で変える）は実装に数えない。mainは次を受け持つ。
 
 - **merge**: improve・人間（worktree `human`）の投稿、laneのcommit、portalを取り込む。キューの追従と衝突の解消（両方の意図を残す）、取り込んだ変更の戻し（`git revert`）まで。投稿は投稿者へ戻さない。buildやdeployが通らない、衝突する投稿は、直せるならmainが直し、直せないなら棄却する。
 - **次に測るものの判断**: 下の「キュー」。何をまとめて測るか、測らずに棄却するか、保留にするかをmainが決める。
 - **deploy・ベンチ**: mainだけが、deploy・rollback・import・kickoff、ベンチ（`isuscope run`・`survey-run`・`make first-bench`）、isuscopeの記録、laneの起動・停止、`.local/operation.lock`を使う。ほかのセッションからの同じ操作は`scripts/tool-guard.py`が止める。
-- **分析と採否**: runを分析し、最大の制約を特定して`isuscope analyze`に書く。improveはこの分析だけを読んで次の変更を選ぶので、そこから次の最大の制約と、その根拠を自分で確かめられるように書く。冒頭には、最大の制約がサーバーの資源、ベンチ側（処理量や利用者の振る舞い）、得点の仕組み（組み合わせの質など）のどれにあるかを書く。improveが作る変更の向きは、ここで決まる。
+- **分析と採否**: runを分析し、最大の制約を特定して`isuscope analyze`に書く。improveはこの分析だけを読んで次の変更を選ぶので、そこから次の最大の制約と、その根拠を自分で確かめられるように書く。1文目には、次の最大の制約と、それがサーバーの資源・ベンチ側（処理量や利用者の振る舞い）・得点の仕組み（選び方や順序で決まる部分）のどこにあるかを書く。決めきれなければ、候補と、それを見分ける観測を書く。improveへの知らせ（`main analyzed`の行）には最後に記録した分析の先頭300字が載り、improveはまずそこを読んで変更の向きを決めるので、スコアや比較の数字はその後に書く。
 - **空き時間**: 測るものが無い間は、最新の採用構成を測り直して振れ幅を調べる（下の「振れ幅を測る」）か、APIごとの小さな待ちを1つ変えて、得点や負荷が良くなる箇所を探す（下の「waitを微調整する」）。どちらに使うかは、そのときの状況で決める。投稿は1回のrunで決め、2度は回さない。
 
 humanのセッションから届くメッセージは人間の意見として読み、反映するか、しない理由を返す。
@@ -50,7 +50,7 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
    - ベンチを起動すると、hookが待っている投稿と保留をmainのbranchへ追従させる`proposal.py sync`をbackgroundで始める（`.local/proposal-sync`のworktreeで各branchへmainのbranchをmergeし、結果は`.local/proposal-sync.log`）。衝突するとそこで止まって衝突を残すので、解消して`git add`し、`python3 scripts/proposal.py sync`で続ける。処理の意味がぶつかる（同じ処理を別々に変えている）ときも、両方の意図を残して解く。解けないなら`git merge --abort`して棄却する。投稿したbranchは`submit`が投稿者のworktreeから外すので、そのまま追従できる。
    - キューを見直し、次に測るものを決めておく。
 4. 終わったら分析し、採否を決める。同じ投稿を2度測らない。ベンチ側の動きの変化は`isuscope query RUN --base BASE --view transitions`で比べられる（`docs/reference/isuscope.md`）。分かったベンチの仕様は、見取り図の該当する節へ書く。採否は投稿ごとに`isuscope analyze RUN <判定> --analysis "..." --change <change ID> --decision ...`で記録する（同じrunへ追記できる。change IDは、ベンチを起動したときにhookが投稿ごとに示す）。mainが書くのはこれだけで、hookがその採否・理由・runを投稿へ写す。不採用は`git revert -m 1 <mergeのcommit>`で戻す。ベンチが起動できなかった、中断した、落ちたときの測定中の投稿は、次のベンチの起動時にhookが待ちへ戻して測り直す（すぐ戻すなら`python3 scripts/proposal.py requeue`。投稿が原因で落ちたなら、直せるなら直して測り、直せないなら`rejected`にする）。
-5. 分析を記録したら、キューの残り（待ちと保留）の前提がまだ成り立つかを見直し、棄却する・保留にする・保留を解くを決める。測定中の投稿の採否がそろうと、hookが最後の分析の冒頭を`main analyzed`の行でimproveへ知らせる。improveはまずこの行を読むので、分析の冒頭に次の最大の制約が分かるように書く。
+5. 分析を記録したら、キューの残り（待ちと保留）の前提がまだ成り立つかを見直し、棄却する・保留にする・保留を解くを決める。測定中の投稿の採否がそろうと、hookが最後の分析の冒頭を`main analyzed`の行でimproveへ知らせる。improveはまずこの行を読むので、書き出しは上の「分析と採否」のとおりにする。
 
 6. すぐ1へ戻る。待っている投稿が無ければ`python3 scripts/proposal.py pending`で確かめ、それでも無ければ、上の「空き時間」のとおりベンチを使う。`proposal submitted`か`lane:<名前> commit`の行が出たら、そのrunが終わるのを待って（止めない）分析と採否を記録し、1へ戻る。sleepやpollingで待たない。もうすぐ届く投稿は、ボードの「作業中」で分かる。
 
@@ -100,3 +100,5 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 目標は人間が`/goal`で渡す。渡されるまでは、`AGENTS.md`と`docs/guides/`の手順（kickoffなら`kickoff.md`、改善はAGENTS.mdの「判断の原則」、終了前なら`finish.md`）に沿って、今の段階から進める。
 
 宣言の結果と、今の状態（`python3 scripts/proposal.py list`の投稿、`make lanes`のlane、improveが動いているか）を短く報告してから、次の手を始める。improveの行が無ければ、worktree `improve`で`/improve`を起動するよう人間に頼む。
+
+ツール呼び出しの無いメッセージでターンが終わると、次の通知が来るまでベンチの周回が止まる。ターンを終えてよいのは、ベンチがbackgroundで動いていてMonitorが追っているときと、宣言がエラーのときだけ。状況の報告や人間への頼みごと（`/improve`の起動など）は、次のツール呼び出しと同じメッセージに書いて続ける。「次は〜する」と書いて終える、区切りがよいので報告して終える、はしない。
