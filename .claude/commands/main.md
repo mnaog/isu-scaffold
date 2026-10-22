@@ -10,12 +10,12 @@ allowed-tools: Bash(python3 scripts/main-session.py claim:*)
 
 上の結果がエラーなら、理由をそのまま人間へ伝えて止まる（mainはrepoのrootで動かす）。成功していれば、このセッションがmainになった。
 
-mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。mainは改善を実装しない。実装に手を取られるとベンチの周回が止まるため。アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`、`make durability`）、laneとportalの取り込み（全メモリ化laneを取り込むときに、後から入った変更を全メモリ化の形へ移すことも含む）、投稿を取り込むための直し（衝突、取り込んで通らなくなったbuild・deploy）、APIごとの待ちの表（`ISUCON_WAITS`。`scripts/waits.py set`で変える）は実装に数えない。mainは次を受け持つ。
+mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。mainは実装を行わない。アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`、`make durability`）、laneとportalの取り込み（全メモリ化laneを取り込むときに、後から入った変更を全メモリ化の形へ移すことも含む）、投稿を取り込むための直し（衝突、取り込んで通らなくなったbuild・deploy）、APIごとの待ちの表（`ISUCON_WAITS`。`scripts/waits.py set`で変える）は実装に数えない。mainは次を受け持つ。
 
 - **merge**: improve・人間（worktree `human`）の投稿、laneのcommit、portalを取り込む。キューの追従と衝突の解消（両方の意図を残す）、取り込んだ変更の戻し（`git revert`）まで。投稿は投稿者へ戻さない。buildやdeployが通らない、衝突する投稿は、直せるならmainが直し、直せないなら棄却する。
 - **次に測るものの判断**: 下の「キュー」。何をまとめて測るか、測らずに棄却するか、保留にするかをmainが決める。
 - **deploy・ベンチ**: mainだけが、deploy・rollback・import・kickoff、ベンチ（`isuscope run`・`survey-run`・`make first-bench`）、isuscopeの記録、laneの起動・停止、`.local/operation.lock`を使う。ほかのセッションからの同じ操作は`scripts/tool-guard.py`が止める。
-- **分析と採否**: runを分析し、最大の制約を特定して`isuscope analyze`に書く。improveはこの分析だけを読んで次の変更を選ぶので、そこから次の最大の制約と、その根拠を自分で確かめられるように書く。1文目には、次の最大の制約と、それがサーバーの資源・ベンチ側（処理量や利用者の振る舞い）・得点の仕組み（選び方や順序で決まる部分）のどこにあるかを書く。決めきれなければ、候補と、それを見分ける観測を書く。improveへの知らせ（`main analyzed`の行）には最後に記録した分析の先頭300字が載り、improveはまずそこを読んで変更の向きを決めるので、スコアや比較の数字はその後に書く。
+- **分析と採否**: runを分析し、最大の制約を特定して`isuscope analyze`に書く。improveはまずこの分析を読んで次の変更を選ぶので、そこから次の最大の制約と、その根拠を自分で確かめられるように書く。mainが記録する分析は、振れ幅やwaitのものも含め、最後の1件の先頭300字が`main analyzed`としてimproveへ届く。なので、どの分析も1文目に、次の最大の制約とその場所（AGENTS.mdの「判断の原則」の3つ）を書き、決めきれなければ候補を並べる。
 - **空き時間**: 測るものが無い間は、最新の採用構成を測り直して振れ幅を調べる（下の「振れ幅を測る」）か、APIごとの小さな待ちを1つ変えて、得点や負荷が良くなる箇所を探す（下の「waitを微調整する」）。どちらに使うかは、そのときの状況で決める。投稿は1回のrunで決め、2度は回さない。
 
 humanのセッションから届くメッセージは人間の意見として読み、反映するか、しない理由を返す。
@@ -96,4 +96,4 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 
 宣言の結果と、今の状態（`python3 scripts/proposal.py list`の投稿、`make lanes`のlane、improveが動いているか）を短く報告してから、次の手を始める。improveの行が無ければ、worktree `improve`で`/improve`を起動するよう人間に頼む。
 
-ツール呼び出しの無いメッセージでターンが終わると、次の通知が来るまでベンチの周回が止まる。ターンを終えてよいのは、ベンチがbackgroundで動いていてMonitorが追っているときと、宣言がエラーのときだけ。状況の報告や人間への頼みごと（`/improve`の起動など）は、次のツール呼び出しと同じメッセージに書いて続ける。「次は〜する」と書いて終える、区切りがよいので報告して終える、はしない。
+ターンは基本的に終えない。終えてよいのは、backgroundで動く処理（ベンチ、`make kickoff`など）の通知を待つときだけ。報告や人間への頼みごとは、次のツール呼び出しと同じメッセージに書いて続ける。
