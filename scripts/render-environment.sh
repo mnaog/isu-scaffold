@@ -19,6 +19,8 @@ test -f "${nodes_file}"
 source "${environment_file}"
 
 ssh_user=${SSH_USER:?SSH_USER is required}
+benchmark_node_access=${BENCHMARK_NODE_ACCESS:-none}
+case "${benchmark_node_access}" in none|ssh) ;; *) echo "BENCHMARK_NODE_ACCESS must be none or ssh" >&2; exit 2 ;; esac
 identity_file=${SSH_IDENTITY_FILE:?SSH_IDENTITY_FILE is required}
 known_hosts_file=${SSH_KNOWN_HOSTS_FILE:-.local/known-hosts}
 nginx_access_log=${ISUSCOPE_NGINX_ACCESS_LOG:-/var/log/nginx/isuscope-access.log}
@@ -70,7 +72,8 @@ trap cleanup EXIT
 jq \
   --arg default_user "${ssh_user}" \
   --arg identity_file "${identity_file}" \
-  --arg known_hosts_file "${known_hosts_file}" '
+  --arg known_hosts_file "${known_hosts_file}" \
+  --arg benchmark_node_access "${benchmark_node_access}" '
   . as $nodes |
   def group_hosts($group):
     reduce ($nodes[] | select(.group == $group)) as $node ({};
@@ -102,7 +105,9 @@ jq \
       vars: {
         ansible_user: $default_user,
         ansible_ssh_private_key_file: $identity_file,
-        ansible_ssh_common_args: ("-o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=" + $known_hosts_file)
+        ansible_ssh_common_args: ("-o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=" + $known_hosts_file),
+        # none: SSHの初期設定・Ansible・ssh-node.shはベンチの台へ接続しない（BENCHMARK_NODE_ACCESS）。
+        isucon_benchmark_node_access: $benchmark_node_access
       },
       children: ({
         application: {hosts: group_hosts("application")},

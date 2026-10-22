@@ -28,10 +28,16 @@ node=$(jq -ce --arg name "${node_name}" '
 
 # ベンチnodeにはベンチadapterとkickoffの検査だけが入る。練習の規則（ベンチnodeを観測しない、
 # ベンチマーカーを写さない）を、hookで見えないscript経由の接続でも守るため、ここでも断る。
-if [[ "${ISUCON_ALLOW_BENCHMARK_NODE:-}" != 1 ]] &&
-  jq -e --arg name "${node_name}" '.all.children.benchmark.hosts // {} | has($name)' "${inventory_path}" >/dev/null; then
-  echo "refusing to connect to the benchmark node ${node_name}: run benchmarks through isuscope run / survey-run (.isuscope/benchmark.sh)" >&2
-  exit 1
+# BENCHMARK_NODE_ACCESS=none（既定）なら、ベンチadapterからも接続しない（本番では運営の台）。
+if jq -e --arg name "${node_name}" '.all.children.benchmark.hosts // {} | has($name)' "${inventory_path}" >/dev/null; then
+  if [[ "$(jq -r '.all.vars.isucon_benchmark_node_access // "none"' "${inventory_path}")" != ssh ]]; then
+    echo "refusing to connect to the benchmark node ${node_name}: BENCHMARK_NODE_ACCESS is none; set it to ssh in .local/environment.env and rerun make discover only when the practice runs its benchmark over SSH" >&2
+    exit 1
+  fi
+  if [[ "${ISUCON_ALLOW_BENCHMARK_NODE:-}" != 1 ]]; then
+    echo "refusing to connect to the benchmark node ${node_name}: run benchmarks through isuscope run / survey-run (.isuscope/benchmark.sh)" >&2
+    exit 1
+  fi
 fi
 
 host=$(jq -r '.ansible_host' <<<"${node}")

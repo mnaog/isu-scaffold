@@ -89,6 +89,8 @@ test ! -e "${fixture_repo}/.local/operation.lock/owner"
 
 jq -e '.all.children.application.hosts.app1.ansible_host == "192.0.2.10"' \
   "${fixture_repo}/.local/ansible-inventory.json" >/dev/null
+# 既定ではベンチの台へ接続しない（SSHの初期設定・Ansible・ssh-node.sh）。
+jq -e '.all.vars.isucon_benchmark_node_access == "none"' "${fixture_repo}/.local/ansible-inventory.json" >/dev/null
 jq -e --argjson count "${app_count}" '.all.children.application.hosts | length == $count' \
   "${fixture_repo}/.local/ansible-inventory.json" >/dev/null
 grep -q '^mode = "command"$' "${fixture_repo}/.isuscope/config.toml"

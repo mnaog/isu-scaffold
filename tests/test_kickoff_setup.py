@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import json
 import os
 import re
 
@@ -111,6 +112,29 @@ class KickoffSetupTest(unittest.TestCase):
     def test_failed_cloud_init_blocks_bootstrap(self):
         self.assertEqual(self.run_guard(1), 1)
         self.assertEqual(self.run_guard(0), 0)
+
+    def test_playbooks_skip_benchmark_nodes_unless_access_is_ssh(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            venv = root / 'venv/bin'
+            venv.mkdir(parents=True)
+            (venv / 'ansible-playbook').write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+            (venv / 'ansible-playbook').chmod(0o755)
+            inventory = root / 'inventory.json'
+
+            def run(access):
+                vars_ = {} if access is None else {'isucon_benchmark_node_access': access}
+                inventory.write_text(json.dumps({'all': {'vars': vars_, 'children': {}}}))
+                env = dict(os.environ, ANSIBLE_VENV_DIR=str(root / 'venv'), ANSIBLE_INVENTORY=str(inventory),
+                           ANSIBLE_PROFILE='legacy')
+                done = subprocess.run(['bash', str(ROOT / 'scripts/run-ansible-playbook.sh'), 'verify.yml'],
+                                      env=env, capture_output=True, text=True)
+                self.assertEqual(done.returncode, 0, done.stderr)
+                return done.stdout.splitlines()
+
+            for access in (None, 'none'):
+                self.assertIn('all:!benchmark', run(access))
+            self.assertNotIn('all:!benchmark', run('ssh'))
 
     def test_inspection_never_visits_a_benchmark_node(self):
         # In the contest the benchmark node may sit in the participant's account and belong to the organizer.

@@ -105,6 +105,10 @@ validate_config() {
           echo "BENCHMARK_NODE is not present in inventory: ${BENCHMARK_NODE}" >&2
           return 1
         }
+      jq -e '.all.vars.isucon_benchmark_node_access == "ssh"' "${inventory_path}" >/dev/null || {
+        echo "BENCHMARK_TRANSPORT=ssh needs BENCHMARK_NODE_ACCESS=ssh in .local/environment.env (then make discover); the default none never connects to the benchmark node" >&2
+        return 1
+      }
       test -n "${BENCHMARK_COMMAND:-}" || { echo "BENCHMARK_COMMAND is empty" >&2; return 1; }
       test -n "${BENCHMARK_PROBE_COMMAND:-}" || { echo "BENCHMARK_PROBE_COMMAND is empty" >&2; return 1; }
       ;;
