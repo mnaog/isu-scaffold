@@ -71,7 +71,7 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 - 起動: `isuscope run --repeat "振れ幅: <基準の短縮ID>と同じ構成" --hypothesis "振れ幅を測る（同じ構成のn回目）"`を`run_in_background`で。終わったら`isuscope analyze RUN skipped --analysis "振れ幅: ..."`を短く記録する（`--change`は付けない）。
 - 回数: 決めない。
 - 読み方: 同じ構成で測ったrunの得点を見る。
-- 測り直しは、この振れ幅のためと終了前の確認（`docs/guides/finish.md`）だけにする。投稿・laneの変更は1回で決める。
+- 測り直しは、この振れ幅のためだけにする。投稿・laneの変更は1回で決める。
 
 ### waitを微調整する
 
@@ -87,17 +87,12 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 - **採否**: 投稿と同じく1回で決める。不採用なら`git revert`で前の値へ戻す。
   - 分析は`isuscope analyze RUN supported|rejected --change <waits.py setが出すwait-...のID> --decision accepted|rejected`で記録する。
   - 本文は、後で`waits.py history`と`isuscope change list`から読み返したときに、何を変えて何が起きたかが分かり、次に試す値を決められるように書く。
-- **終了前**: 表は最終構成の一部で、計測ではないので外さない。`docs/guides/finish.md`の手順で、最後のrunの`identity.waits`と`waits.py show`が採用した表と一致することを確かめる。
 
 ### kickoffの間
 
 `docs/guides/kickoff.md`に沿って進める（portalの行を見てのサーバーの起動とmerge、laneの起動と取り込み、全メモリ化の取り込みと、その後に入った変更の移し方）。完全importをcommitしたら、すぐlane `static-edge`（静的ファイルの配り方）を`python3 scripts/lane.py start static-edge`で起動する。baselineの分析は、improveが最初の変更を選ぶ材料なので、`make first-bench`の後すぐに書く。
 
-### 終了前
-
-開始時に決めた時刻になったら、`python3 scripts/proposal.py freeze --note "<最終構成のcommit>"`でimproveの新しい投稿を止め（`main freeze`の行が出る）、`docs/guides/finish.md`へ進む。キューに残った投稿は、測らずに`deferred`にする。
-
-目標は人間が`/goal`で渡す。渡されるまでは、`AGENTS.md`と`docs/guides/`の手順（kickoffなら`kickoff.md`、改善はAGENTS.mdの「判断の原則」、終了前なら`finish.md`）に沿って、今の段階から進める。
+目標は人間が`/goal`で渡す。渡されるまでは、`AGENTS.md`と`docs/guides/`の手順（kickoffなら`kickoff.md`、改善はAGENTS.mdの「判断の原則」）に沿って、今の段階から進める。
 
 宣言の結果と、今の状態（`python3 scripts/proposal.py list`の投稿、`make lanes`のlane、improveが動いているか）を短く報告してから、次の手を始める。improveの行が無ければ、worktree `improve`で`/improve`を起動するよう人間に頼む。
 
