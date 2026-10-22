@@ -82,7 +82,7 @@ function renderExpandedMetrics(root,q,position){
  renderMysql(root,q.mysql);
  const frequent=insightPanel(root,'http-by-count','要求数の多いAPI','合計時間の上位以外 · 選択run');sectionNotice(frequent,b.http_by_count);
  frequent.append(el('p','HTTPの表（合計時間の順）に入らなかったAPIを、要求数の多い順に並べます。速くて回数の多い静的ファイルやpollingは、合計時間の順では下に埋もれます。','panel-note'));
- const statics=b.http_static_files;if(statics)frequent.append(el('p',`静的ファイル（拡張子の付いたpath）: ${num(statics.routes)} route · ${num(statics.count)} 回 · 全要求の ${num(statics.share_percent,1)}% · 合計 ${num(statics.total_ms)} ms`,'insight-warning'));
+ const statics=b.http_static_files;if(statics)frequent.append(el('p',`静的ファイル（拡張子の付いたpath）: ${num(statics.routes)} route · ${num(statics.count)} 回 · 全要求の ${num(statics.share_percent,1)}%`,'insight-warning'));
  insightTable(frequent,['node','API','回数','全要求に占める %','合計 ms','平均 ms','p95 ms','エラー'],(b.http_by_count?.items||[]).map(r=>[r.node,textCell(`${r.method||''} ${r.route||''}`.trim()),num(r.count),num(r.share_percent,1),num(r.total_ms),num(r.avg_ms,2),num(r.p95_ms,2),num(r.errors)]));
  const calls=insightPanel(root,'app-calls','アプリから外への呼び出し',`試行単位 · ${(b.app_calls?.window||'whole').toUpperCase()}`);sectionNotice(calls,b.app_calls);
  calls.append(el('p','アプリ計測（app_metrics）が数えた、決済などの外部APIへの試行です。割合は同じ呼び先の試行に占める割合で、失敗の結果ならそのまま失敗率です。HTTPの表には出ません。','panel-note'));
