@@ -111,6 +111,26 @@ async function loadDetails(force=false){
 }
 function comparisonTable(parent,rows){table(parent,['項目','比較元','対象','差分','変化率'],rows.map(([name,b,c,delta,percent])=>[name,num(b,2),num(c,2),signed(delta),percent==null?'—':signed(percent)+'%']));}
 function valueDiff(b,c){return [b,c,b!=null&&c!=null?c-b:null,b!=null&&c!=null&&b!==0?(c-b)/Math.abs(b)*100:null];}
+// The parser's own label names which parser produced a metric; it is the same on every row.
+function benchmarkKey(r){const labels=Object.entries(r.labels||{}).filter(([k])=>k!=='isuscope.parser').sort(([a],[b])=>a<b?-1:a>b?1:0);return {key:r.metric+JSON.stringify(labels),name:r.metric+(labels.length?' '+labels.map(([k,v])=>`${k}=${v}`).join(' '):'')};}
+// Every benchmark.* metric of the run beside the base run's value, in metric then label order.
+function benchmarkBreakdownRows(candidate,base){
+ const rows=new Map();
+ for(const [side,data] of [['c',candidate],['b',base]])for(const r of data?.rows||[]){const {key,name}=benchmarkKey(r);const row=rows.get(key)||{name};row[side]=r.value;rows.set(key,row);}
+ return [...rows.entries()].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([,r])=>[r.name,...valueDiff(r.b,r.c)]);
+}
+// One sample per warning category; the counts are in the breakdown table.
+function benchmarkWarningLines(messages){return (messages?.warnings||[]).map(x=>`警告 ${x.category||'分類なし'}: ${(x.samples||[])[0]||''}`);}
+function renderBenchmarkBreakdown(root,q){
+ const rows=benchmarkBreakdownRows(q.benchmark,q.base?q.benchmark_base:null),warnings=benchmarkWarningLines(q.brief?.benchmark_messages);
+ if(!rows.length&&!warnings.length&&!q.benchmark?.error)return;
+ const panel=el('div',null,'panel metrics-section');panel.id='benchmark-breakdown';root.append(panel);
+ const head=el('div',null,'metric-heading');head.append(el('h3','ベンチの内訳'),el('span',q.base?'比較元 → 対象':'対象のみ（比較元なし）','section-note'));panel.append(head);
+ if(q.benchmark?.error)panel.append(el('p','ベンチの内訳を取得できません。 '+q.benchmark.error,'panel-note'));
+ if(rows.length){const scroll=el('div',null,'table-scroll');panel.append(scroll);comparisonTable(scroll,rows);}
+ for(const line of warnings)panel.append(el('p',line,'panel-note'));
+ if(q.benchmark?.truncated)panel.append(el('p','内訳は一部のみ表示されています。','panel-note'));
+}
 function renderDetail(q){
  chartProbes=[];prepareWorkspace(q);q=workspaceData(q,workspace.node);
  const root=document.querySelector('#metrics');root.replaceChildren();
@@ -129,6 +149,7 @@ function renderDetail(q){
  if(q.base){const [, ,delta,percent]=valueDiff(q.base.score,run.score);table(summary,['項目','比較元','対象','差分','変化率'],[['スコア',scoreValue(q.base),scoreValue(run),signed(delta),percent==null?'—':signed(percent)+'%']]);content.append(el('p','差分は対象 − 比較元。FAILのスコアや要求回数の増減だけで改善とは判断しません。','note'));}
  const messages=[...(b.benchmark_messages?.failure||[]),...(b.benchmark_messages?.errors||[]).flatMap(x=>x.samples||[]),...(b.warnings||[])];
  for(const message of messages)root.append(el('p',message,'metrics-error'));
+ renderBenchmarkBreakdown(root,q);
  renderExpandedMetrics(root,q,'before');
  for(const kind of ['http','sql'])renderMetricTable(root,kind,q.sections?.[kind]?.data||{},!!q.base,b.database?.window);
  renderExpandedMetrics(root,q,'after');

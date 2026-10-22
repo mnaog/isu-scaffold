@@ -95,3 +95,18 @@ test('deltas isuscope leaves out are computed from both sides',()=>{
  const d=ctx.valueDelta(200,150);assert.equal(d.delta,-50);assert.equal(d.delta_percent,-25);
  assert.equal(ctx.valueDelta(0,5).delta_percent,null);assert.deepEqual({...ctx.valueDelta(null,5)},{});
 });
+test('benchmark breakdown pairs metrics by name and labels, ignoring the parser label',()=>{
+ const candidate={rows:[{metric:'benchmark.warnings',value:12,labels:{category:'CODE=30','isuscope.parser':'contest-output'}},{metric:'benchmark.warnings_total',value:12,labels:{}},{metric:'benchmark.warnings',value:3,labels:{category:'CODE=33'}}]};
+ const base={rows:[{metric:'benchmark.warnings',value:4,labels:{category:'CODE=30'}},{metric:'benchmark.warnings_total',value:4,labels:{}}]};
+ // The page's arrays come from another realm; compare their JSON (a missing side reads null).
+ const plain=x=>JSON.parse(JSON.stringify(x));
+ const rows=plain(ctx.benchmarkBreakdownRows(candidate,base));
+ assert.deepEqual(rows.map(r=>r[0]),['benchmark.warnings category=CODE=30','benchmark.warnings category=CODE=33','benchmark.warnings_total']);
+ assert.deepEqual(rows[0].slice(1),[4,12,8,200]);
+ assert.deepEqual(rows[1].slice(1),[null,3,null,null]);
+ assert.deepEqual(plain(ctx.benchmarkBreakdownRows(candidate,null))[2].slice(1,3),[null,12]);
+});
+test('warning lines name each category once with its first sample',()=>{
+ assert.deepEqual([...ctx.benchmarkWarningLines({warnings:[{category:'CODE=30',samples:['a','b']},{samples:['c']}]})],['警告 CODE=30: a','警告 分類なし: c']);
+ assert.equal(ctx.benchmarkWarningLines(undefined).length,0);
+});

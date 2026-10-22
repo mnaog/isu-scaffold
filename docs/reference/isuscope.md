@@ -39,7 +39,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
   - `logs`: ベンチの間にアプリ・nginxのerror log・kernelが出したエラーを、型ごとに数えたもの
   - `database_io`: MySQLがfileの読み書きで待った時間
   - `database_memory`: buffer poolとtableの大きさ
-- FAILしたrunの理由とエラーの実例は、`.isuscope/parse-benchmark.sh`がベンチの出力から`message`として残す。`isuscope list`の`failure`と、`brief`の`benchmark_messages`で読む。判断材料とmessageには、適用されるルールで参加者の利用が認められた出力だけを使う。
+- FAILしたrunの理由と、エラー・警告の実例は、`.isuscope/parse-benchmark.sh`がベンチの出力から`message`として残す。`isuscope list`の`failure`と、`brief`の`benchmark_messages`（`failure`・`errors`・`warnings`）で読む。警告とエラーはcategory（`CODE=30`など）ごとの件数も`benchmark.warnings`・`benchmark.errors`に出るので、警告が上限に近づいていないかは生出力をgrepせず`isuscope query <run> --base <base> --metric-prefix benchmark.`で比べる。boardでは「ベンチの内訳」に並ぶ。判断材料とmessageには、適用されるルールで参加者の利用が認められた出力だけを使う。
 - ベンチ側の動き（誰が、何の後に、どれくらいの間隔で次の要求を出すか）は、毎回のrunの行動遷移（`brief`の`transitions`。遷移元→遷移先ごとの回数と、要求の開始から次の要求の開始までの間隔のp50/p95）で読む。応答の速さや内容を変えた回は、`isuscope query RUN --base BASE --view transitions`で前のrunと比べ、ベンチの反応が変わっていないか確かめる（割合の変化が大きい順に並び、消えた・現れた遷移も出る。`--label from=<route>`・`--label to=<route>`で絞る）。遷移に出ない見方（応答から次の要求までの時間、statusやsizeでの分岐、時刻ごとの主体の数）は、run directoryの`logs/nginx-log-raw-<node>-after-stdout.zst`（生のaccess log。`session`・`msec`・`reqtime`付き）を集計する。
 - アプリの中の状態（対象がどの状態にいて、いつ変わったか）は、lane `state-log`が入れた状態ログ（`docs/state-log.md`）が毎回のrunに残している。`brief`の`states`欄、`isuscope states sql`、`isuscope states timeline`で読む。状態を変える処理を書き換えるときは、呼び出しも一緒に移す。
 - 状態は`isuscope states sql latest "SELECT ..."`（表は`--schema`）で集計し、1つの対象の前後は`isuscope states timeline latest --kind <種類> --id <ID> --related`で時刻順に並べる（`--around <時刻>`で前後に絞る）。1つのSQLは30秒で止まる。止まったら、行ごとに数え直す相関サブクエリをやめ、示された書き方（attrsで結ぶなら`state_attrs`の索引、ある状態にいる数の推移なら累積和）に直す。
