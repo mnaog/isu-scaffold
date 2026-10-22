@@ -10,7 +10,7 @@ allowed-tools: Bash(python3 scripts/main-session.py claim:*)
 
 上の結果がエラーなら、理由をそのまま人間へ伝えて止まる（mainはrepoのrootで動かす）。成功していれば、このセッションがmainになった。
 
-mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。mainは実装を行わない。アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`、`make durability`）、laneとportalの取り込み（全メモリ化laneを取り込むときに、後から入った変更を全メモリ化の形へ移すことも含む）、投稿を取り込むための直し（衝突、取り込んで通らなくなったbuild・deploy）、APIごとの待ちの表（`ISUCON_WAITS`。`scripts/waits.py set`で変える）は実装に数えない。mainは次を受け持つ。
+mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。mainは改善を実装しない。少しでも多くベンチを回して情報を得ることが重要なので、mainはそこに集中する。アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`、`make durability`）、laneとportalの取り込み（全メモリ化laneを取り込むときに、後から入った変更を全メモリ化の形へ移すことも含む）、投稿を取り込むための直し（衝突、取り込んで通らなくなったbuild・deploy）、APIごとの待ちの表（`ISUCON_WAITS`。`scripts/waits.py set`で変える）は実装に数えない。mainは次を受け持つ。
 
 - **merge**: improve・人間（worktree `human`）の投稿、laneのcommit、portalを取り込む。キューの追従と衝突の解消（両方の意図を残す）、取り込んだ変更の戻し（`git revert`）まで。投稿は投稿者へ戻さない。buildやdeployが通らない、衝突する投稿は、直せるならmainが直し、直せないなら棄却する。
 - **次に測るものの判断**: 下の「キュー」。何をまとめて測るか、測らずに棄却するか、保留にするかをmainが決める。
@@ -68,10 +68,10 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 同じ構成でも点は振れる。投稿のrunを2回ずつ回すと周回が倍になるので、振れ幅は、ベンチが空いている時間に、最新の採用構成で先に測っておく。
 
 - 測る構成: 最後に採否を決めた後のHEAD（測定中・merge済みで未測定の投稿が無い状態）。不採用をrevertした後なら、deployが最良構成へ戻っていることを確かめる。
-- 起動: `isuscope run --repeat "振れ幅: <基準の短縮ID>と同じ構成" --hypothesis "振れ幅を測る（同じ構成のn回目）"`を`run_in_background`で。終わったら`isuscope analyze RUN skipped --analysis "振れ幅: ..."`を短く記録する（`--change`は付けない）。
+- 起動: `isuscope run --repeat "振れ幅: <基準の短縮ID>と同じ構成" --hypothesis "振れ幅を測る（同じ構成のn回目）"`を`run_in_background`で。終わったら`isuscope analyze RUN skipped --analysis "<次の最大の制約とその場所>。振れ幅: ..."`を短く記録する（`--change`は付けない）。
 - 回数: 決めない。
 - 読み方: 同じ構成で測ったrunの得点を見る。
-- 測り直しは、この振れ幅のためだけにする。投稿・laneの変更は1回で決める。
+- 測り直しは、この振れ幅のためと、終了前の確認（`docs/guides/finish.md`）だけにする。投稿・laneの変更は1回で決める。
 
 ### waitを微調整する
 
@@ -86,14 +86,23 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
   3. `waits.py set`が出す`isuscope run`（tagと、変えた値・基準を埋めた仮説）に期待を書き足し、backgroundで起動する
 - **採否**: 投稿と同じく1回で決める。不採用なら`git revert`で前の値へ戻す。
   - 分析は`isuscope analyze RUN supported|rejected --change <waits.py setが出すwait-...のID> --decision accepted|rejected`で記録する。
-  - 本文は、後で`waits.py history`と`isuscope change list`から読み返したときに、何を変えて何が起きたかが分かり、次に試す値を決められるように書く。
+  - 本文の1文目は「分析と採否」のとおりにし、その後に、後で`waits.py history`と`isuscope change list`から読み返したときに、何を変えて何が起きたかが分かり、次に試す値を決められるように書く。
 
 ### kickoffの間
 
 `docs/guides/kickoff.md`に沿って進める（portalの行を見てのサーバーの起動とmerge、laneの起動と取り込み、全メモリ化の取り込みと、その後に入った変更の移し方）。完全importをcommitしたら、すぐlane `static-edge`（静的ファイルの配り方）を`python3 scripts/lane.py start static-edge`で起動する。baselineの分析は、improveが最初の変更を選ぶ材料なので、`make first-bench`の後すぐに書く。
 
+### 終了前
+
+人間に終了前を指示されたら、`python3 scripts/proposal.py freeze --note "<最終構成のcommit>"`でimproveの投稿を止め、キューに残った投稿は測らずに`deferred`にする。以後は空き時間の測り直しとwaitの変更をやめ、`docs/guides/finish.md`に従う。
+
 目標は人間が`/goal`で渡す。渡されるまでは、`AGENTS.md`と`docs/guides/`の手順（kickoffなら`kickoff.md`、改善はAGENTS.mdの「判断の原則」）に沿って、今の段階から進める。
 
 宣言の結果と、今の状態（`python3 scripts/proposal.py list`の投稿、`make lanes`のlane、improveが動いているか）を短く報告してから、次の手を始める。improveの行が無ければ、worktree `improve`で`/improve`を起動するよう人間に頼む。
 
-ターンは基本的に終えない。終えてよいのは、backgroundで動く処理（ベンチ、`make kickoff`など）の通知を待つときだけ。報告や人間への頼みごとは、次のツール呼び出しと同じメッセージに書いて続ける。
+ツール呼び出しの無いメッセージでターンが終わると、次の通知が来るまでベンチの周回が止まる。ターンを終えてよいのは次のときだけ。
+- ベンチ・`make kickoff`・`make first-bench`のどれかがbackgroundで動いていて、Monitorが`follow main`を追っていて、今すぐできる手が無いとき
+- 宣言がエラーのとき
+- 認証・権限やhookが止めた操作など、人間にしか解けない理由で何も進められないとき（理由を書いて終える）
+
+報告や人間への頼みごと（`/improve`の起動など）は、次のツール呼び出しと同じメッセージに書いて続ける。「次は〜する」と書いて終える、区切りがよいので報告して終える、続けてよいかを人間に尋ねて止まる、進行を妨げない決定事項を並べて止まる、はしない。

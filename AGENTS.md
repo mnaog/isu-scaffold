@@ -42,7 +42,7 @@
 | 準備（開始前） | 問題に依存しない道具・認証・検証を済ませる。chrome-debugでのポータルのログインと、worktree `portal`・`improve`・`human`も作っておく | [準備](docs/guides/preparation.md) |
 | kickoff | 開始と同時に、人間が`/main`・`/portal`・`/improve`を起動する。mainは`make kickoff`をbackgroundで始め、完全importをcommitしたら人間の確認を待たずに`make first-bench`で初回baselineを取る。lane `full-memory`も先行回収と同時に全メモリ化を始める | [kickoff](docs/guides/kickoff.md) |
 | 改善 | 観測された最大の制約から順に、継続的に構成を含めて変える。improveが作って投稿し、mainが測って分析し、採否を決める | このファイルの「判断の原則」、各役割の手順書 |
-| 終了前 | 人間が始めて進める。新しい変更を止め、最終構成を固定し、確認のベンチを3回行う | [終了前](docs/guides/finish.md) |
+| 終了前 | 人間がmainへ指示して始める。新しい変更を止め、最終構成を固定し、確認のベンチを3回行う | [終了前](docs/guides/finish.md) |
 
 コマンドと各段階の契約（kickoff、deploy、rollback、import、ベンチ接続、投稿とキュー、isuscopeの設定）は[自動化の仕様](docs/reference/automation.md)を正とする。runの読み方は[isuscopeの使い方](docs/reference/isuscope.md)にある。
 
