@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 import unittest
 import os
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -110,6 +111,12 @@ class KickoffSetupTest(unittest.TestCase):
     def test_failed_cloud_init_blocks_bootstrap(self):
         self.assertEqual(self.run_guard(1), 1)
         self.assertEqual(self.run_guard(0), 0)
+
+    def test_inspection_never_visits_a_benchmark_node(self):
+        # In the contest the benchmark node may sit in the participant's account and belong to the organizer.
+        text = (ROOT / 'ansible/playbooks/inspect.yml').read_text()
+        hosts = re.findall(r'^  hosts:\s*(\S+)', text, re.M)
+        self.assertEqual(hosts, ['application'])
 
     def test_inspection_includes_stopped_units(self):
         import textwrap

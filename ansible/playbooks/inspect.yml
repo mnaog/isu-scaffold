@@ -1,6 +1,9 @@
 ---
 - name: Inspect initial node composition without changing it
-  hosts: application:benchmark
+  # ベンチの台は調べない。本番でベンチの台が参加者のaccountに置かれる場合（型の違うnodeが
+  # 混ざる構成の片方がベンチの台だった場合など）、それは運営の台で、接続してはいけない。
+  # 初動が使うのはapplication nodeの報告だけ。
+  hosts: application
   become: false
   gather_facts: true
   any_errors_fatal: true
