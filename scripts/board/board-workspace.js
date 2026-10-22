@@ -8,7 +8,7 @@ function workspaceData(q,node){
  const items=data=>data?{...data,items:(data.items||[]).filter(r=>r.node===node)}:data;
  return {...q,sections:Object.fromEntries(Object.entries(q.sections||{}).map(([k,s])=>[k,{...s,data:scopedRows(s.data||{},node)}])),
   timeline:scopedRows(q.timeline||{},node),mysql:scopedRows(q.mysql||{},node),graph_http:scopedRows(q.graph_http||{},node),
-  brief:{...b,hosts:items(b.hosts),clients:items(b.clients),upstreams:items(b.upstreams),http_by_count:items(b.http_by_count),cpu:items(b.cpu)}};
+  brief:{...b,hosts:items(b.hosts),clients:items(b.clients),upstreams:items(b.upstreams),http_by_count:items(b.http_by_count),app_calls:items(b.app_calls),app_locks:items(b.app_locks),cpu:items(b.cpu)}};
 }
 function prepareWorkspace(q){
  const select=document.querySelector('#node-select'),nodes=new Set();

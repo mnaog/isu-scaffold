@@ -42,7 +42,7 @@ HTTPはrun全体、SQLは`--window load`のdigest単位。25／50／100件を取
 
 ## 負荷の分析
 
-選択runの`brief --limit 25`からホスト別CPU・コア・PSI・memory・実行可能taskのピーク・service（CPUのピークと、CPUを待っていたthreadの平均とピーク）、要求数の多いAPI（briefの`http_by_count`。HTTPの表は合計時間の上位を取得するので、そこに入らない速くて回数の多いAPIを要求数の順に、全要求に占める割合とともに出す）、upstream、クライアント接続、CPU上位関数、collectorの取得状況を表示する。HTTP/SQLと同じ画面で、`series --window load --bucket 5`による負荷走行の時系列とMySQLステータスを自動表示する。概要時系列は最大1000行、MySQLは指定9 metric・最大3000行。独立した読み取りは並列化し、既存の30秒キャッシュを使う。追加collectorやベンチは起動しない。
+選択runの`brief --limit 25`からホスト別CPU・コア・PSI・memory・実行可能taskのピーク・service（CPUのピークと、CPUを待っていたthreadの平均とピーク）、要求数の多いAPI（briefの`http_by_count`。HTTPの表は合計時間の上位を取得するので、そこに入らない速くて回数の多いAPIを要求数の順に、全要求に占める割合とともに出す。静的ファイルは1 fileずつ別のrouteなので、briefの`http_static_files`から拡張子の付いたpathへの要求の合計と割合を1行で添える）、upstream、クライアント接続、CPU上位関数、collectorの取得状況を表示する。HTTP/SQLと同じ画面で、`series --window load --bucket 5`による負荷走行の時系列とMySQLステータスを自動表示する。概要時系列は最大1000行、MySQLは指定9 metric・最大3000行。独立した読み取りは並列化し、既存の30秒キャッシュを使う。追加collectorやベンチは起動しない。
 
 グラフの横軸は負荷走行開始からの秒数。要求数・SQL回数は毎秒レートではなく区間内の件数、HTTP p95は区間内の分位値の最大として表示する。欠測点は0で補わず、欠落区間を線で結ばない。load区間を取得できない場合はその欄へエラーを表示し、wholeへ自動で置き換えない。
 
