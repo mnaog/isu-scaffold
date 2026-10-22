@@ -122,7 +122,7 @@ draft reviewはnodeごとに1回のSSHで事実を集め、次をFAILにしま�
 
 512MiBを超える配布item、読めないlog、draft生成時の警告、nginx／db roleの欠落、serverブロック内の`access_log`（`off`を含む。そのserverのリクエストは計測用LTSV logへ書かれない）はWARNです。nginxの計測用drop-inがないnodeはFAILです。
 
-draft生成は、採用言語のコードからsessionを識別するheaderやcookie（`x-session`、`Cookie::build("app_session"`、`const SESSION_ID_KEY: &str = "SESSIONID"`など）を探し、`observability_nginx_session_source`の候補（例: `$http_x_session`、`$cookie_SESSIONID`）を`ansible-vars.json`へ入れてWARNで確認を促します。見つからなければ設定を促すWARNになります。`kickoff-apply`は反映後に計測用logのdrop-inだけを書き直します。アプリがSQLiteやPostgreSQLに依存する場合、またはPostgreSQLが動いている場合は、DB計測がMySQL slow logだけであることをWARNにします。結果は`.local/draft/review.md`へ残ります。FAILがある場合`kickoff`は非0で終わり、draftを直して`python3 scripts/review-draft.py`で再検査します。`kickoff-apply`は反映前にもう一度同じ検査を行い、FAILなら何も変更しません。WARNの判断は、`review.md`を読んだ操作者（人間またはその作業セッション）が行います。
+draft生成は、採用言語のコードからsessionを識別するheaderやcookie（`x-session`、`Cookie::build("app_session"`、`const SESSION_ID_KEY: &str = "SESSIONID"`など）を探し、`observability_nginx_session_source`の候補（例: `$http_x_session`、`$cookie_SESSIONID`）を`ansible-vars.json`へ入れてWARNで確認を促します。見つからなければ設定を促すWARNになります。`kickoff-apply`は反映後に計測用logのdrop-inだけを書き直します。アプリがSQLiteやPostgreSQLに依存する場合、またはPostgreSQLが動いている場合は、DB計測がMySQL slow logだけであることをWARNにします。inspectはapplication nodeだけを調べ、ベンチの台には接続しません（本番でベンチの台が参加者のaccountに置かれても、それは運営の台です）。inspectは各nodeのインスタンスの型（IMDSv2）・CPUの型番・数秒のCPU計測（1 thread、全vCPU、sha256）を`.local/inspection/<node>.json`へ残し、discoveryも`discovered-nodes.json`へ型を残します。reviewはそれを末尾の「Nodes」の表に並べ、型やCPUが混ざっているとき、同じ型で1 threadが15%以上遅いnodeがあるときにWARNを出します。結果は`.local/draft/review.md`へ残ります。FAILがある場合`kickoff`は非0で終わり、draftを直して`python3 scripts/review-draft.py`で再検査します。`kickoff-apply`は反映前にもう一度同じ検査を行い、FAILなら何も変更しません。WARNの判断は、`review.md`を読んだ操作者（人間またはその作業セッション）が行います。
 
 `kickoff-apply`は検査済みdraftの反映、再discover、sync検査、完全import、採用言語の固定まで進めます。ベンチ前の検査（`make bench-check`）は`make first-bench`が最初に行います。deployで設定（nginx、MySQL、unit）を変えたときだけ単独で再実行します。個別の段階をやり直す場合は、以下の各節にある`scripts/`のscriptを直接実行します。kickoff・kickoff-apply・laneは初回`survey-run`、deploy、mergeを実行しません。
 
@@ -130,7 +130,9 @@ draft生成は、採用言語のコードからsessionを識別するheaderやco
 
 最初のdeployの前は、サーバーが完全importと同じ内容で動いています。importは各itemのdigestを`.local/imported-state.json`へ残し（nodeごとに内容が違うimportでは残しません）、`first-bench`は`scripts/imported-state.py`でHEADがまだその内容かを確かめ、`REQUIRE_ACTIVE=1 scripts/benchmark-prepare.sh`でアプリのunitが全nodeで動いてlistenするのを確かめます。どちらも通れば、そのcommitを`.local/current-import-commit`へ記録し、ローカルbuildとdeployを待たずに配布されたbuildのままsurvey-runを始めます。`check-deployed-commit.sh`は、deployの記録がない間はこの記録を稼働中のcommitとして照合します。survey-runの後に同じcommitをdeployするので、deploy経路は最初の改善の前に確かめられ、以後のrunは自前のbuildになります。survey-runの間に配る対象のfileを変えるcommit（`make tare`、laneのcommitの`cherry-pick`など）が入っていたら、測っていない変更を配らないようdeployを飛ばし（`deploy-skipped`）、次の`isuscope run`の前に`make deploy`します。どちらかが通らなければ`fallback`を出し、従来どおりdeployしてからsurvey-runします。`FIRST_BENCH_MODE=deploy`なら常にdeployが先です。AIが段階ごとに終了へ気づいて次を打つ待ち時間を消すためのもので、draftの判断とimportのcommitは前もって操作者が済ませます。`webapp/`か`config/`に未commitの変更があれば何もしません。lane（`ISUCON_LANE`）からは動かず、tool-guardも止めます。runへ会話を紐付けるため、mainのセッションから実行します。各段階は自分で操作lockを取るので、このcommand自体はlockを持ちません。進行は`.local/progress.log`の`first-bench`の行（`checked`、`distributed`／`fallback`、`baseline-ready`、`deployed`／`deploy-skipped`、`complete`、段階の`failed`）に出ます。`baseline-ready`が出たら、deployの終了を待たずに`isuscope brief latest`で分析を始めます。
 
-SSH確立はinventoryのnode名で重複排除し、`SSH_MAX_PARALLEL_NODES`（既定5）台ずつ並列に行います。完全importはnodeごとに全itemのdigestを1回のSSHでまとめて計算し（`IMPORT_MAX_PARALLEL_NODES`、既定5）、localの内容がsourceのdigestと一致するitemは再転送しません。全itemのstagingと検証が終わるまで既存のlocalを置き換えず、途中で失敗した場合は元へ戻します。Ansible requirementsは内容hashが同じなら再installせず、bootstrap内のapplication nodeのfact収集も一度だけです。
+ベンチの台には、既定では何も接続しません。`.local/environment.env`の`BENCHMARK_NODE_ACCESS`が`none`（既定）なら、`make discover`がinventoryの`all.vars.isucon_benchmark_node_access`へそれを書き、SSHの初期設定（鍵の登録を含む）はベンチの台を飛ばし、`scripts/run-ansible-playbook.sh`はどのplaybookにも`--limit 'all:!benchmark'`を付け、`scripts/ssh-node.sh`はベンチadapterからでもベンチの台へ接続しません。本番でベンチの台が参加者のaccountに置かれても、それは運営の台だからです。練習でベンチをベンチの台へのSSHで起動する（`BENCHMARK_TRANSPORT=ssh`）ときだけ`ssh`にし、`make discover`をやり直します（`ssh`でも、手での接続はhookが止めます）。`BENCHMARK_TRANSPORT=ssh`なのに`none`のままなら、`.isuscope/benchmark.sh --check`が止めます。
+
+SSH確立はinventoryのnode名で重複排除し、`SSH_MAX_PARALLEL_NODES`（既定8。5台のapplication nodeとベンチの台2台でも1回で済む）台ずつ並列に行います。完全importはnodeごとに全itemのdigestを1回のSSHでまとめて計算し（`IMPORT_MAX_PARALLEL_NODES`、既定5）、localの内容がsourceのdigestと一致するitemは再転送しません。全itemのstagingと検証が終わるまで既存のlocalを置き換えず、途中で失敗した場合は元へ戻します。Ansible requirementsは内容hashが同じなら再installせず、bootstrap内のapplication nodeのfact収集も一度だけです。
 
 lockを取る変更系操作は、終了時に`.local/operation-timing.tsv`へ開始時刻・操作名・秒数・終了codeを残します。外側のlockだけが記録されるので、`kickoff`・`bootstrap`・`kickoff-apply`の中の段階は`.local/stage-timing.tsv`へ同じ形式（開始時刻・操作名・段階・秒数・終了code）で残します。kickoff buildの状態ごとの滞在時間（設定待ちの`needs_configuration`、`building`など）も同じfileへ`kickoff-build`として入ります。Ansibleはtaskごとの経過時間（全hostの完了まで）を`.local/ansible-task-timing.tsv`へ残します（`ansible/callback_plugins/task_timing.py`、collection不要）。次回のkickoff改善はこれらの実測を根拠に判断します。練習の後は`python3 scripts/kickoff-report.py --start <練習・競技の開始時刻>`で、開始からbaselineまでの時間、上限（briefの`limits`）に当たったFAIL、isuscopeのベンチ後の処理の秒数、エージェントが確認で止まった回数と返事待ちの時間を、isuscopeと会話の記録からまとめて出します（`--hours`で区間、`--json`で機械向け）。
 
@@ -138,6 +140,8 @@ lockを取る変更系操作は、終了時に`.local/operation-timing.tsv`へ�
 
 - `DISCOVERY_PROVIDER=aws-cloudformation`: stack配下のEC2をName tagのregexで分類する
 - `DISCOVERY_PROVIDER=static`: `config/nodes.example.json`を`.local/nodes.json`へコピーし、任意のSSH接続先を記述する
+
+application nodeのインスタンスの型が2種類以上あるのに、ベンチの台（`group: benchmark`）が1台も無いと、`make discover`は型ごとのnodeを並べて止まります。型の違うnodeが混ざる構成では、片方（ネットワーク特化型など）が運営のベンチの台で、名前がappの正規表現に合っていることがあり、そのままではimportやdeployの対象にしてしまうためです。当日マニュアルとポータルで確かめ、ベンチの台なら`.local/node-overrides.json`で`{"name": "<node>", "group": "benchmark", "roles": ["benchmark"]}`にするか`DISCOVERY_BENCH_NAME_REGEX`を合わせ、全部が自分のnodeなら`DISCOVERY_ACCEPT_MIXED_TYPES=1`にして、`make discover`をやり直します。static providerでも`.local/nodes.json`に`instance_type`を書けば同じ検査をします。
 
 SSH鍵が既に登録済みなら`SSH_BOOTSTRAP_METHOD=existing`、EC2 Instance ConnectからSSH鍵を登録するなら`eic`を使います。
 
@@ -286,7 +290,7 @@ transaction IDは既定で`<commit>-<UTC時刻>-<PID>`となり、同じコミ�
 `config/benchmark.env`へ大会の起動方法を記述します。
 
 - `BENCHMARK_TRANSPORT=local`: 操作端末でcommandを実行
-- `BENCHMARK_TRANSPORT=ssh`: inventoryの`BENCHMARK_NODE`でcommandを実行
+- `BENCHMARK_TRANSPORT=ssh`: inventoryの`BENCHMARK_NODE`でcommandを実行（`.local/environment.env`の`BENCHMARK_NODE_ACCESS=ssh`が要る。下を参照）
 - `BENCHMARK_TRANSPORT=http`: APIで開始し、必要ならrun IDを使って完了までpollする
 - `BENCHMARK_PROBE_COMMAND`またはHTTP probe URL: ベンチを開始しない疎通確認
 - `BENCHMARK_SAMPLE_FILE`: 実出力のサンプル。途中経過・タグ・最終結果の行を含めたまま保存する
@@ -353,7 +357,7 @@ make first-bench   # 次を続けて実行する（配布状態で測れない�
 
 isuscopeは毎回のベンチの前（collectorより前）に、`.isuscope/policy.toml`の`prepare_command`（`scripts/benchmark-prepare.sh`）を実行します。sync.jsonのRust unitを、動いているnodeでだけ再起動し（`try-restart`）、そのunitのprocessがportをlistenするまで待ちます。再起動するのは、前回のベンチを処理したprocessがまだ動いているunitだけです（systemdの`InvocationID`を`.local/benchmark-invocations.json`へ残して比べます）。deployで前回のベンチの後に起動し直したprocessは、前回のrequestを抱えていないので再起動しません。手動のベンチが途中で切ったrequestのtransactionが接続poolに残ると、次のinitializeの`DROP TABLE`がlock待ちでtimeoutになることがあります。準備に失敗したrunは、ベンチを始めずにFAILとして残ります。
 
-ベンチ出力の問題固有の行（scenarioごとの件数、FAILの理由、エラーの実例）は`.isuscope/parse-benchmark.sh`が読み、`.isuscope/policy.toml`の`[[benchmark.parsers]]`で最初からisuscopeへ登録してあります。当日はscriptの中身だけを書き、`isuscope enrich <run>`で既存のrunにも反映します。
+ベンチ出力の問題固有の行（scenarioごとの件数、FAILの理由、エラーの実例）は`.isuscope/parse-benchmark.sh`が読み、`.isuscope/policy.toml`の`[[benchmark.parsers]]`で最初からisuscopeへ登録してあります。既定の実装は、WARN・ERRORの行をcategory（`CODE=<n>`、無ければtimeout・connection・statusの語）ごとに`benchmark.warnings`・`benchmark.errors`で数えて実例をmessageに残し、クリティカル・`pass=false`の行をfailureとして残すので、当日に何も書かなくても警告の内訳は取れます。当日はscriptの`--- 当日に実装する ---`の範囲へ問題固有の内訳（シナリオごとの成功数、利用者の登録・離脱など）を足し、categoryの取り方が出力に合わなければ`category()`を直して、`isuscope enrich <run>`で既存のrunにも反映します。
 
 同じ構成の再測定は、isuscopeが止めます。`.isuscope/policy.toml`の`identity_command`（`scripts/benchmark-identity.py`）は、配る対象のcommit済みの内容（`deployed_files`）、`config/benchmark.env`（`benchmark_env`）、配布状態かdeploy済みか（`build`）をJSONで出します。isuscopeはこれと、nodeのfingerprint（`.isuscope/fingerprint.sh`。Rustは配った実行ファイル、配る単一file（アプリのunitやnginx・MySQLの設定）。directoryの中身はidentityの`deployed_files`だけで比べる）、自分の計測設定（`config.toml`と重ねた`.isuscope/policy.toml`、`routes.toml`、adapterのscript、isuscopeの版）を、ベンチを実際に始めた直前のrunと比べ、すべて同じなら始めず、runも残しません。何も変えなかった編集（一致しなかった`sed`など）の後に、同じ構成を1run測り直さないためです。ばらつきの確認など意図した再測定は`isuscope run --repeat "理由" --hypothesis "..."`で明示します。fingerprintの対象は`configure-draft`がsync.jsonのitemから`isuscope_fingerprint_paths`へ書き、`kickoff-apply`が各nodeへ配ります。
 

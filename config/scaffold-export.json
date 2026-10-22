@@ -139,6 +139,7 @@
     "config/lanes/scenario.md",
     "config/lanes/state-log.md",
     "config/state-log/state_log.rs",
+    "config/app-metrics/app_metrics.rs",
     "tests/test_state_log_writer.py",
     "config/lanes/full-memory.md",
     "scripts/local-runtime.py",

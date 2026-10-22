@@ -56,6 +56,8 @@ jobs:
           export PATH="$HOME/.cargo/bin:$PATH"
           isuscope --version
           ./tests/kickoff-automation.sh
+          # 5台のapplication nodeとベンチの台2台（型の違う2種類が渡る構成）でも同じ流れを通す。
+          FIXTURE_APP_NODES=5 ./tests/kickoff-automation.sh
 
       - name: Run local tooling tests
         run: python3 -m unittest discover -s tests -p 'test_*.py' -v

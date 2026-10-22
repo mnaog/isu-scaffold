@@ -1,6 +1,9 @@
 ---
 - name: Inspect initial node composition without changing it
-  hosts: application:benchmark
+  # ベンチの台は調べない。本番でベンチの台が参加者のaccountに置かれる場合（型の違うnodeが
+  # 混ざる構成の片方がベンチの台だった場合など）、それは運営の台で、接続してはいけない。
+  # 初動が使うのはapplication nodeの報告だけ。
+  hosts: application
   become: false
   gather_facts: true
   any_errors_fatal: true
@@ -156,6 +159,66 @@
       register: inspection_versions
       changed_when: false
 
+    # 型の違うnodeが混ざる構成（例: c7iとc6in）では、役割を型番だけで決めず実測で比べる。
+    # 型はIMDSv2から、CPUの型番は/proc/cpuinfoから読み、数秒のCPU計測を1回だけ流す。
+    # 1 threadの速さ（app・MySQLの1 requestの速さ）と全vCPUの合計（nginxのweightの目安）、
+    # sha256（TLSの暗号処理の目安）を出す。サービスは止めないので、動いている負荷の分だけ下振れする。
+    - name: Probe instance type, CPU model and CPU speed
+      ansible.builtin.shell: |
+        set -u
+        token=$(curl -sf -m 1 -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' 2>/dev/null || true)
+        instance_type=$(curl -sf -m 1 -H "X-aws-ec2-metadata-token: $token" http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || true)
+        INSTANCE_TYPE="$instance_type" python3 - <<'PY'
+        import hashlib, json, multiprocessing, os, time
+
+        def loop(seconds):
+            # 整数演算・分岐・dictの読み書きが混ざった、アプリに近い軽い処理を回した回数。
+            table, count, deadline = {}, 0, time.perf_counter() + seconds
+            while time.perf_counter() < deadline:
+                for i in range(1000):
+                    table[i & 255] = table.get((i * 7) & 255, 0) + i
+                count += 1
+            return count / seconds
+
+        def worker(seconds, queue):
+            queue.put(loop(seconds))
+
+        def all_vcpus(seconds):
+            queue = multiprocessing.Queue()
+            workers = [multiprocessing.Process(target=worker, args=(seconds, queue)) for _ in range(os.cpu_count() or 1)]
+            for process in workers:
+                process.start()
+            total = sum(queue.get() for _ in workers)
+            for process in workers:
+                process.join()
+            return total
+
+        def sha256(seconds):
+            data, done, deadline = b"x" * (1 << 20), 0, time.perf_counter() + seconds
+            while time.perf_counter() < deadline:
+                hashlib.sha256(data).digest()
+                done += 1
+            return done / seconds
+
+        model = ""
+        try:
+            with open("/proc/cpuinfo") as cpuinfo:
+                model = next((line.split(":", 1)[1].strip() for line in cpuinfo if line.startswith("model name")), "")
+        except OSError:
+            pass
+        print(json.dumps({
+            "instance_type": os.environ.get("INSTANCE_TYPE") or None,
+            "cpu_model": model or None,
+            "cpu_loop_per_second": round(loop(2.0), 1),
+            "cpu_loop_all_vcpus_per_second": round(all_vcpus(2.0), 1),
+            "sha256_mb_per_second": round(sha256(1.0), 1),
+        }))
+        PY
+      args:
+        executable: /bin/bash
+      register: inspection_cpu
+      changed_when: false
+
     - name: Save inspection report on controller
       ansible.builtin.copy:
         content: >-
@@ -167,6 +230,13 @@
             'architecture': ansible_facts.architecture,
             'processor_vcpus': ansible_facts.processor_vcpus,
             'memory_mb': ansible_facts.memtotal_mb,
+            'instance_type': (inspection_cpu.stdout | from_json).instance_type,
+            'cpu_model': (inspection_cpu.stdout | from_json).cpu_model,
+            'cpu_speed': {
+              'loop_per_second': (inspection_cpu.stdout | from_json).cpu_loop_per_second,
+              'loop_all_vcpus_per_second': (inspection_cpu.stdout | from_json).cpu_loop_all_vcpus_per_second,
+              'sha256_mb_per_second': (inspection_cpu.stdout | from_json).sha256_mb_per_second,
+            },
             'running_services': (ansible_facts.services | dict2items | selectattr('value.state', 'equalto', 'running') | map(attribute='key') | sort | list),
             'listening_sockets': inspection_sockets.stdout_lines,
             'processes': inspection_processes.stdout_lines,

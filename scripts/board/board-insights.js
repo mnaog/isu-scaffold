@@ -57,10 +57,11 @@ function renderHosts(parent,b,cpu={}){
  else if(cpu.truncated)panel.append(el('p','CPUの1秒区間が上限で切られたため、p95は一部の区間から求めています。','insight-warning'));
  for(const h of b.hosts?.items||[]){
   const p95=cpu.nodes?.[h.node]?.p95_percent,headline=p95??h.cpu_busy_avg_percent;
-  const card=el('div',null,'insight-card');grid.append(card);card.append(el('h3',h.node),el('div',percentText(headline),'insight-number'),el('p',p95==null?'CPU 平均':'CPU p95（1秒区間）'));
+  const card=el('div',null,'insight-card');grid.append(card);card.append(el('h3',h.node),...(h.instance_type||h.cpu_model?[el('p',[h.instance_type,h.cpu_model].filter(Boolean).join(' · '),'host-type')]:[]),el('div',percentText(headline),'insight-number'),el('p',p95==null?'CPU 平均':'CPU p95（1秒区間）'));
   const bar=el('div',null,'insight-bar'),fill=el('i');fill.style.width=Math.min(100,Math.max(0,headline||0))+'%';bar.append(fill);card.append(bar);
-  dataList(card,[...(p95==null?[]:[['CPU 平均',percentText(h.cpu_busy_avg_percent)]]),['CPU peak',percentText(h.cpu_busy_max_percent)],['最繁忙core',percentText(h.busiest_core_max_percent)],['I/O wait',percentText(h.iowait_avg_percent)],['steal',percentText(h.steal_avg_percent)],['メモリpeak',h.memory_used_max_mib==null?'—':num(h.memory_used_max_mib,1)+' MiB'],['Disk peak',percentText(h.disk_util_max_percent)],['Load peak',num(h.load1_max,2)],['PSI',h.pressure?`${h.pressure.resource} ${num(h.pressure.max_percent,1)}%`:'—']]);
-  for(const service of h.top_services||[])card.append(el('p',`${service.service} · CPU peak ${num(service.cpu_max_cores,2)} cores`));
+  dataList(card,[...(p95==null?[]:[['CPU 平均',percentText(h.cpu_busy_avg_percent)]]),['CPU peak',percentText(h.cpu_busy_max_percent)],['最繁忙core',percentText(h.busiest_core_max_percent)],['I/O wait',percentText(h.iowait_avg_percent)],['steal',percentText(h.steal_avg_percent)],['メモリpeak',h.memory_used_max_mib==null?'—':num(h.memory_used_max_mib,1)+' MiB'],['Disk peak',percentText(h.disk_util_max_percent)],['Load peak',num(h.load1_max,2)],...(h.procs_running_max==null?[]:[['実行可能task peak',num(h.procs_running_max)]]),['PSI',h.pressure?`${h.pressure.resource} ${num(h.pressure.max_percent,1)}%`:'—']]);
+  // CPU待ちはthreadの数がコアより多いときに出る。CPU使用率に余裕があっても待ちがあり得る。
+  for(const service of h.top_services||[])card.append(el('p',`${service.service} · CPU peak ${num(service.cpu_max_cores,2)} cores`+(service.run_delay_avg_cores==null?'':` · CPU待ち 平均 ${num(service.run_delay_avg_cores,2)} / peak ${num(service.run_delay_max_cores,2)} threads`)));
  }
  if(!b.hosts?.items?.length)panel.append(el('p','ホスト計測がありません。','panel-note'));
 }
@@ -79,6 +80,16 @@ function renderExpandedMetrics(root,q,position){
   renderScenarioGraph(root,q);renderHosts(root,b,q.cpu_p95);renderTimeline(root,q.timeline);return;
  }
  renderMysql(root,q.mysql);
+ const frequent=insightPanel(root,'http-by-count','要求数の多いAPI','合計時間の上位以外 · 選択run');sectionNotice(frequent,b.http_by_count);
+ frequent.append(el('p','HTTPの表（合計時間の順）に入らなかったAPIを、要求数の多い順に並べます。速くて回数の多い静的ファイルやpollingは、合計時間の順では下に埋もれます。','panel-note'));
+ const statics=b.http_static_files;if(statics)frequent.append(el('p',`静的ファイル（拡張子の付いたpath）: ${num(statics.routes)} route · ${num(statics.count)} 回 · 全要求の ${num(statics.share_percent,1)}%`,'insight-warning'));
+ insightTable(frequent,['node','API','回数','全要求に占める %','合計 ms','平均 ms','p95 ms','エラー'],(b.http_by_count?.items||[]).map(r=>[r.node,textCell(`${r.method||''} ${r.route||''}`.trim()),num(r.count),num(r.share_percent,1),num(r.total_ms),num(r.avg_ms,2),num(r.p95_ms,2),num(r.errors)]));
+ const calls=insightPanel(root,'app-calls','アプリから外への呼び出し',`試行単位 · ${(b.app_calls?.window||'whole').toUpperCase()}`);sectionNotice(calls,b.app_calls);
+ calls.append(el('p','アプリ計測（app_metrics）が数えた、決済などの外部APIへの試行です。割合は同じ呼び先の試行に占める割合で、失敗の結果ならそのまま失敗率です。HTTPの表には出ません。','panel-note'));
+ insightTable(calls,['node','呼び先','結果','試行数','割合 %','合計 ms','平均 ms','最大 ms'],(b.app_calls?.items||[]).map(r=>[r.node,textCell(r.target),textCell(r.outcome),num(r.count),num(r.share_percent,1),num(r.total_ms),num(r.avg_ms,2),num(r.max_ms,2)]));
+ const locks=insightPanel(root,'app-locks','アプリの中のlock',(b.app_locks?.window||'whole').toUpperCase());sectionNotice(locks,b.app_locks);
+ locks.append(el('p','アプリ計測が数えた、lockを取れるまで待った時間と持っていた時間です。待ちが長いlockは、粗いlockか、持ったまま重い処理をしている箇所です。','panel-note'));
+ insightTable(locks,['node','lock','取得数','待ち 合計 ms','待ち 平均 ms','待ち 最大 ms','保持 合計 ms','保持 最大 ms'],(b.app_locks?.items||[]).map(r=>[r.node,textCell(r.lock),num(r.count),num(r.wait_ms),num(r.wait_avg_ms,3),num(r.wait_max_ms,2),num(r.hold_ms),num(r.hold_max_ms,2)]));
  const upstream=insightPanel(root,'upstream','nginx upstream','試行単位 · 選択run');sectionNotice(upstream,b.upstreams);
  upstream.append(el('p','retryを含む試行単位の値です。cache HIT/MISSは現在の標準計測には含まれません。','panel-note'));
  insightTable(upstream,['入口node','接続先','試行数','再試行','接続 p95 ms','ヘッダー p95 ms','応答 p95 ms'],(b.upstreams?.items||[]).map(r=>[r.node,textCell(r.upstream),num(r.requests),num(r.retried_requests),num(r.connect_p95_ms,2),num(r.header_p95_ms,2),num(r.response_p95_ms,2)]));

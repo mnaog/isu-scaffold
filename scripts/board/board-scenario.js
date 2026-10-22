@@ -13,8 +13,7 @@ function buildScenario(q,showCounts=false){
  const peak=Math.max(1,...[...metrics.values()].flat().map(r=>r.total_ms??0));
  const lines=['flowchart LR',`%% Structure: ${mermaidText(survey.run||'unknown')}`,`%% HTTP values: ${mermaidText(q.latest?.short_id||'unknown')}`];
  for(const route of routes){const rows=metrics.get(route),max=Math.max(0,...rows.map(r=>r.total_ms??0));
-  const label=[mermaidText(route),...rows.slice(0,4).flatMap(r=>[mermaidText(`${r.node} | ${num(r.count)}回 | error ${num(r.errors)}`),mermaidText(`avg ${num(r.avg_ms,2)}ms | p95 ${num(r.p95_ms,2)}ms`),mermaidText(`合計 ${num(r.total_ms,1)}ms`)])];
-  if(rows.length>4)label.push(`ほか ${rows.length-4} node（クリックで詳細）`);
+  const label=[mermaidText(route),...rows.flatMap(r=>[mermaidText(`${r.node} | ${num(r.count)}回 | error ${num(r.errors)}`),mermaidText(`avg ${num(r.avg_ms,2)}ms | p95 ${num(r.p95_ms,2)}ms`),mermaidText(`合計 ${num(r.total_ms,1)}ms`)])];
   if(!rows.length)label.push('選択runの計測なし');
   const style=!rows.length?'missing':max/peak>=.6?'hot':max/peak>=.25?'warm':'normal';
   lines.push(`${ids.get(route)}["${label.join('<br/>')}"]:::${style}`);

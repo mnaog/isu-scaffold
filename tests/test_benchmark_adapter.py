@@ -79,13 +79,14 @@ class AdapterTest(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         return json.loads(completed.stdout.strip().splitlines()[-1])
 
-    def ssh_inventory(self, benchmark_hosts):
+    def ssh_inventory(self, benchmark_hosts, access='ssh'):
         fake = self.root / 'scripts/ssh-node.sh'
         fake.write_text('#!/bin/bash\nprintf "%s\\n" "$1" > "$(dirname "$0")/../ssh-target"\nexec bash -c "$2"\n')
         fake.chmod(0o755)
         (self.root / '.local').mkdir(exist_ok=True)
         (self.root / '.local/ansible-inventory.json').write_text(json.dumps(
-            {'all': {'children': {'application': {'hosts': {'app1': {}}},
+            {'all': {'vars': {'isucon_benchmark_node_access': access},
+                     'children': {'application': {'hosts': {'app1': {}}},
                                   'benchmark': {'hosts': {name: {} for name in benchmark_hosts}}}}}))
 
     def test_a_worktree_checks_against_the_root_repositorys_secrets(self):
@@ -112,6 +113,15 @@ class AdapterTest(unittest.TestCase):
         self.assertTrue(self.result()['pass'])
         self.assertEqual((self.root / 'ssh-target').read_text().strip(), 'practice-12-sixth-20261013-bench')
 
+    def test_ssh_transport_needs_benchmark_node_access(self):
+        # The default never connects to a benchmark node: in the contest it may be the organizer's.
+        self.ssh_inventory(['bench'], access='none')
+        self.configure(FINAL_OUTPUT, BENCHMARK_TRANSPORT='ssh', BENCHMARK_NODE='')
+        completed = self.adapter('--check')
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn('needs BENCHMARK_NODE_ACCESS=ssh', completed.stderr)
+        self.assertFalse((self.root / 'ssh-target').exists())
+
     def test_an_empty_benchmark_node_needs_exactly_one_benchmark_host(self):
         self.ssh_inventory(['bench1', 'bench2'])
         self.configure(FINAL_OUTPUT, BENCHMARK_TRANSPORT='ssh', BENCHMARK_NODE='')
@@ -129,7 +139,8 @@ class AdapterTest(unittest.TestCase):
         fake.chmod(0o755)
         (self.root / '.local').mkdir(exist_ok=True)
         (self.root / '.local/ansible-inventory.json').write_text(json.dumps(
-            {'all': {'children': {'benchmark': {'hosts': {'bench': {}}}}}}))
+            {'all': {'vars': {'isucon_benchmark_node_access': 'ssh'},
+                     'children': {'benchmark': {'hosts': {'bench': {}}}}}}))
         self.configure('', BENCHMARK_TRANSPORT='ssh', BENCHMARK_NODE='bench', BENCHMARK_TIMEOUT_SECONDS='1',
                        BENCHMARK_COMMAND="printf 'started\\n'; sleep 30")
         completed = self.adapter()
@@ -146,7 +157,8 @@ class AdapterTest(unittest.TestCase):
         fake.chmod(0o755)
         (self.root / '.local').mkdir(exist_ok=True)
         (self.root / '.local/ansible-inventory.json').write_text(json.dumps(
-            {'all': {'children': {'benchmark': {'hosts': {'bench': {}}}}}}))
+            {'all': {'vars': {'isucon_benchmark_node_access': 'ssh'},
+                     'children': {'benchmark': {'hosts': {'bench': {}}}}}}))
         self.configure('', BENCHMARK_TRANSPORT='ssh', BENCHMARK_NODE='bench', BENCHMARK_TIMEOUT_SECONDS='1',
                        BENCHMARK_COMMAND="printf 'started\\n'; sleep 30")
         run_dir = self.root / 'run'

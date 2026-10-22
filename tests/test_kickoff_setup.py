@@ -3,7 +3,10 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import json
 import os
+import re
+import shutil
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -40,6 +43,38 @@ class KickoffSetupTest(unittest.TestCase):
             self.assertTrue(review.slow_log_enabled(repo, {'observability_mysql_slow_log': True}))
         self.assertIn('observability_mysql_slow_log: false',
                       (ROOT / 'ansible/playbooks/group_vars/all.yml').read_text())
+
+    def test_review_lists_node_types_and_warns_when_they_or_their_speeds_differ(self):
+        # A stack may mix instance types (c7i ×3 and c6in ×2 in one environment check).
+        spec = importlib.util.spec_from_file_location('review', ROOT / 'scripts/review-draft.py')
+        review = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(review)
+
+        def report(kind, cpu, single, every):
+            return {'instance_type': kind, 'cpu_model': cpu, 'processor_vcpus': 2, 'memory_mb': 3800,
+                    'cpu_speed': {'loop_per_second': single, 'loop_all_vcpus_per_second': every,
+                                  'sha256_mb_per_second': 800}}
+        nodes = ['app1', 'app2', 'app3', 'app4', 'app5']
+        inspections = {f'app{n}': report('c7i.large', 'Xeon 8488C', 10000, 12500) for n in (1, 2, 3)}
+        inspections.update({f'app{n}': report('c6in.large', 'Xeon 8375C', 9000, 11000) for n in (4, 5)})
+        lines, warnings = review.node_table(nodes, inspections, {})
+        table = '\n'.join(lines)
+        self.assertIn('| app1 | c7i.large | Xeon 8488C | 2 | 3800 | 100% | 100% | 800 |', table)
+        self.assertIn('| app4 | c6in.large | Xeon 8375C | 2 | 3800 | 90% | 88% | 800 |', table)
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn('c6in.large ×2 (app4, app5) / c7i.large ×3 (app1, app2, app3)', warnings[0])
+
+        # One type, but one node lands on another CPU and one runs far slower.
+        same = {f'app{n}': report('c5.large', 'Xeon 8124M', 10000, 12000) for n in (1, 2)}
+        same['app3'] = report('c5.large', 'Xeon 8275CL', 8000, 9500)
+        lines, warnings = review.node_table(['app1', 'app2', 'app3'], same, {})
+        self.assertTrue(any('run different CPUs' in warning for warning in warnings), warnings)
+        self.assertTrue(any(warning.startswith('app3 measured more than 15% slower') for warning in warnings), warnings)
+
+        # Without inspection reports the type comes from discovery and speeds stay blank.
+        lines, warnings = review.node_table(['app1'], {}, {'app1': {'instance_type': 'c7i.large'}})
+        self.assertIn('| app1 | c7i.large | — | — | — | — | — | — |', lines)
+        self.assertEqual(warnings, [])
 
     def test_review_sizes_a_directory_without_its_excluded_build_output(self):
         # practice-12-sixth: rust-app warned at 1048 MiB although import and deploy skip target/.
@@ -78,6 +113,67 @@ class KickoffSetupTest(unittest.TestCase):
     def test_failed_cloud_init_blocks_bootstrap(self):
         self.assertEqual(self.run_guard(1), 1)
         self.assertEqual(self.run_guard(0), 0)
+
+    def test_discover_stops_when_types_mix_and_no_node_is_a_benchmark_node(self):
+        # Two network-optimized nodes named like app nodes might be the organizer's benchmarkers.
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / 'scripts').mkdir()
+            for name in ('discover.sh', 'discover-static.sh', 'apply-node-overrides.sh'):
+                shutil.copy(ROOT / 'scripts' / name, repo / 'scripts' / name)
+            (repo / 'scripts/render-environment.sh').write_text('#!/bin/sh\necho rendered\n')
+            (repo / 'scripts/render-environment.sh').chmod(0o755)
+            (repo / '.local').mkdir()
+            nodes = [{'name': f'isucon{n}', 'host': f'192.0.2.{n}', 'instance_type': 'c7i.large'} for n in (1, 2, 3)]
+            nodes += [{'name': f'isucon{n}', 'host': f'192.0.2.{n}', 'instance_type': 'c6in.large'} for n in (4, 5)]
+            (repo / '.local/nodes.json').write_text(json.dumps(nodes))
+
+            def discover(extra=''):
+                (repo / '.local/environment.env').write_text(
+                    'DISCOVERY_PROVIDER=static\nSSH_USER=ubuntu\n' + extra)
+                return subprocess.run(['bash', str(repo / 'scripts/discover.sh')], cwd=repo, capture_output=True,
+                                      text=True, env=dict(os.environ, ISUSCOPE_LOCK_HELD='1'))
+
+            stopped = discover()
+            self.assertEqual(stopped.returncode, 1)
+            self.assertIn('c6in.large: isucon4 isucon5', stopped.stderr)
+            self.assertIn('c7i.large: isucon1 isucon2 isucon3', stopped.stderr)
+            self.assertNotIn('rendered', stopped.stdout)
+            self.assertEqual(discover('DISCOVERY_ACCEPT_MIXED_TYPES=1\n').returncode, 0)
+            (repo / '.local/node-overrides.json').write_text(json.dumps(
+                [{'name': name, 'group': 'benchmark', 'roles': ['benchmark']} for name in ('isucon4', 'isucon5')]))
+            marked = discover()
+            self.assertEqual(marked.returncode, 0, marked.stderr)
+            self.assertIn('rendered', marked.stdout)
+
+    def test_playbooks_skip_benchmark_nodes_unless_access_is_ssh(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            venv = root / 'venv/bin'
+            venv.mkdir(parents=True)
+            (venv / 'ansible-playbook').write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+            (venv / 'ansible-playbook').chmod(0o755)
+            inventory = root / 'inventory.json'
+
+            def run(access):
+                vars_ = {} if access is None else {'isucon_benchmark_node_access': access}
+                inventory.write_text(json.dumps({'all': {'vars': vars_, 'children': {}}}))
+                env = dict(os.environ, ANSIBLE_VENV_DIR=str(root / 'venv'), ANSIBLE_INVENTORY=str(inventory),
+                           ANSIBLE_PROFILE='legacy')
+                done = subprocess.run(['bash', str(ROOT / 'scripts/run-ansible-playbook.sh'), 'verify.yml'],
+                                      env=env, capture_output=True, text=True)
+                self.assertEqual(done.returncode, 0, done.stderr)
+                return done.stdout.splitlines()
+
+            for access in (None, 'none'):
+                self.assertIn('all:!benchmark', run(access))
+            self.assertNotIn('all:!benchmark', run('ssh'))
+
+    def test_inspection_never_visits_a_benchmark_node(self):
+        # In the contest the benchmark node may sit in the participant's account and belong to the organizer.
+        text = (ROOT / 'ansible/playbooks/inspect.yml').read_text()
+        hosts = re.findall(r'^  hosts:\s*(\S+)', text, re.M)
+        self.assertEqual(hosts, ['application'])
 
     def test_inspection_includes_stopped_units(self):
         import textwrap

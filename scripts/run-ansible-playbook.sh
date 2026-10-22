@@ -32,7 +32,13 @@ if [[ -n "${ANSIBLE_FACT_CACHE_DIR:-}" ]]; then
   export ANSIBLE_CACHE_PLUGIN_CONNECTION=${ANSIBLE_FACT_CACHE_DIR}
   export ANSIBLE_GATHERING=smart
 fi
+# BENCHMARK_NODE_ACCESS=none（既定）なら、どのplaybookもベンチの台へ接続しない（本番では運営の台）。
+limit=()
+if [[ "$(jq -r '.all.vars.isucon_benchmark_node_access // "none"' "${inventory_path}")" != ssh ]]; then
+  limit=(--limit 'all:!benchmark')
+fi
 exec "${venv_dir}/bin/ansible-playbook" \
   --inventory "${inventory_path}" \
+  ${limit[@]+"${limit[@]}"} \
   "${repo_dir}/ansible/playbooks/${playbook_name}" \
   "$@"

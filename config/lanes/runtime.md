@@ -16,7 +16,7 @@
 4. **TCP_NODELAY。** HTTP serverが受けたsocketにTCP_NODELAYを付けていなければ付ける（axumは`axum::serve(...).tcp_nodelay(true)`、自前のacceptなら`set_nodelay(true)`）。frameworkが既定で付けているなら何もしない（actix-webは付ける）。
 5. **async runtimeのMutex。** `tokio::sync::Mutex`・`RwLock`で守る区間に`.await`が無く短い（採番、小さなmapの読み書きなど）なら、`std::sync::Mutex`（または依存にあれば`parking_lot`）へ替える。区間の中で`.await`する、またはlockを持ったまま外部呼び出しやDBを待つものは替えない。
 
-上の5つ以外（threadの数、HTTP clientの使い回し、serializeの改善、hash関数の変更など）は実装しない。見つけたら最後の回答に候補として書く。HTTP clientの使い回しはlane `obvious-fixes`の担当。
+上の5つ以外（threadの数、HTTP clientの使い回し、serializeの改善、hash関数の変更など）は実装しない。buildをCPUに合わせる設定（`.cargo/config.toml`の`-C target-cpu=native`など）は入れない。nodeの型が混ざる構成（c7iとc6in、同じ型でも世代の違うCPU）では、builderと違うCPUのnodeでSIGILLで落ちる（`scripts/local-build.py`は`x86-64`・`x86-64-v2`・`x86-64-v3`以外の`target-cpu`を見つけるとbuildを止める）。見つけたら最後の回答に候補として書く。HTTP clientの使い回しはlane `obvious-fixes`の担当。
 
 ## 守ること
 

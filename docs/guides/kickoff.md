@@ -131,7 +131,7 @@ portalのセッション（`/portal`）が、大会運営から提供された�
 コマンドと各段階の詳細は[自動化の仕様](../reference/automation.md)を正とする。ここでは判断基準だけを定める。
 
 - 練習でAWS環境を自分で作る場合は、構成定義を`infra/`へ保存し、停止・再開・削除をコマンドで行えるようにする。認証情報はGitへ保存しない
-- `make kickoff`が出す`.local/draft/review.md`のFAILはすべて直し、WARNは内容を読んで判断してから`make kickoff-apply`へ進む。draftのremote path、owner、service、roleは推測にすぎない
+- `make kickoff`が出す`.local/draft/review.md`のFAILはすべて直し、WARNは内容を読んで判断してから`make kickoff-apply`へ進む。`review.md`の末尾の「Nodes」の表は、nodeごとのインスタンスの型・CPUの型番・inspectで測ったCPUの速さ（最も速いnodeに対する1 threadと全vCPUの割合）を並べる。型やCPUが混ざっている、または同じ型なのに15%以上遅いnodeがあればWARNになる。そのときは役割（nginx・app・DB）とnginxのupstreamのweightを、node名の順ではなくこの表で決める（CPUを食う役は1 threadの速いnodeへ、入口はネットワーク特化型（c6inなど）があればそこへ、weightは全vCPUの割合で）。draftのremote path、owner、service、roleは推測にすぎない
 - nodeの分類が誤っている場合はprovider入力やdraftを直して再生成し、生成物を手作業で直し続けない
 - importで配布先のdigestが一致しない場合は、sourceを確認するまで進めない
 - 初期状態をcommitする（`make rollback`で、その状態へ稼働プロセスまで戻せる）

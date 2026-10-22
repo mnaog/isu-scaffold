@@ -166,7 +166,12 @@ def measure(read, prefix, run_id, base, limit, brief):
         'mysql': mysql_args,
         'cpu': ['series', run_id, '--window', series_window, '--bucket', '1',
                 *(arg for metric in CPU_METRICS for arg in ('--metric', metric)), '--limit', '20000'],
+        # What the benchmark itself reported (warnings by category, problem-specific outcomes),
+        # read for both runs and paired by metric and labels in the page.
+        'benchmark': ['query', run_id, '--metric-prefix', 'benchmark.', '--limit', '200'],
     }
+    if base:
+        queries['benchmark_base'] = ['query', base['short_id'], '--metric-prefix', 'benchmark.', '--limit', '200']
     # These reads are independent and never start collectors or a benchmark.
     with ThreadPoolExecutor(max_workers=4) as pool:
         section_futures = {name: pool.submit(read, argv) for name, argv in sections.items()}

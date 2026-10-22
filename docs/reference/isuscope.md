@@ -27,6 +27,9 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 ```
 
 - 仮説の対象は、`query --base`へ同じselectorを指定して比べる。HTTPは`--view http`と`--label route=...`、DBは`--view database --window load`（initializeを除いた負荷区間）、必要な`--label-contains digest=...`、`--group-by sql-shape`を使い、対象を絞らない巨大JSONを避ける。
+- briefの`http`は合計時間の順なので、速くて回数の多いAPI（静的ファイル、polling）と、SSEのように長く開いた要求の扱いに気をつける。前者は`http_by_count`（全要求に占める割合`share_percent`つき）に出る。静的ファイルは1 fileずつ別のrouteなので、合計は`http_static_files`で見る。続きと比較は`query --view http --sort count`。
+- 外への呼び出し（決済などの外部API）の失敗・再試行と、アプリの中のlockの待ちは、HTTPとSQLの記録に出ない。lane `state-log`が入れるアプリ計測（`config/app-metrics/app_metrics.rs`）が1秒ごとに書き、briefの`app_calls`（呼び先と結果ごとの試行数・割合・時間。失敗の割合がそのまま失敗率）と`app_locks`（lockごとの待ちと保持の時間）に出る。journalctlやlogを足して数える前に、まずここを見る。比較は`query <run> --base <base> --metric-prefix app. --scope series --window load`。
+- CPUの使用率に余裕があるのに遅いときは、briefの`hosts`のserviceの`run_delay_avg_cores`（CPUを待っていたthreadの平均の数）とnodeの`procs_running_max`を見る。threadの数がコアより多いと、lockを持ったままpreemptされて待ちが延びる。
 - DBの比較では、`query --base`の`total_ms_delta_by_calls`（回数の増減による分）と`total_ms_delta_by_avg`（1回あたりの時間による分）で、合計時間の変化の理由を分ける。
 - 判定には`supported`、`rejected`、`inconclusive`、`skipped`を使う。`analyze`には、実行結果か`isuscope list`で得たrun IDを明示する。本文でrunに触れるときは、isuscopeの出力が示す短縮ID（run IDの末尾8文字）にそろえる。
 - PASSしたrunは、分析を記録するまで次のベンチを開始できない。FAILまたは中断したrunに分析は不要。
@@ -39,7 +42,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
   - `logs`: ベンチの間にアプリ・nginxのerror log・kernelが出したエラーを、型ごとに数えたもの
   - `database_io`: MySQLがfileの読み書きで待った時間
   - `database_memory`: buffer poolとtableの大きさ
-- FAILしたrunの理由とエラーの実例は、`.isuscope/parse-benchmark.sh`がベンチの出力から`message`として残す。`isuscope list`の`failure`と、`brief`の`benchmark_messages`で読む。判断材料とmessageには、適用されるルールで参加者の利用が認められた出力だけを使う。
+- FAILしたrunの理由と、エラー・警告の実例は、`.isuscope/parse-benchmark.sh`がベンチの出力から`message`として残す。`isuscope list`の`failure`と、`brief`の`benchmark_messages`（`failure`・`errors`・`warnings`）で読む。警告とエラーはcategory（`CODE=30`など）ごとの件数も`benchmark.warnings`・`benchmark.errors`に出るので、警告が上限に近づいていないかは生出力をgrepせず`isuscope query <run> --base <base> --metric-prefix benchmark.`で比べる。boardでは「ベンチの内訳」に並ぶ。判断材料とmessageには、適用されるルールで参加者の利用が認められた出力だけを使う。
 - ベンチ側の動き（誰が、何の後に、どれくらいの間隔で次の要求を出すか）は、毎回のrunの行動遷移（`brief`の`transitions`。遷移元→遷移先ごとの回数と、要求の開始から次の要求の開始までの間隔のp50/p95）で読む。応答の速さや内容を変えた回は、`isuscope query RUN --base BASE --view transitions`で前のrunと比べ、ベンチの反応が変わっていないか確かめる（割合の変化が大きい順に並び、消えた・現れた遷移も出る。`--label from=<route>`・`--label to=<route>`で絞る）。遷移に出ない見方（応答から次の要求までの時間、statusやsizeでの分岐、時刻ごとの主体の数）は、run directoryの`logs/nginx-log-raw-<node>-after-stdout.zst`（生のaccess log。`session`・`msec`・`reqtime`付き）を集計する。
 - アプリの中の状態（対象がどの状態にいて、いつ変わったか）は、lane `state-log`が入れた状態ログ（`docs/state-log.md`）が毎回のrunに残している。`brief`の`states`欄、`isuscope states sql`、`isuscope states timeline`で読む。状態を変える処理を書き換えるときは、呼び出しも一緒に移す。
 - 状態は`isuscope states sql latest "SELECT ..."`（表は`--schema`）で集計し、1つの対象の前後は`isuscope states timeline latest --kind <種類> --id <ID> --related`で時刻順に並べる（`--around <時刻>`で前後に絞る）。1つのSQLは30秒で止まる。止まったら、行ごとに数え直す相関サブクエリをやめ、示された書き方（attrsで結ぶなら`state_attrs`の索引、ある状態にいる数の推移なら累積和）に直す。

@@ -74,7 +74,7 @@
       "timeout_minutes": 45
     },
     "state-log": {
-      "purpose": "状態を持つ対象の状態の変化をisuscopeの状態ログへ書く呼び出しを入れる（baselineまでdeployしない）",
+      "purpose": "状態を持つ対象の状態の変化をisuscopeの状態ログへ書く呼び出しと、外への呼び出し・lockの待ちを数えるアプリ計測を入れる（baselineまでdeployしない）",
       "prompt": "config/lanes/state-log.md",
       "timeout_minutes": 45
     },

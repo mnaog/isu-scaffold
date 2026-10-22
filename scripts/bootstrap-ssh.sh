@@ -10,7 +10,8 @@ local_dir=${repo_dir}/.local
 environment_file=${ISUCON_ENV_FILE:-${local_dir}/environment.env}
 inventory_path=${ANSIBLE_INVENTORY:-${local_dir}/ansible-inventory.json}
 source "${script_dir}/parallel-lib.sh"
-parallel_init "${SSH_MAX_PARALLEL_NODES:-5}"
+# 5台のapplication nodeとベンチの台2台でも1回で済むように。
+parallel_init "${SSH_MAX_PARALLEL_NODES:-8}"
 
 command -v jq >/dev/null
 command -v ssh >/dev/null
@@ -91,8 +92,12 @@ connect_node() {
   fi
 }
 # SSH_ONLY_NODE selects one node; SSH_EXCEPT_NODE skips one that this run already reached.
+# BENCHMARK_NODE_ACCESS=none（既定）なら、ベンチの台には鍵も送らず接続もしない。
 node_rows=$(jq -r --arg only "${SSH_ONLY_NODE:-}" --arg except "${SSH_EXCEPT_NODE:-}" '
+  (.all.vars.isucon_benchmark_node_access // "none") as $access |
+  ((.all.children.benchmark.hosts // {}) | keys) as $benchmark |
   [.all.children[]?.hosts | to_entries[]] | unique_by(.key)[] |
+  select($access == "ssh" or (.key as $key | $benchmark | index($key) | not)) |
   select($only == "" or .key == $only) | select(.key != $except) |
   [.key, .value.ansible_host, .value.ansible_user,
    (.value.aws_instance_id // "-"), (.value.aws_availability_zone // "-"),

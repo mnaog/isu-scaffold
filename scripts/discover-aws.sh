@@ -56,6 +56,7 @@ jq \
     user: $ssh_user,
     provider: "aws-cloudformation",
     instance_id: .InstanceId,
+    instance_type: .InstanceType,
     availability_zone: .Placement.AvailabilityZone,
     image_id: .ImageId,
     state: .State.Name,
