@@ -86,7 +86,7 @@ function renderOverview(d){
  if(run){
   sub.append(resultBadge(run),el('span',run.started_at?new Date(run.started_at).toLocaleString('ja-JP'):'日時未取得'));
   const sw=(window.SPREADS||{})[run.id]?.spread;
-  if(sw&&typeof score==='number')sub.append(el('span',`誤差 ±${(sw.sigma*100).toFixed(1)}%（±${num(Math.round(score*sw.sigma))}、1σ・測り直し${sw.groups}組${sw.runs}回から）`,'score-spread'));
+  if(sw&&typeof score==='number')sub.append(el('span',`誤差 ±${(sw.sigma*100).toFixed(1)}%（±${num(Math.round(score*sw.sigma))}、1σ・測り直し${sw.groups}組${sw.runs}回から${sw.effective!=null&&sw.groups>1?`、古い組ほど軽く実質${sw.effective.toFixed(1)}組`:''}）`,'score-spread'));
   else if(run)sub.append(el('span','誤差 未測定（同じ構成の測り直しがまだ無い）','score-spread'));
   const hypothesis=el('div',null,'overview-hypothesis');hypothesis.append(el('span','試したこと','overview-detail-label'),el('p',run.hypothesis||'記録なし'));card.append(hypothesis);
 
