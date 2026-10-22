@@ -160,6 +160,9 @@ class KickoffTests(unittest.TestCase):
             (root/'scripts/review-draft.py').write_text('')
             environment = {k: v for k, v in os.environ.items() if not k.startswith(('CODEX_', 'CLAUDE_CODE_SESSION'))}
             environment.update(ISUSCOPE_LOCK_HELD='1', CLAUDE_CODE_SESSION_ID='fixture-session')
+            # kickoff commits the initialize route; a CI runner has no git identity of its own.
+            environment.update(GIT_AUTHOR_NAME='test', GIT_AUTHOR_EMAIL='test@example.com',
+                               GIT_COMMITTER_NAME='test', GIT_COMMITTER_EMAIL='test@example.com')
             result=subprocess.run(['bash','scripts/kickoff.sh'],cwd=root,env=environment,capture_output=True,text=True)
             if not history:
                 # A session started elsewhere stops before anything reaches a node.
@@ -167,9 +170,9 @@ class KickoffTests(unittest.TestCase):
                 self.assertFalse((root/'events').exists())
                 self.assertIn('Start a new Claude Code session inside', result.stderr)
                 return
+            self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual((root/'events').read_text().splitlines(),
                              ['build-start','lanes-kickoff','bootstrap','inspect','draft','build-status'])
-            self.assertEqual(result.returncode, 0, result.stderr)
             # Nested steps keep their own timing although the outer lock records only kickoff.
             stages = [line.split('\t')[1:3] for line in (root/'.local/stage-timing.tsv').read_text().splitlines()]
             self.assertEqual(stages, [['kickoff.sh', name] for name in
