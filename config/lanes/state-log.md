@@ -10,10 +10,10 @@
 
 ## 書き手
 
-- `config/state-log/state_log.rs`をcrateの`src/`へそのまま写し（`cp config/state-log/state_log.rs webapp/rust/src/state_log.rs`）、crateのroot（`main.rs`か`lib.rs`）に`mod state_log;`を1行足す。中身は変えない。追加のcrateは要らない。
+- `config/state-log/state_log.go`をcrateの`src/`へそのまま写し（`cp config/state-log/state_log.go webapp/rust/src/state_log.rs`）、crateのroot（`main.rs`か`lib.rs`）に`mod state_log;`を1行足す。中身は変えない。追加のcrateは要らない。
 - 使い方はfile冒頭のコメントのとおり。`state_log::created`（作られた）、`state_log::changed`（前の状態から変わった）、`state_log::entered`（前の状態を知らずに変えた）、transactionの中なら`state_log::Pending`へためてcommitの後に`emit()`。
 - 書き手はリクエストを待たせない（queueへ入れるだけで、あふれたら捨てて数える）。書き先は`ISUSCOPE_STATE_LOG`（無ければ`/var/tmp/isuscope-state.jsonl`、空なら書かない）。
-- アプリ計測の書き手`config/app-metrics/app_metrics.rs`も同じように写し（`cp config/app-metrics/app_metrics.rs webapp/rust/src/app_metrics.rs`）、`mod app_metrics;`を1行足す。中身は変えない。外への呼び出し（決済などの外部API、別のサービス）の1試行ごとの結果と時間と、lockの待ちと保持の時間を1秒ごとに集計して書く（書き先は`ISUSCOPE_APP_METRICS`、無ければ`/var/tmp/isuscope-app-metrics.jsonl`、空なら書かない）。HTTPとSQLの記録には、外への呼び出しの失敗・再試行も、アプリの中のlock待ちも出ないので入れる（practice-14では、決済の約70%の失敗と再試行、グローバルlockの待ちが、毎回journalctlと手で足したlogでしか見えなかった）。
+- アプリ計測の書き手`config/app-metrics/app_metrics.go`も同じように写し（`cp config/app-metrics/app_metrics.go webapp/rust/src/app_metrics.rs`）、`mod app_metrics;`を1行足す。中身は変えない。外への呼び出し（決済などの外部API、別のサービス）の1試行ごとの結果と時間と、lockの待ちと保持の時間を1秒ごとに集計して書く（書き先は`ISUSCOPE_APP_METRICS`、無ければ`/var/tmp/isuscope-app-metrics.jsonl`、空なら書かない）。HTTPとSQLの記録には、外への呼び出しの失敗・再試行も、アプリの中のlock待ちも出ないので入れる（practice-14では、決済の約70%の失敗と再試行、グローバルlockの待ちが、毎回journalctlと手で足したlogでしか見えなかった）。
 
 ## 手順
 
