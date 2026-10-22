@@ -127,7 +127,7 @@ function renderScoreHistory(q){
   let seg=[];const flush=()=>{if(seg.length){const up=seg.map(r=>`${x(r)} ${bottom-(Math.min(max,r.score*(1+k*r.spread.sigma))-min)/(max-min)*(bottom-top)}`);const down=seg.slice().reverse().map(r=>`${x(r)} ${bottom-(Math.max(min,r.score*(1-k*r.spread.sigma))-min)/(max-min)*(bottom-top)}`);const pts=seg.length===1?[`${x(seg[0])-5} ${up[0].split(' ')[1]}`,`${x(seg[0])+5} ${up[0].split(' ')[1]}`,`${x(seg[0])+5} ${down[0].split(' ')[1]}`,`${x(seg[0])-5} ${down[0].split(' ')[1]}`]:[...up,...down];svg.append(svgEl('path',{d:'M '+pts.join(' L ')+' Z',class:cls}));}seg=[];};
   for(const r of runs){if(passing(r))seg.push(r);else flush();}flush();
  }
- let path='';let connected=false;for(const r of runs){if(r.passed===true&&!failed(r)&&hasScore(r)){path+=(connected?' L ':' M ')+x(r)+' '+y(r);connected=true;}else connected=false;}if(path)svg.append(svgEl('path',{d:path,class:'score-line'}));
+ let path='';let connected=false;for(const r of runs){if(r.repeat)continue;if(r.passed===true&&!failed(r)&&hasScore(r)){path+=(connected?' L ':' M ')+x(r)+' '+y(r);connected=true;}else connected=false;}if(path)svg.append(svgEl('path',{d:path,class:'score-line'}));
  const selectedId=document.querySelector('#run-select').value||q.latest?.id||runs[runs.length-1].id;
  const best=runs.filter(r=>r.passed===true&&!failed(r)&&hasScore(r)).reduce((b,r)=>!b||r.score>b.score?r:b,null);
  const sameConfig=new Map();for(const r of runs){if(!r.config)continue;const before=sameConfig.get(r.config);if(r.repeat&&before)r.previous=before;sameConfig.set(r.config,r);}
