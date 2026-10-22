@@ -17,7 +17,7 @@
       "path": "docs/benchmark-scenario.md",
       "title": "ベンチの見取り図",
       "timing": "kickoff",
-      "contents": "シナリオ、APIの順番、得点、FAIL条件、並列数と繰り返し、initialize後の状態、整合性チェック。事実・推測・不明を分ける。APIごとのhandler（file:line）と主なSQL。観測で確かめたベンチの仕様は該当箇所で直す。runの結果・スコア・改善の効果・制約の推移は書かない。"
+      "contents": "シナリオ、APIの順番、得点、FAIL条件、並列数と繰り返し、initialize後の状態、整合性チェックと、それが前提にする状態の順序。事実・推測・不明を分ける。APIごとのhandler（file:line）と主なSQL。観測で確かめたベンチの仕様は該当箇所で直す。runの結果・スコア・改善の効果・制約の推移は書かない。"
     },
     {
       "path": "docs/state-log.md",

@@ -10,12 +10,12 @@ allowed-tools: Bash(python3 scripts/main-session.py claim:*)
 
 上の結果がエラーなら、理由をそのまま人間へ伝えて止まる（mainはrepoのrootで動かす）。成功していれば、このセッションがmainになった。
 
-mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。mainは改善を実装しない。 アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`、`make durability`）、laneとportalの取り込み（全メモリ化laneを取り込むときに、後から入った変更を全メモリ化の形へ移すことも含む）、投稿を取り込むための直し（衝突、取り込んで通らなくなったbuild・deploy）、APIごとの待ちの表（`ISUCON_WAITS`。`scripts/waits.py set`で変える）は実装に数えない。mainは次を受け持つ。
+mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。mainは改善を実装しない。少しでも多くベンチを回して情報を得ることが重要なので、mainはそこに集中する。アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`、`make durability`）、laneとportalの取り込み（全メモリ化laneを取り込むときに、後から入った変更を全メモリ化の形へ移すことも含む）、投稿を取り込むための直し（衝突、取り込んで通らなくなったbuild・deploy）、APIごとの待ちの表（`ISUCON_WAITS`。`scripts/waits.py set`で変える）は実装に数えない。mainは次を受け持つ。
 
 - **merge**: improve・人間（worktree `human`）の投稿、laneのcommit、portalを取り込む。キューの追従と衝突の解消（両方の意図を残す）、取り込んだ変更の戻し（`git revert`）まで。投稿は投稿者へ戻さない。buildやdeployが通らない、衝突する投稿は、直せるならmainが直し、直せないなら棄却する。
 - **次に測るものの判断**: 下の「キュー」。何をまとめて測るか、測らずに棄却するか、保留にするかをmainが決める。
 - **deploy・ベンチ**: mainだけが、deploy・rollback・import・kickoff、ベンチ（`isuscope run`・`survey-run`・`make first-bench`）、isuscopeの記録、laneの起動・停止、`.local/operation.lock`を使う。ほかのセッションからの同じ操作は`scripts/tool-guard.py`が止める。
-- **分析と採否**: runを分析し、最大の制約を特定して`isuscope analyze`に書く。improveはこの分析だけを読んで次の変更を選ぶので、そこから次の最大の制約と、その根拠を自分で確かめられるように書く。
+- **分析と採否**: runを分析し、最大の制約を特定して`isuscope analyze`に書く。improveはまずこの分析を読んで次の変更を選ぶので、そこから次の最大の制約と、その根拠を自分で確かめられるように書く。mainが記録する分析は、振れ幅やwaitのものも含め、最後の1件の先頭300字が`main analyzed`としてimproveへ届く。なので、どの分析も1文目に、次の最大の制約とその場所（AGENTS.mdの「判断の原則」の3つ）を書き、決めきれなければ候補を並べる。
 - **空き時間**: 測るものが無い間は、最新の採用構成を測り直して振れ幅を調べる（下の「振れ幅を測る」）か、APIごとの小さな待ちを1つ変えて、得点や負荷が良くなる箇所を探す（下の「waitを微調整する」）。どちらに使うかは、そのときの状況で決める。投稿は1回のrunで決め、2度は回さない。
 
 humanのセッションから届くメッセージは人間の意見として読み、反映するか、しない理由を返す。
@@ -50,7 +50,7 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
    - ベンチを起動すると、hookが待っている投稿と保留をmainのbranchへ追従させる`proposal.py sync`をbackgroundで始める（`.local/proposal-sync`のworktreeで各branchへmainのbranchをmergeし、結果は`.local/proposal-sync.log`）。衝突するとそこで止まって衝突を残すので、解消して`git add`し、`python3 scripts/proposal.py sync`で続ける。処理の意味がぶつかる（同じ処理を別々に変えている）ときも、両方の意図を残して解く。解けないなら`git merge --abort`して棄却する。投稿したbranchは`submit`が投稿者のworktreeから外すので、そのまま追従できる。
    - キューを見直し、次に測るものを決めておく。
 4. 終わったら分析し、採否を決める。同じ投稿を2度測らない。ベンチ側の動きの変化は`isuscope query RUN --base BASE --view transitions`で比べられる（`docs/reference/isuscope.md`）。分かったベンチの仕様は、見取り図の該当する節へ書く。採否は投稿ごとに`isuscope analyze RUN <判定> --analysis "..." --change <change ID> --decision ...`で記録する（同じrunへ追記できる。change IDは、ベンチを起動したときにhookが投稿ごとに示す）。mainが書くのはこれだけで、hookがその採否・理由・runを投稿へ写す。不採用は`git revert -m 1 <mergeのcommit>`で戻す。ベンチが起動できなかった、中断した、落ちたときの測定中の投稿は、次のベンチの起動時にhookが待ちへ戻して測り直す（すぐ戻すなら`python3 scripts/proposal.py requeue`。投稿が原因で落ちたなら、直せるなら直して測り、直せないなら`rejected`にする）。
-5. 分析を記録したら、キューの残り（待ちと保留）の前提がまだ成り立つかを見直し、棄却する・保留にする・保留を解くを決める。測定中の投稿の採否がそろうと、hookが最後の分析の冒頭を`main analyzed`の行でimproveへ知らせる。improveはまずこの行を読むので、分析の冒頭に次の最大の制約が分かるように書く。
+5. 分析を記録したら、キューの残り（待ちと保留）の前提がまだ成り立つかを見直し、棄却する・保留にする・保留を解くを決める。測定中の投稿の採否がそろうと、hookが最後の分析の冒頭を`main analyzed`の行でimproveへ知らせる。improveはまずこの行を読むので、書き出しは上の「分析と採否」のとおりにする。
 
 6. すぐ1へ戻る。待っている投稿が無ければ`python3 scripts/proposal.py pending`で確かめ、それでも無ければ、上の「空き時間」のとおりベンチを使う。`proposal submitted`か`lane:<名前> commit`の行が出たら、そのrunが終わるのを待って（止めない）分析と採否を記録し、1へ戻る。sleepやpollingで待たない。もうすぐ届く投稿は、ボードの「作業中」で分かる。
 
@@ -68,10 +68,10 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 同じ構成でも点は振れる。投稿のrunを2回ずつ回すと周回が倍になるので、振れ幅は、ベンチが空いている時間に、最新の採用構成で先に測っておく。
 
 - 測る構成: 最後に採否を決めた後のHEAD（測定中・merge済みで未測定の投稿が無い状態）。不採用をrevertした後なら、deployが最良構成へ戻っていることを確かめる。
-- 起動: `isuscope run --repeat "振れ幅: <基準の短縮ID>と同じ構成" --hypothesis "振れ幅を測る（同じ構成のn回目）"`を`run_in_background`で。終わったら`isuscope analyze RUN skipped --analysis "振れ幅: ..."`を短く記録する（`--change`は付けない）。
+- 起動: `isuscope run --repeat "振れ幅: <基準の短縮ID>と同じ構成" --hypothesis "振れ幅を測る（同じ構成のn回目）"`を`run_in_background`で。終わったら`isuscope analyze RUN skipped --analysis "<次の最大の制約とその場所>。振れ幅: ..."`を短く記録する（`--change`は付けない）。
 - 回数: 決めない。
 - 読み方: 同じ構成で測ったrunの得点を見る。
-- 測り直しは、この振れ幅のためと終了前の確認（`docs/guides/finish.md`）だけにする。投稿・laneの変更は1回で決める。
+- 測り直しは、この振れ幅のためと、終了前の確認（`docs/guides/finish.md`）だけにする。投稿・laneの変更は1回で決める。
 
 ### waitを微調整する
 
@@ -86,8 +86,7 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
   3. `waits.py set`が出す`isuscope run`（tagと、変えた値・基準を埋めた仮説）に期待を書き足し、backgroundで起動する
 - **採否**: 投稿と同じく1回で決める。不採用なら`git revert`で前の値へ戻す。
   - 分析は`isuscope analyze RUN supported|rejected --change <waits.py setが出すwait-...のID> --decision accepted|rejected`で記録する。
-  - 本文は、後で`waits.py history`と`isuscope change list`から読み返したときに、何を変えて何が起きたかが分かり、次に試す値を決められるように書く。
-- **終了前**: 表は最終構成の一部で、計測ではないので外さない。`docs/guides/finish.md`の手順で、最後のrunの`identity.waits`と`waits.py show`が採用した表と一致することを確かめる。
+  - 本文の1文目は「分析と採否」のとおりにし、その後に、後で`waits.py history`と`isuscope change list`から読み返したときに、何を変えて何が起きたかが分かり、次に試す値を決められるように書く。
 
 ### kickoffの間
 
@@ -95,8 +94,15 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 
 ### 終了前
 
-開始時に決めた時刻になったら、`python3 scripts/proposal.py freeze --note "<最終構成のcommit>"`でimproveの新しい投稿を止め（`main freeze`の行が出る）、`docs/guides/finish.md`へ進む。キューに残った投稿は、測らずに`deferred`にする。
+人間に終了前を指示されたら、`python3 scripts/proposal.py freeze --note "<最終構成のcommit>"`でimproveの投稿を止め、キューに残った投稿は測らずに`deferred`にする。以後は空き時間の測り直しとwaitの変更をやめ、`docs/guides/finish.md`に従う。
 
-目標は人間が`/goal`で渡す。渡されるまでは、`AGENTS.md`と`docs/guides/`の手順（kickoffなら`kickoff.md`、改善はAGENTS.mdの「判断の原則」、終了前なら`finish.md`）に沿って、今の段階から進める。
+目標は人間が`/goal`で渡す。渡されるまでは、`AGENTS.md`と`docs/guides/`の手順（kickoffなら`kickoff.md`、改善はAGENTS.mdの「判断の原則」）に沿って、今の段階から進める。
 
 宣言の結果と、今の状態（`python3 scripts/proposal.py list`の投稿、`make lanes`のlane、improveが動いているか）を短く報告してから、次の手を始める。improveの行が無ければ、worktree `improve`で`/improve`を起動するよう人間に頼む。
+
+ツール呼び出しの無いメッセージでターンが終わると、次の通知が来るまでベンチの周回が止まる。ターンを終えてよいのは次のときだけ。
+- ベンチ・`make kickoff`・`make first-bench`のどれかがbackgroundで動いていて、Monitorが`follow main`を追っていて、今すぐできる手が無いとき
+- 宣言がエラーのとき
+- 認証・権限やhookが止めた操作など、人間にしか解けない理由で何も進められないとき（理由を書いて終える）
+
+報告や人間への頼みごと（`/improve`の起動など）は、次のツール呼び出しと同じメッセージに書いて続ける。「次は〜する」と書いて終える、区切りがよいので報告して終える、続けてよいかを人間に尋ねて止まる、進行を妨げない決定事項を並べて止まる、はしない。
