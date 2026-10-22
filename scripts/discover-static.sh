@@ -32,7 +32,7 @@ jq --arg default_user "${ssh_user}" '
     user: (.user // $default_user),
     provider: "static",
     state: (.state // "running")
-  }) | sort_by(.name)
+  } + (if .instance_type then {instance_type} else {} end)) | sort_by(.name)
 ' "${nodes_file}" >"${temporary}"
 mv -- "${temporary}" "${local_dir}/discovered-nodes.json"
 trap - EXIT

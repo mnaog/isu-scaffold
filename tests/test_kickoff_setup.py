@@ -6,6 +6,7 @@ import unittest
 import json
 import os
 import re
+import shutil
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -112,6 +113,38 @@ class KickoffSetupTest(unittest.TestCase):
     def test_failed_cloud_init_blocks_bootstrap(self):
         self.assertEqual(self.run_guard(1), 1)
         self.assertEqual(self.run_guard(0), 0)
+
+    def test_discover_stops_when_types_mix_and_no_node_is_a_benchmark_node(self):
+        # Two network-optimized nodes named like app nodes might be the organizer's benchmarkers.
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / 'scripts').mkdir()
+            for name in ('discover.sh', 'discover-static.sh', 'apply-node-overrides.sh'):
+                shutil.copy(ROOT / 'scripts' / name, repo / 'scripts' / name)
+            (repo / 'scripts/render-environment.sh').write_text('#!/bin/sh\necho rendered\n')
+            (repo / 'scripts/render-environment.sh').chmod(0o755)
+            (repo / '.local').mkdir()
+            nodes = [{'name': f'isucon{n}', 'host': f'192.0.2.{n}', 'instance_type': 'c7i.large'} for n in (1, 2, 3)]
+            nodes += [{'name': f'isucon{n}', 'host': f'192.0.2.{n}', 'instance_type': 'c6in.large'} for n in (4, 5)]
+            (repo / '.local/nodes.json').write_text(json.dumps(nodes))
+
+            def discover(extra=''):
+                (repo / '.local/environment.env').write_text(
+                    'DISCOVERY_PROVIDER=static\nSSH_USER=ubuntu\n' + extra)
+                return subprocess.run(['bash', str(repo / 'scripts/discover.sh')], cwd=repo, capture_output=True,
+                                      text=True, env=dict(os.environ, ISUSCOPE_LOCK_HELD='1'))
+
+            stopped = discover()
+            self.assertEqual(stopped.returncode, 1)
+            self.assertIn('c6in.large: isucon4 isucon5', stopped.stderr)
+            self.assertIn('c7i.large: isucon1 isucon2 isucon3', stopped.stderr)
+            self.assertNotIn('rendered', stopped.stdout)
+            self.assertEqual(discover('DISCOVERY_ACCEPT_MIXED_TYPES=1\n').returncode, 0)
+            (repo / '.local/node-overrides.json').write_text(json.dumps(
+                [{'name': name, 'group': 'benchmark', 'roles': ['benchmark']} for name in ('isucon4', 'isucon5')]))
+            marked = discover()
+            self.assertEqual(marked.returncode, 0, marked.stderr)
+            self.assertIn('rendered', marked.stdout)
 
     def test_playbooks_skip_benchmark_nodes_unless_access_is_ssh(self):
         with tempfile.TemporaryDirectory() as directory:

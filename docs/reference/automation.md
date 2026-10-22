@@ -141,6 +141,8 @@ lockを取る変更系操作は、終了時に`.local/operation-timing.tsv`へ�
 - `DISCOVERY_PROVIDER=aws-cloudformation`: stack配下のEC2をName tagのregexで分類する
 - `DISCOVERY_PROVIDER=static`: `config/nodes.example.json`を`.local/nodes.json`へコピーし、任意のSSH接続先を記述する
 
+application nodeのインスタンスの型が2種類以上あるのに、ベンチの台（`group: benchmark`）が1台も無いと、`make discover`は型ごとのnodeを並べて止まります。型の違うnodeが混ざる構成では、片方（ネットワーク特化型など）が運営のベンチの台で、名前がappの正規表現に合っていることがあり、そのままではimportやdeployの対象にしてしまうためです。当日マニュアルとポータルで確かめ、ベンチの台なら`.local/node-overrides.json`で`{"name": "<node>", "group": "benchmark", "roles": ["benchmark"]}`にするか`DISCOVERY_BENCH_NAME_REGEX`を合わせ、全部が自分のnodeなら`DISCOVERY_ACCEPT_MIXED_TYPES=1`にして、`make discover`をやり直します。static providerでも`.local/nodes.json`に`instance_type`を書けば同じ検査をします。
+
 SSH鍵が既に登録済みなら`SSH_BOOTSTRAP_METHOD=existing`、EC2 Instance ConnectからSSH鍵を登録するなら`eic`を使います。
 
 ## 2. nodeと実設定を生成する
