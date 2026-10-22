@@ -1,6 +1,6 @@
 # ISUCON starter template
 
-一人参加のISUCONで、コードと設定をローカルリポジトリから管理・デプロイし、isuscopeで計測と改善履歴を残すためのテンプレートです。採用言語はRustに固定しています。
+一人参加のISUCONで、コードと設定をローカルリポジトリから管理・デプロイし、isuscopeで計測と改善履歴を残すためのテンプレートです。採用言語はGoに固定しています。
 
 ## 使い方
 
@@ -30,8 +30,8 @@ make lanes                             # AI lane（config/lanes.json）の結果
 
 コード回収後、`config/local/compose.example.yaml`を当日のアプリに合わせて`compose.yaml`へコピーし、`make local-up` / `make local-check` / `make local-down`で検証します。DB・network・portはworktreeごとに分離し、初回baselineの開始を待たせません。[ローカル実行環境](docs/local-development.md)と[kickoff](docs/guides/kickoff.md)を参照してください。
 
-配布用Rustは`make build`でローカルからLinux向けにbuildし、`make deploy`が同じ成果物を全対象nodeへ配ります。Docker cacheを再利用し、配布サーバーでのコンパイルを既定から外しています。Rustは1.99.0を標準とし、target・OS・実行時依存は当日の環境に合わせて設定してください。
+配布用Goは`make build`で手元のGoからLinux向けの静的バイナリ（`CGO_ENABLED=0`）をbuildし、`make deploy`が同じ成果物を全対象nodeへ配ります。配布サーバーでのコンパイルを既定から外しています。
 
-## Rust toolchain
+## Go toolchain
 
-通常開発・CI・LinuxビルダーはRust 1.99.0を使用する。Macはrustup経由のcargo/rustcを使用し、`rustup show active-toolchain`で確認する。Linuxビルダーは配布先と互換性のあるOS/glibcを維持し、コンパイラだけを更新する。Editionと各アプリのMSRVは変更しない。隔離されたAI比較実験の旧toolchainは再現用に保持する。
+手元のGo（`go version`）を使う。go.modが求める版は`GOTOOLCHAIN=auto`が取得するので、手元を配布アプリの版に合わせる必要はない。brewが使えない端末では、公式tarballを`~/.local/go`へ展開し、`~/.local/go/bin`をPATHへ足す。

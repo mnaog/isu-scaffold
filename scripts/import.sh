@@ -45,7 +45,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Item excludes (sync.json "exclude") leave build outputs such as Rust target/ out of the
+# Item excludes (sync.json "exclude") leave build outputs such as the Go binary out of the
 # digest on both sides and out of the transfer, so they are neither compared nor copied.
 exclude_args() {
   local mode=$1 path

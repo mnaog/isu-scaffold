@@ -95,7 +95,7 @@ class LaneTests(unittest.TestCase):
         argv = call['argv']
         for flag, value in [('--model', 'claude-opus-5-5'), ('--effort', 'high'), ('--permission-mode', 'dontAsk')]:
             self.assertEqual(argv[argv.index(flag) + 1], value)
-        self.assertIn('Bash(cargo:*)', argv[argv.index('--allowedTools') + 1])
+        self.assertIn('Bash(go:*)', argv[argv.index('--allowedTools') + 1])
         self.assertEqual(argv[-2], '--allowedTools')
         self.assertIn('docs/code-map.mdを書く', call['prompt'])
         # The map and the conversation written after the last commit both stay on the branch; main is untouched.
@@ -165,7 +165,7 @@ class LaneTests(unittest.TestCase):
         tools = json.loads(self.record.read_text())['argv']
         allowed = tools[tools.index('--allowedTools') + 1].split(',')
         self.assertIn('Bash(git merge:*)', allowed)
-        self.assertIn('Bash(cargo:*)', allowed)
+        self.assertIn('Bash(go:*)', allowed)
         self.assertIn('分岐元branch main', json.loads(self.record.read_text())['prompt'])
 
     def test_main_commits_a_lane_merges_in_are_not_reported_as_the_lane_s(self):

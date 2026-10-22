@@ -196,9 +196,9 @@ esac
             self.assertIn('isu-rust.service\t/etc/systemd/system/isu-rust.service', result)
             self.assertIn('nginx.service\t/etc/systemd/system/nginx.service', result)
 
-    def test_vendor_rust_unit_can_be_a_draft_candidate(self):
+    def test_vendor_go_unit_can_be_a_draft_candidate(self):
         spec = importlib.util.spec_from_file_location('draft', ROOT / 'scripts/configure-draft.py')
         draft = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(draft)
-        self.assertEqual(draft.rust_service(['isu-rust.service\t/lib/systemd/system/isu-rust.service']),
-                         ('isu-rust', '/lib/systemd/system/isu-rust.service'))
+        self.assertEqual(draft.go_service(['isu-go.service\t/lib/systemd/system/isu-go.service']),
+                         ('isu-go', '/lib/systemd/system/isu-go.service'))

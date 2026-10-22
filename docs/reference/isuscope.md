@@ -28,7 +28,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 
 - 仮説の対象は、`query --base`へ同じselectorを指定して比べる。HTTPは`--view http`と`--label route=...`、DBは`--view database --window load`（initializeを除いた負荷区間）、必要な`--label-contains digest=...`、`--group-by sql-shape`を使い、対象を絞らない巨大JSONを避ける。
 - briefの`http`は合計時間の順なので、速くて回数の多いAPI（静的ファイル、polling）と、SSEのように長く開いた要求の扱いに気をつける。前者は`http_by_count`（全要求に占める割合`share_percent`つき）に出る。静的ファイルは1 fileずつ別のrouteなので、合計は`http_static_files`で見る。続きと比較は`query --view http --sort count`。
-- 外への呼び出し（決済などの外部API）の失敗・再試行と、アプリの中のlockの待ちは、HTTPとSQLの記録に出ない。lane `state-log`が入れるアプリ計測（`config/app-metrics/app_metrics.rs`）が1秒ごとに書き、briefの`app_calls`（呼び先と結果ごとの試行数・割合・時間。失敗の割合がそのまま失敗率）と`app_locks`（lockごとの待ちと保持の時間）に出る。journalctlやlogを足して数える前に、まずここを見る。比較は`query <run> --base <base> --metric-prefix app. --scope series --window load`。
+- 外への呼び出し（決済などの外部API）の失敗・再試行と、アプリの中のlockの待ちは、HTTPとSQLの記録に出ない。lane `state-log`が入れるアプリ計測（`config/app-metrics/app_metrics.go`）が1秒ごとに書き、briefの`app_calls`（呼び先と結果ごとの試行数・割合・時間。失敗の割合がそのまま失敗率）と`app_locks`（lockごとの待ちと保持の時間）に出る。journalctlやlogを足して数える前に、まずここを見る。比較は`query <run> --base <base> --metric-prefix app. --scope series --window load`。
 - CPUの使用率に余裕があるのに遅いときは、briefの`hosts`のserviceの`run_delay_avg_cores`（CPUを待っていたthreadの平均の数）とnodeの`procs_running_max`を見る。threadの数がコアより多いと、lockを持ったままpreemptされて待ちが延びる。
 - DBの比較では、`query --base`の`total_ms_delta_by_calls`（回数の増減による分）と`total_ms_delta_by_avg`（1回あたりの時間による分）で、合計時間の変化の理由を分ける。
 - 判定には`supported`、`rejected`、`inconclusive`、`skipped`を使う。`analyze`には、実行結果か`isuscope list`で得たrun IDを明示する。本文でrunに触れるときは、isuscopeの出力が示す短縮ID（run IDの末尾8文字）にそろえる。

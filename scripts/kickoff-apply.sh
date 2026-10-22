@@ -19,7 +19,7 @@ source "${script_dir}/stage-lib.sh"
 # The draft may have been edited since kickoff; review it again before applying.
 stage review-draft python3 "${script_dir}/review-draft.py"
 stage configure-apply "${script_dir}/configure-apply.sh"
-# Start the Rust implementation where the draft found another language running.
+# Start the Go implementation where the draft found another language running.
 stage switch-language "${script_dir}/switch-language-service.sh"
 stage discover "${script_dir}/discover.sh"
 # The applied draft may set the session source for the measurement log and the fingerprint

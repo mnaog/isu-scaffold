@@ -12,7 +12,6 @@ __pycache__/
 *.pyc
 
 # Rustのbuild artifactはローカルDockerのcacheで管理し、配布sourceへ含めない。
-/webapp/rust/target/
 
 # isuscopeの検索用DBはrunから再構築でき、更新のたびに巨大なGit差分になる。
 /isuscope-data/isuscope.sqlite3

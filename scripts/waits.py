@@ -5,7 +5,7 @@
   waits.py set METHOD PATH --after MS|--before MS   (MS 0 drops that rule; --off drops both)
   waits.py history                                what was tried, from isuscope's runs and changes
 
-The app reads ISUCON_WAITS once at start (config/waits/waits.rs, wired in by lane `waits`), so the
+The app reads ISUCON_WAITS once at start (config/waits/waits.go, wired in by lane `waits`), so the
 table lives in the EnvironmentFile its unit reads: the same file deploy sends, the servers keep across
 a reboot, and the organizers' re-test starts the app with. This script edits that line in the repo; it
 commits that file alone, and `make deploy` (no build) puts it on the servers. scripts/benchmark-identity.py reports the
@@ -28,7 +28,7 @@ isuscope_sql = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(isuscope_sql)
 VARIABLE = 'ISUCON_WAITS'
 LINE = re.compile(r'^\s*(?:export\s+)?' + VARIABLE + r'=(.*)$')
-COMMENT = '# APIごとの待ち（scripts/waits.py setで変える。形はconfig/waits/waits.rs。空なら待たない）'
+COMMENT = '# APIごとの待ち（scripts/waits.py setで変える。形はconfig/waits/waits.go。空なら待たない）'
 
 
 def git(*args, cwd=None, check=True):

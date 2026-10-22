@@ -5,7 +5,7 @@
 ## 構成する
 
 1. `config/local/compose.example.yaml`を`config/local/compose.yaml`へコピーする。
-2. 標準Rust版は1.99.0に固定する。OS/glibc、DB版、追加service、アプリの環境変数、SQL投入元を実アプリに合わせる。`LOCAL_DB_IMAGE`と`LOCAL_RUST_IMAGE`は未設定なら起動を拒否する。開始後に当日の環境を確認して設定する。`LOCAL_RUST_IMAGE`は互換OSの選択であり、Dockerfileが公式rustupからRust 1.99.0を導入する。
+2. DB版、追加service、アプリの環境変数、SQL投入元を実アプリに合わせる。`LOCAL_DB_IMAGE`と`LOCAL_GO_IMAGE`は未設定なら起動を拒否する。開始後に当日の環境を確認して設定する。`LOCAL_GO_IMAGE`はgo.modの`go`行に合う`golang`のimage（例: `golang:1.23-bookworm`）にする。
 3. 許可されたschema・初期データを設定する。例では`.local/local-runtime/init/`のSQLをMySQLの初回起動時に投入する。`LOCAL_INIT_DIR`で別ディレクトリも指定できる。DB volumeが既存なら自動で再投入しない。
 4. 必要なOS依存はDockerfileへ宣言する。`EXTRA_PACKAGES` build argも使える。初期化scriptが必要とするDB client・ファイル配置・権限も確認する。
 5. 構成をcommitする。秘密情報はtrackedなComposeへ書かず、ローカル専用の値か`.local/`からの注入を使う。
@@ -15,7 +15,7 @@
 ## 実行する
 
 ```bash
-# 開始後にLOCAL_DB_IMAGEとLOCAL_RUST_IMAGEをexportしてから実行
+# 開始後にLOCAL_DB_IMAGEとLOCAL_GO_IMAGEをexportしてから実行
 LOCAL_DATA_LEVEL=schema make local-up
 make local-check
 make local-logs
@@ -24,13 +24,13 @@ make local-down
 LOCAL_RESET=yes make local-reset
 ```
 
-`local-up`は未commitのコードも含む現在の`webapp/`をread-onlyでmountし、RustをLinuxのnative CPUでbuildして起動する。編集後は再度`local-up`でアプリを作り直す。他のserviceが依存し`build`を持たないservice（DB・cacheなど）は作り直さず、healthyになるまで待ってから残りを作り直す。Composeの設定を変えればCompose自身が作り直すが、bind mountした設定fileの中身を変えたときは`local-down`してから`local-up`する。`local-down`はデータとcacheを保持する。操作はworktree内の専用lockで直列化され、remote操作のlockは取らない。
+`local-up`は未commitのコードも含む現在の`webapp/`をread-onlyでmountし、GoをLinuxのcontainerでbuildして起動する。編集後は再度`local-up`でアプリを作り直す。他のserviceが依存し`build`を持たないservice（DB・cacheなど）は作り直さず、healthyになるまで待ってから残りを作り直す。Composeの設定を変えればCompose自身が作り直すが、bind mountした設定fileの中身を変えたときは`local-down`してから`local-up`する。`local-down`はデータとcacheを保持する。操作はworktree内の専用lockで直列化され、remote操作のlockは取らない。
 
-DB・Cargo・target volumeとnetworkはworktreeの絶対pathから作るCompose projectごとに分離する。固定container名、external resource、host network、privileged実行、書込み可能なbind mount、固定公開portを拒否する。アプリの公開portは127.0.0.1上で自動割当され、URLは標準出力と`.local/local-runtime/status.json`に残る。DBはhostへ公開しない。worktreeを削除する前に、そのworktreeで`local-down`（不要データも消すなら`local-reset`）を実行する。
+DB・Goのcache volumeとnetworkはworktreeの絶対pathから作るCompose projectごとに分離する。固定container名、external resource、host network、privileged実行、書込み可能なbind mount、固定公開portを拒否する。アプリの公開portは127.0.0.1上で自動割当され、URLは標準出力と`.local/local-runtime/status.json`に残る。DBはhostへ公開しない。worktreeを削除する前に、そのworktreeで`local-down`（不要データも消すなら`local-reset`）を実行する。
 
 起動の待機上限は既定600秒で、`LOCAL_START_TIMEOUT`で変更できる。失敗時はcontainerを残してログを調べられるようにする。停止は`local-down`で行う。
 
-事前取得済みvendorを使う場合は`LOCAL_USE_VENDOR=1 LOCAL_VENDOR_DIR=/absolute/vendor make local-up`とする。通常はCargoが依存を取得し、worktree専用Linux volumeへ保存する。ローカル開発用のnative build cacheは、`make build`のdeploy用cross build cacheとは別である。deploy用cacheは引き続きルートrepoで共有する。
+`local-up`のGoのbuild cacheとmodule cacheはworktree専用のLinux volumeへ保存する。ローカル開発用のcacheは、`make build`のdeploy用build cacheとは別である。deploy用cacheは引き続きルートrepoで共有する。
 
 ## 同じ操作を流して比べる
 

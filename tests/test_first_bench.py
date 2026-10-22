@@ -19,7 +19,7 @@ class FirstBenchTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.repo = Path(self.tmp.name)
-        for folder in ('scripts', 'bin', 'webapp/rust', 'config', '.local'):
+        for folder in ('scripts', 'bin', 'webapp/go', 'config', '.local'):
             (self.repo / folder).mkdir(parents=True)
         for name in ('first-bench.sh', 'stage-lib.sh', 'progress.py', 'imported-state.py', 'tree-digest.py',
                      'check-deployed-commit.sh'):
@@ -32,10 +32,10 @@ class FirstBenchTests(unittest.TestCase):
         (self.repo / 'bin/isuscope').write_text(self.FAKE_LIST + 'echo "isuscope $*" >> "$EVENTS"\n')
         for path in [*(self.repo / 'scripts').glob('*.sh'), self.repo / 'bin/isuscope']:
             path.chmod(0o755)
-        (self.repo / 'webapp/rust/main.rs').write_text('fn main() {}\n')
+        (self.repo / 'webapp/go/main.go').write_text('package main\n')
         (self.repo / 'config/sync.json').write_text(json.dumps({'items': [
-            {'name': 'rust-app', 'local': 'webapp/rust', 'exclude': ['target']}]}))
-        (self.repo / '.gitignore').write_text('.local/\nbin/\nevents\nwebapp/rust/target/\n')
+            {'name': 'go-app', 'local': 'webapp/go', 'exclude': ['app']}]}))
+        (self.repo / '.gitignore').write_text('.local/\nbin/\nevents\nwebapp/go/app\n')
         for args in (['init', '-q'], ['add', '.'], ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', 'fixture']):
             subprocess.run(['git', '-C', str(self.repo), *args], check=True)
         self.events = self.repo / 'events'
@@ -45,12 +45,11 @@ class FirstBenchTests(unittest.TestCase):
 
     def record_import(self):
         """What import.sh leaves: the digest the servers hold for each item."""
-        (self.repo / 'webapp/rust/target').mkdir()
-        (self.repo / 'webapp/rust/target/app').write_text('distributed binary, never compared\n')
-        digest = subprocess.run(['python3', 'scripts/tree-digest.py', 'webapp/rust', '--exclude', 'target'],
+        (self.repo / 'webapp/go/app').write_text('distributed binary, never compared\n')
+        digest = subprocess.run(['python3', 'scripts/tree-digest.py', 'webapp/go', '--exclude', 'app'],
                                 cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
         (self.repo / '.local/imported-state.json').write_text(json.dumps({'items': {
-            'rust-app': {'local': 'webapp/rust', 'digest': digest, 'exclude': ['target']}}}))
+            'go-app': {'local': 'webapp/go', 'digest': digest, 'exclude': ['app']}}}))
 
     def run_first_bench(self, **env):
         environment = {k: v for k, v in os.environ.items()
@@ -111,7 +110,7 @@ class FirstBenchTests(unittest.TestCase):
         # The fake survey-run stands for the agent cherry-picking a lane commit meanwhile.
         (self.repo / 'bin/isuscope').write_text(
             self.FAKE_LIST + 'echo "isuscope $*" >> "$EVENTS"\n'
-            'echo "fn main() { indexed() }" > webapp/rust/main.rs\n'
+            'echo "fn main() { indexed() }" > webapp/go/main.go\n'
             'git -c user.name=t -c user.email=t@example.com commit -qam "Add an index"\n')
         result = self.run_first_bench()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -133,7 +132,7 @@ class FirstBenchTests(unittest.TestCase):
                 if label != 'no import record':
                     self.record_import()
                 if case.get('change'):
-                    (self.repo / 'webapp/rust/main.rs').write_text('fn main() { faster() }\n')
+                    (self.repo / 'webapp/go/main.go').write_text('fn main() { faster() }\n')
                     subprocess.run(['git', '-C', str(self.repo), '-c', 'user.name=t', '-c', 'user.email=t@example.com',
                                     'commit', '-qam', 'Early fix'], check=True)
                 if case.get('deployed'):
@@ -154,7 +153,7 @@ class FirstBenchTests(unittest.TestCase):
         self.assertEqual(self.lines(), ['bench-check', 'deploy'])
 
     def test_uncommitted_import_or_a_lane_stops_before_anything(self):
-        (self.repo / 'webapp/rust/main.rs').write_text('fn main() { changed() }\n')
+        (self.repo / 'webapp/go/main.go').write_text('fn main() { changed() }\n')
         self.assertNotEqual(self.run_first_bench().returncode, 0)
         subprocess.run(['git', '-C', str(self.repo), 'checkout', '--', 'webapp'], check=True)
         self.assertNotEqual(self.run_first_bench(ISUCON_LANE='code-map').returncode, 0)

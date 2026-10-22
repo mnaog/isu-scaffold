@@ -6,7 +6,7 @@
 
 また、アプリケーションコードと設定ファイルをすべてローカルリポジトリで管理し、コマンドからサーバーへデプロイできる状態を作る。
 
-SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を8本起動する。`full-memory`が全メモリ化（読み取りと状態の判定をメモリへ移す）を、`indexes`が索引を、`n-plus-one`がN+1を、`obvious-fixes`が索引とN+1以外の自明な修正のうち全メモリ化の後も残るもの（書き込みと、DBを読まない処理）を、`runtime`が問題に依存しない実行時の設定（requestごとのlog、DB接続のTLSとpool、allocator、TCP_NODELAY、tokio Mutex）を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書き、`waits`がAPIごとの待ちの口（表`ISUCON_WAITS`は空のまま。値はmainが空き時間に変える）を入れる。kickoffは、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。開始と同時に、worktree `portal`で起動したもう1つのセッションが`/portal`で、ポータルと当日マニュアルの保存、サーバーの起動に要る情報、ベンチ接続を作る。mainのセッションはその間にサーバーの起動、kickoff build設定、draftの判断を進め、portalの公式資料をmergeしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせ、完全importをcommitしたらlane `static-edge`を起動して静的ファイルの配り方（nginxからの配信、Cache-Control、gzip_static、open_file_cache）を1件1commitで先行実装させる。
+SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を8本起動する。`full-memory`が全メモリ化（読み取りと状態の判定をメモリへ移す）を、`indexes`が索引を、`n-plus-one`がN+1を、`obvious-fixes`が索引とN+1以外の自明な修正のうち全メモリ化の後も残るもの（書き込みと、DBを読まない処理）を、`runtime`が問題に依存しない実行時の設定（requestごとのlog、DB接続のpoolと`interpolateParams`、GC）を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書き、`waits`がAPIごとの待ちの口（表`ISUCON_WAITS`は空のまま。値はmainが空き時間に変える）を入れる。kickoffは、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。開始と同時に、worktree `portal`で起動したもう1つのセッションが`/portal`で、ポータルと当日マニュアルの保存、サーバーの起動に要る情報、ベンチ接続を作る。mainのセッションはその間にサーバーの起動、kickoff build設定、draftの判断を進め、portalの公式資料をmergeしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせ、完全importをcommitしたらlane `static-edge`を起動して静的ファイルの配り方（nginxからの配信、Cache-Control、gzip_static、open_file_cache）を1件1commitで先行実装させる。
 
 merge・次に測るものの判断・deploy・ベンチ・分析・採否の責任はmainのセッションが持ち、改善の調査・実装・ローカル検証はimproveのセッション（`/improve`）が持つ（mainは改善を実装しない。詳しくは`/main`）。laneの成果は根拠を照合してからmergeする。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
 
@@ -23,7 +23,7 @@ portal（mainと並行。手順は.claude/commands/portal.md）
 main: portal environmentを見たらサーバーを起動し、.local/environment.env（形はconfig/environment.example.env）の
   provider、SSH、node分類を確かめてから
 make kickoff（backgroundで実行し、.local/progress.logを追う）
-  → 回収元1台のSSH確立後、webapp/rustとDDLを先行回収し、その範囲だけ自動commit（code-ready）
+  → 回収元1台のSSH確立後、webapp/goとDDLを先行回収し、その範囲だけ自動commit（code-ready）
   → 並行して1台目のbuild環境を調査。build設定を自動生成できれば即build、できなければ設定待ち
   → initializeの経路がコードに1つだけなら.isuscope/routes.tomlの[initialize]へ書いてcommit（initialize-route）。
     isuscopeがaccess logからinitializeと負荷走行を分けるので、初回runから要約にinitializeが混ざらない
@@ -69,13 +69,13 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 
 - 公式資料とベンチ接続は`make kickoff`の結果を使わないので、portalのセッションが開始と同時に始める。
 - `make first-bench`は段階の間でAIの手番を待たない。
-- 本番当日はRustのkickoff buildが最も長い待ちになる。最初のdeploy前はサーバーが配布状態のまま動いていることを使い、baselineをbuildとdeployの前に取る。
+- kickoff buildは手元のGoで数十秒で終わる。最初のdeploy前はサーバーが配布状態のまま動いていることを使い、baselineをbuildとdeployの前に取る。
 - `bench-check`はdeployに依存しないので、deployの前に流す。deployで設定（nginx、MySQL、unit）を変えたときだけ再実行する。
 - 段階を個別にやり直すときは`make bench-check`、`make deploy`、`isuscope survey-run`を直接使う。
 
 ### 再実行と判断の分担
 
-- 採用言語はRustに固定する（`config/application.env`）。
+- 採用言語はGoに固定する（`config/application.env`）。
 - 先行回収は完全importを待たない読解用の暫定snapshotで、対象はコードとschemaだけに限る。初期状態の正本化と全配布先のdigest一致の確認は、`kickoff-apply`のimportで完了する。
 - `make kickoff`は再実行できる。回収済みならimportを飛ばし、kickoff buildと、完了・実行中のlaneは重複起動しない。
 - draftの判断は`review.md`を読んだ操作者（人間またはこのセッション）が行う。`make`の中で別のAIを呼んで承認させない。
@@ -98,7 +98,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 
 ## ローカル実行環境を構築する
 
-準備ではDockerと汎用の起動・検証コマンドだけを用意する。開始後のコード先行回収の後、lane `local-env`（`config/lanes/local-env.md`）が`config/local/compose.example.yaml`から`config/local/compose.yaml`を作り、採用Rust版・DB・追加service・schema・初期化・health endpointを実アプリに合わせる。手順は[ローカル実行環境](../local-development.md)を参照する。
+準備ではDockerと汎用の起動・検証コマンドだけを用意する。開始後のコード先行回収の後、lane `local-env`（`config/lanes/local-env.md`）が`config/local/compose.example.yaml`から`config/local/compose.yaml`を作り、go.modに合うGoの版・DB・追加service・schema・初期化・health endpointを実アプリに合わせる。手順は[ローカル実行環境](../local-development.md)を参照する。
 
 構成をcommitしたら、各worktreeで`make local-up`、`make local-check`、`make local-down`を実行してよい。DB・network・portはworktree単位で分離し、remote変更用lockを取らない。構築はkickoffと並行し、完成を初回baselineのgateにはしない。
 

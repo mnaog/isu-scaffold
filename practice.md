@@ -42,7 +42,7 @@
 2. 開始宣言後に練習運営側から当日の配布物を受け取る。AMI・台数・起動方法・初期状態をその時点で確認して、環境を作成する。配布物は開始用templateと別管理し、開始前の参加者・AIへ渡さない。`make kickoff`自体はEC2作成を行わない。前回の接続先や改善済み環境を流用しない。
 3. 当日配布情報に相当する資料を保存し、provider・stack・SSH user/key・node分類を`.local/environment.env`へ設定する。具体的な練習環境の構築方式・AMI・stack名は開始時に確認し、前回の接続先を推測で流用しない。
 4. `make kickoff`を開始する。nodeを発見し、回収元のapplication node 1台のSSHを確立する。
-5. `quick-import-code.sh`がSSH経由でアプリをtar転送し、schemaと初期化scriptを先行回収する。既定の回収元は`/home/isucon/webapp/rust`と`/home/isucon/webapp/sql`、ローカルは`webapp/rust`と`webapp/sql`。これはscaffoldの既定値であり、本番の配置保証ではない。異なる場合は`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`等で指定する。大きな初期データはこの段階では回収しない。
+5. `quick-import-code.sh`がSSH経由でアプリをtar転送し、schemaと初期化scriptを先行回収する。既定の回収元は`/home/isucon/webapp/go`と`/home/isucon/webapp/sql`、ローカルは`webapp/go`と`webapp/sql`。これはscaffoldの既定値であり、本番の配置保証ではない。異なる場合は`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`等で指定する。大きな初期データはこの段階では回収しない。
 6. 回収範囲のcommit後、kickoffがkickoff buildとAI lane（`claude -p`。`config/lanes.json`の`kickoff`）を並行で起動する。公式資料をcommitしたらmainがlane scenarioを、完全importをcommitしたらlane static-edgeを起動する。mainのセッションはbuild設定・ベンチ接続・draftを進める。
 7. draft確認・完全import・deploy・計測準備から初回baseline分析まで進め、その後は役割ごとに改善を続ける（`AGENTS.md`の「役割」）。
 

@@ -12,9 +12,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'tests'))
 import isuscope_stub  # noqa: E402
 
-UNIT = '[Service]\nEnvironmentFile=/home/isucon/env.sh\nExecStart=/home/isucon/webapp/rust/target/release/app\n'
+UNIT = '[Service]\nEnvironmentFile=/home/isucon/env.sh\nExecStart=/home/isucon/webapp/go/app\n'
 SYNC = {'items': [
-    {'name': 'rust-service', 'local': 'config/systemd/app.service', 'remote': '/etc/systemd/system/app.service', 'type': 'file'},
+    {'name': 'go-service', 'local': 'config/systemd/app.service', 'remote': '/etc/systemd/system/app.service', 'type': 'file'},
     {'name': 'app-env', 'local': 'config/app/env.sh', 'remote': '/home/isucon/env.sh', 'type': 'file'},
 ]}
 

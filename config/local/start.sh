@@ -1,7 +1,5 @@
 #!/bin/sh
 set -eu
-if [ "${LOCAL_USE_VENDOR:-0}" = 1 ]; then
-  exec cargo --config 'source.crates-io.replace-with="local-vendor"' \
-    --config 'source.local-vendor.directory="/vendor"' run --offline --release --locked
-fi
-exec cargo run --release --locked
+# Build outside the read-only source; vendor/ is used when the module ships one.
+go build -o /tmp/local-app "${LOCAL_GO_PACKAGE:-.}"
+exec /tmp/local-app

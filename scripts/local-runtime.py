@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 
 REPO = Path(__file__).resolve().parent.parent
-# config/state-log/state_log.rs writes here unless the service sets ISUSCOPE_STATE_LOG.
+# config/state-log/state_log.go writes here unless the service sets ISUSCOPE_STATE_LOG.
 DEFAULT_STATE_LOG = "/var/tmp/isuscope-state.jsonl"
 
 
@@ -153,7 +153,7 @@ def main():
                 if result.returncode == 0 and copy.is_file():
                     parts.append((service, copy))
             if not parts:
-                raise ValueError("no service has a state log yet: the app needs state_log.rs and a state change "
+                raise ValueError("no service has a state log yet: the app needs state_log.go and a state change "
                                  f"after the last local-up (looked for ISUSCOPE_STATE_LOG or {DEFAULT_STATE_LOG})")
             with target.open("wb") as out:
                 for _, copy in parts:

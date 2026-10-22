@@ -13,7 +13,7 @@ open-file limit, the default listen backlog and worker connections.
   and the default one writes each request a second time, unbuffered
 - site files: backlog on one listen per address:port, and an upstream with keepalive for
   each literal `proxy_pass http://host:port` (Host and inherited headers are preserved)
-- the Rust unit (the synced rust-service item): LimitNOFILE
+- the Go unit (the synced go-service item): LimitNOFILE
 - /etc/sysctl.d/99-tare.conf: accept queues, SYN backlog, ephemeral ports, TIME_WAIT reuse
 - MySQL: max_connections, and innodb_buffer_pool_size from the DB node's memory
 - deploy commands: daemon-reload, loading 99-tare.conf, and a MySQL restart to load them, each
@@ -371,13 +371,13 @@ def main():
             if text != (root / name).read_text():
                 changed[name] = text
 
-    unit = next((item for item in items if item.get('name') == 'rust-service'), None)
+    unit = next((item for item in items if item.get('name') == 'go-service'), None)
     if unit and local(unit).is_file():
         text = tare_unit(local(unit).read_text())
         if text != local(unit).read_text():
             changed[unit['local']] = text
     else:
-        notes.append('the Rust unit is not a sync item; LimitNOFILE was not raised')
+        notes.append('the Go unit is not a sync item; LimitNOFILE was not raised')
 
     sysctl_local = 'config/sysctl/99-tare.conf'
     if not (root / sysctl_local).is_file() or (root / sysctl_local).read_text() != SYSCTL:
@@ -405,8 +405,8 @@ def main():
         notes.append('MySQL configuration is not synced as a directory; add max_connections by hand')
 
     # "when" keeps each command to deploys that change its files (scripts/deploy-plan.py):
-    # a Rust-only change must not restart MySQL and empty its buffer pool before every run.
-    reload = {'node_group': 'application', 'command': 'sudo systemctl daemon-reload', 'when': ['rust-service']}
+    # a Go-only change must not restart MySQL and empty its buffer pool before every run.
+    reload = {'node_group': 'application', 'command': 'sudo systemctl daemon-reload', 'when': ['go-service']}
     # Only tare's own file: `sysctl --system` also reloads the OS defaults, whose keys the instance
     # may not have, and prints "Invalid argument" after every deploy.
     sysctl = {'node_group': 'application', 'command': 'sudo sysctl -q -p /etc/sysctl.d/99-tare.conf', 'when': ['tare-sysctl']}

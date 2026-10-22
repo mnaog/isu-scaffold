@@ -11,8 +11,8 @@ help:
 		'make local-up / local-check / local-down  worktree専用のローカル実行環境を操作する' \
 		'make local-flow FLOW=<json> [FROM=<前のflow>]  決まった操作の列をローカルのアプリへ流す' \
 		'make local-state-log NAME=<名前>       ローカルのアプリから状態ログを取り出す' \
-		'make build                            ローカルでLinux向けRust成果物を準備する' \
-		'make builder-images                   準備: 候補baseのRust builder imageを事前に作る' \
+		'make build                            ローカルでLinux向けGoバイナリを準備する' \
+		'make builder-images                   準備: Go toolchainと両targetの標準libraryを事前にbuildする' \
 		'make isuscope-node                    準備: nodeでaccess logを集計するisuscope-nodeをbuildする' \
 		'make deploy                           commit済みのlocal状態を全nodeへ反映する' \
 		'make rollback RELEASE=<id>            deploy前のremote状態へ戻す' \
@@ -40,7 +40,7 @@ proposals:
 	@python3 scripts/proposal.py list
 
 builder-images:
-	@python3 scripts/local-build.py prepare-images
+	@python3 scripts/local-build.py prepare-toolchain
 
 isuscope-node:
 	@./scripts/build-isuscope-node.sh

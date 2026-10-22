@@ -2,10 +2,10 @@
 """Independent kickoff build lane: inspect one node, then build with reviewed settings.
 
 When config/kickoff-build.json is missing, the lane proposes settings from the probe and the
-imported Cargo files. A proposal it can justify (a known builder base whose glibc, and libssl
-when the app links OpenSSL, fit the node) is written as the settings and the build starts at
-once; the operator reviews and commits that file like a hand-written one. Anything it cannot
-decide (a workspace, system libraries, no fitting base) waits for the operator as before.
+imported Go files. A proposal it can justify (the node's CPU, one Go unit whose ExecStart runs a
+binary inside the application directory, one main package, no cgo-only module) is written as the
+settings and the build starts at once; the operator reviews and commits that file like a
+hand-written one. Anything it cannot decide waits for the operator as before.
 KICKOFF_BUILD_AUTO_CONFIG=0 always waits.
 """
 import argparse
@@ -19,15 +19,17 @@ import signal
 import subprocess
 import sys
 import time
-import tomllib
 
 ROOT = Path(__file__).resolve().parent.parent
 STATE = ROOT / '.local/kickoff-build'
 CONFIG = ROOT / 'config/kickoff-build.json'
-BASES = ROOT / 'config/rust-builder/bases.json'
-TARGETS = {'x86_64': 'x86_64-unknown-linux-gnu', 'aarch64': 'aarch64-unknown-linux-gnu'}
-# -sys crates whose system library and apt package depend on the app; the operator decides.
-SYSTEM_LIBRARY_CRATES = {'mysqlclient-sys', 'pq-sys', 'libsqlite3-sys', 'curl-sys', 'libgit2-sys', 'libssh2-sys'}
+TARGETS = {'x86_64': 'linux/amd64', 'aarch64': 'linux/arm64'}
+# Modules that only build with cgo; CGO_ENABLED=0 cannot build them, so the operator decides.
+CGO_MODULES = {'github.com/mattn/go-sqlite3', 'github.com/mattn/go-oci8', 'gopkg.in/gographics/imagick.v2',
+               'gopkg.in/gographics/imagick.v3', 'github.com/confluentinc/confluent-kafka-go'}
+SETTINGS = {'target', 'binary', 'output', 'package', 'source_root', 'manifest_dir'}
+# Reference units are named per language (isuride-go.service, isucondition.go.service).
+GO_UNIT = re.compile(r'^.+[-._](go|golang)\.service$')
 
 _progress_spec = importlib.util.spec_from_file_location('progress', Path(__file__).resolve().parent / 'progress.py')
 progress = importlib.util.module_from_spec(_progress_spec)
@@ -73,8 +75,38 @@ def save(state, **fields):
         progress.emit('kickoff-build', state, fields.get('error') or NOTIFY[state], path=ROOT / '.local/progress.log')
 
 
-def version(text):
-    return tuple(int(part) for part in text.split('.'))
+def required_modules(go_mod):
+    """Module paths in a go.mod's require directives (both the one-line and the block form)."""
+    modules, block = set(), False
+    for line in go_mod.splitlines():
+        line = line.split('//', 1)[0].strip()
+        if block:
+            if line == ')':
+                block = False
+            elif line:
+                modules.add(line.split()[0])
+        elif line == 'require (':
+            block = True
+        elif line.startswith('require '):
+            modules.add(line.split()[1])
+    return modules
+
+
+def main_packages(app):
+    """Directories (relative, as Go package paths) whose .go files declare package main."""
+    found = set()
+    for path in app.rglob('*.go'):
+        relative = path.relative_to(app)
+        if path.name.endswith('_test.go') or any(part in ('vendor', 'testdata') or part.startswith('.') for part in relative.parts):
+            continue
+        try:
+            head = path.read_text(errors='ignore')
+        except OSError:
+            continue
+        if re.search(r'^package main\s*$', head, re.M):
+            parent = relative.parent.as_posix()
+            found.add('.' if parent == '.' else './' + parent)
+    return sorted(found)
 
 
 def propose(environment, application):
@@ -84,54 +116,42 @@ def propose(environment, application):
     target = TARGETS.get(lines[0].strip() if lines else '')
     if not target:
         reasons.append('unsupported or unknown CPU architecture')
-    glibc = next((m.group(1) for line in lines if (m := re.match(r'^glibc (\d+\.\d+)', line.strip()))), None)
-    if not glibc:
-        reasons.append('glibc version not found in the probe')
-    openssl = next((m.group(1) for line in lines if (m := re.match(r'^OpenSSL (\d+)\.(\d+)', line.strip()))), None)
     app = ROOT / application
-    binary = None
-    packages = set()
+    package = None
     try:
-        manifest = tomllib.loads((app / 'Cargo.toml').read_text())
-        lock = tomllib.loads((app / 'Cargo.lock').read_text())
-        packages = {p.get('name') for p in lock.get('package', [])}
-        bins = [b.get('name') for b in manifest.get('bin', [])]
-        if 'package' not in manifest:
-            reasons.append('Cargo.toml is a workspace; set source_root and manifest_dir')
-        elif len(bins) > 1:
-            reasons.append(f'several binaries: {", ".join(map(str, bins))}')
+        cgo = sorted(required_modules((app / 'go.mod').read_text()) & CGO_MODULES)
+        if cgo:
+            reasons.append(f'needs cgo ({", ".join(cgo)}); CGO_ENABLED=0 cannot build it')
+        packages = main_packages(app)
+        if len(packages) == 1:
+            package = packages[0]
         else:
-            binary = bins[0] if bins else manifest['package'].get('name')
-            if not isinstance(binary, str) or not re.fullmatch(r'[A-Za-z0-9_-]+', binary):
-                reasons.append(f'unusable binary name: {binary!r}')
-                binary = None
-    except FileNotFoundError as missing:
-        reasons.append(f'{Path(missing.filename).name} not found in {application}; the workspace root may be elsewhere')
-    except (OSError, tomllib.TOMLDecodeError) as error:
-        reasons.append(f'cannot read Cargo files: {error}')
-    linked = sorted(packages & SYSTEM_LIBRARY_CRATES)
-    if linked:
-        reasons.append(f'links system libraries ({", ".join(linked)}); choose base and packages')
-    needs_ssl = 'openssl-sys' in packages
-    libssl = None if not openssl else ('1.1' if version(openssl) < (3,) else '3')
-    if needs_ssl and not libssl:
-        reasons.append('the app links OpenSSL but the node has no openssl command to compare libssl')
-    try:
-        bases = json.loads(BASES.read_text())['bases']
-    except (OSError, ValueError, KeyError):
-        bases = []
-        reasons.append('config/rust-builder/bases.json is missing')
-    base = None
-    if glibc:
-        fitting = [b for b in bases if version(b['glibc']) <= version(glibc) and (not needs_ssl or b.get('libssl') == libssl)]
-        base = max(fitting, key=lambda b: version(b['glibc']), default=None)
-        if not base:
-            reasons.append(f'no builder base with glibc <= {glibc}' + (f' and libssl {libssl}' if needs_ssl else ''))
+            reasons.append(f'main packages: {", ".join(packages) or "none"}; set package')
+    except FileNotFoundError:
+        reasons.append(f'go.mod not found in {application}; the module root may be elsewhere (set source_root and manifest_dir)')
+    except OSError as error:
+        reasons.append(f'cannot read Go files: {error}')
+    # "unit<TAB>name<TAB>ExecStart" lines from the probe; the binary is the command the Go unit runs.
+    units = [line.split('\t')[1:] for line in lines if line.startswith('unit\t') and len(line.split('\t')) == 3]
+    commands = [command for name, command in units if GO_UNIT.match(name)]
+    output = None
+    if len(commands) != 1:
+        reasons.append(f'Go units found: {", ".join(name for name, _ in units if GO_UNIT.match(name)) or "none"}; set binary and output')
+    else:
+        executable = commands[0].lstrip('-@:+!').split()[0] if commands[0].strip() else ''
+        marker = f'/{application}/'
+        if marker not in executable:
+            reasons.append(f'the Go unit runs {executable or "nothing"}, outside {application}; set binary and output')
+        else:
+            output = executable.split(marker, 1)[1]
+            if not re.fullmatch(r'[A-Za-z0-9_./-]+', output) or '..' in output.split('/'):
+                reasons.append(f'unusable output path: {output!r}')
+                output = None
     if reasons:
         return None, reasons
-    return {'base_image': base['image'], 'target': target, 'binary': binary,
-            'dockerfile': 'config/rust-builder/Dockerfile'}, [
-        f'node glibc {glibc}' + (f', libssl {libssl} (openssl-sys)' if needs_ssl else '') + f'; base glibc {base["glibc"]}']
+    binary = Path(output).name
+    return {'target': target, 'binary': binary, 'output': output, 'package': package}, [
+        f'the Go unit runs {commands[0].split()[0]}; main package {package}']
 
 
 def start(node, application):
@@ -160,7 +180,10 @@ def run(node, application):
         save('inspecting', pid=os.getpid(), node=node)
         try:
             # Read-only and independent of bootstrap/operation.lock; no application execution.
-            probe = "uname -m; cat /etc/os-release; getconf GNU_LIBC_VERSION; openssl version 2>/dev/null; sudo -n -iu isucon sh -c 'command -v rustc; rustc --version; cargo --version' || true"
+            probe = ("uname -m; cat /etc/os-release; "
+                     "for f in /etc/systemd/system/*.service; do test -f \"$f\" || continue; "
+                     "printf 'unit\\t%s\\t%s\\n' \"${f##*/}\" \"$(sed -n 's/^ExecStart=//p' \"$f\" | head -n 1)\"; done; "
+                     "sudo -n -iu isucon sh -c 'command -v go; go version' || true")
             result = subprocess.run([str(ROOT / 'scripts/ssh-node.sh'), node, probe],
                                     text=True, capture_output=True, timeout=40)
             (STATE / 'environment.txt').write_text(result.stdout + result.stderr)
@@ -176,7 +199,7 @@ def run(node, application):
                     save('configured', pid=os.getpid(), node=node, config=settings, reasons=reasons)
             if not CONFIG.exists():
                 save('needs_configuration', pid=os.getpid(), evidence=str(STATE / 'environment.txt'),
-                     next='Review evidence and Cargo manifests, create config/kickoff-build.json, the waiting build lane starts automatically')
+                     next='Review evidence and the Go module, create config/kickoff-build.json, the waiting build lane starts automatically')
                 print('BUILD NEEDS CONFIGURATION: config/kickoff-build.json; see .local/kickoff-build/environment.txt', flush=True)
                 deadline = time.monotonic() + 1800
                 while not CONFIG.exists():
@@ -184,13 +207,13 @@ def run(node, application):
                         raise TimeoutError('build settings were not supplied within 30 minutes')
                     time.sleep(1)
             config = json.loads(CONFIG.read_text())
-            if not {'base_image', 'target', 'binary', 'dockerfile'} <= set(config) or set(config) - {'base_image', 'target', 'binary', 'dockerfile', 'source_root', 'manifest_dir', 'toolchain', 'packages'}:
-                raise ValueError('kickoff-build.json needs base_image, target, binary, dockerfile')
+            if not {'target', 'binary'} <= set(config) or set(config) - SETTINGS:
+                raise ValueError('kickoff-build.json needs target and binary')
             expected = TARGETS.get(result.stdout.splitlines()[0])
             if config['target'] != expected:
                 raise ValueError('configured target does not match the source node architecture')
-            manifest = {'items': [{'name': 'rust-app', 'type': 'directory', 'local': application}],
-                        'local_builds': [dict(config, item='rust-app')]}
+            manifest = {'items': [{'name': 'go-app', 'type': 'directory', 'local': application}],
+                        'local_builds': [dict(config, item='go-app')]}
             path = STATE / 'manifest.json'
             path.write_text(json.dumps(manifest, indent=2) + '\n')
             subprocess.run([sys.executable, str(ROOT / 'scripts/local-build.py'), 'validate', '--manifest', str(path)], check=True)
@@ -206,7 +229,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('action', choices=['start', 'run', 'status', 'stop'])
     p.add_argument('--node')
-    p.add_argument('--application', default='webapp/rust')
+    p.add_argument('--application', default='webapp/go')
     a = p.parse_args()
     if a.action == 'status':
         path = STATE / 'status.json'

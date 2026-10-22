@@ -6,7 +6,7 @@
 
 - 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。baseline前の変更をremoteへ反映しない規則は、mainが取り込み時に守る。
 - 変更してよいのは`webapp/`のアプリのコードだけ。schema（`webapp/sql`）、`config/`、`scripts/`、他の文書は変えない（索引はlane `indexes`の担当）。
-- lane `obvious-fixes`が同じhandlerの別の箇所を変えることがある。mergeで衝突しにくいよう、N+1を直すのに要る行だけを変え、周りを書き換えない（整形し直さない、`cargo fmt`をcrate全体へかけない）。
+- lane `obvious-fixes`が同じhandlerの別の箇所を変えることがある。mergeで衝突しにくいよう、N+1を直すのに要る行だけを変え、周りを書き換えない（整形し直さない、`gofmt`をpackage全体へかけない）。
 
 ## 対象
 
@@ -19,7 +19,7 @@
 
 - **応答を変えない。** 返す値・件数・並び順・エラーとstatus codeを元のコードと一致させる。IN・JOINにまとめると並び順が変わり得るので、元のループの順（ORDER BYが無ければ元の実行計画の順。主キー順など）をqueryのORDER BYかアプリ側の並べ直しで保つ。迷ったら入れずに候補へ回す。
 - **1つのhandlerの修正を1つのcommitにする。** mainがcommitを選んで取り込めるように、commit同士の依存を避ける。呼ばれる回数の多いhandlerから順にcommitし、1件ごとに完成させる。commit messageは英語で、1行目に変更、本文に直した問題（`file:line`）と期待する観測値（どのrouteやSQLの何が減るか）を書く。
-- commitの前に、変更したcrateで`cargo build --release`（または`cargo check`）と既存のtestを通す。`config/local/compose.yaml`があれば`make local-up`と`make local-check`で動作も確かめ、終わったら`make local-down`する。確かめられなかったことはcommit本文に書く。
+- commitの前に、`webapp/go`で`go build ./...`と`go vet ./...`、既存のtest（`go test ./...`）を通す。`config/local/compose.yaml`があれば`make local-up`と`make local-check`で動作も確かめ、終わったら`make local-down`する。確かめられなかったことはcommit本文に書く。
 
 ## 終わり方
 

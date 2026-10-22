@@ -11,7 +11,8 @@
       "Glob",
       "Edit",
       "Write",
-      "Bash(cargo:*)",
+      "Bash(go:*)",
+      "Bash(gofmt:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
@@ -79,7 +80,7 @@
       "timeout_minutes": 45
     },
     "waits": {
-      "purpose": "APIごとの待ちの口を入れる: config/waits/waits.rsを写し、すべてのrouteを通るmiddlewareを足す（表ISUCON_WAITSは空のまま。値はmainがscripts/waits.pyで変える）",
+      "purpose": "APIごとの待ちの口を入れる: config/waits/waits.goを写し、すべてのrouteを通るmiddlewareを足す（表ISUCON_WAITSは空のまま。値はmainがscripts/waits.pyで変える）",
       "prompt": "config/lanes/waits.md",
       "timeout_minutes": 30
     },
@@ -97,7 +98,7 @@
       "timeout_minutes": 120
     },
     "runtime": {
-      "purpose": "問題に依存しない実行時の設定（requestごとのlog、DB接続のTLSとpool、mimalloc、TCP_NODELAY、awaitの無い区間のtokio Mutex）を1件1commitで先行実装する（baselineまでdeployしない）",
+      "purpose": "問題に依存しない実行時の設定（requestごとのlog、DB接続のpoolとinterpolateParams、GC）を1件1commitで先行実装する（baselineまでdeployしない）",
       "prompt": "config/lanes/runtime.md",
       "timeout_minutes": 20
     },

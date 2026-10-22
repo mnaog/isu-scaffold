@@ -1,28 +1,26 @@
 # lane: runtime
 
-あなたは`make kickoff`が先行回収したRustアプリに、問題に依存しない実行時の設定（log、allocator、socket、DB接続、lock）の修正を先行して実装する。SQLと処理の中身はlane `indexes`・`n-plus-one`・`obvious-fixes`が、全メモリ化はlane `full-memory`が同時に行う。mainのセッションは同時に環境構築と初回ベンチ（baseline）を進め、baselineの観測と照合してから、このbranchのcommitを選んで取り込み、deployして測る。どれも数行の変更なので、速さを優先して短く終える（時間の上限は20分）。
+あなたは`make kickoff`が先行回収したGoアプリに、問題に依存しない実行時の設定（log、DB接続、GC）の修正を先行して実装する。SQLと処理の中身はlane `indexes`・`n-plus-one`・`obvious-fixes`が、全メモリ化はlane `full-memory`が同時に行う。mainのセッションは同時に環境構築と初回ベンチ（baseline）を進め、baselineの観測と照合してから、このbranchのcommitを選んで取り込み、deployして測る。どれも数行の変更なので、速さを優先して短く終える（時間の上限は20分）。
 
 ## 前提
 
 - 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。baseline前の変更をremoteへ反映しない規則は、mainが取り込み時に守る。
-- 変更してよいのは`webapp/`のアプリのコード（起動処理、`Cargo.toml`と`Cargo.lock`）だけ。schema、`config/`、`scripts/`、他の文書は変えない。
-- 他のlaneも起動処理（`main.rs`など）に行を足す。lane `waits`はrouterに待ちのmiddlewareを足すので、それには触らず、外すのはrequestごとのlogのmiddlewareだけにする。mergeで衝突しにくいよう、直すのに要る行だけを変え、周りを書き換えない（整形し直さない、`cargo fmt`をcrate全体へかけない）。
+- 変更してよいのは`webapp/`のアプリのコード（起動処理、`go.mod`と`go.sum`）だけ。schema、`config/`、`scripts/`、他の文書は変えない。
+- 他のlaneも起動処理（`main.go`など）に行を足す。lane `waits`はrouterに待ちのmiddlewareを足すので、それには触らず、外すのはrequestごとのlogのmiddlewareだけにする。mergeで衝突しにくいよう、直すのに要る行だけを変え、周りを書き換えない（整形し直さない、`gofmt`をpackage全体へかけない）。
 
 ## 対象（1件1commit、上から順に）
 
-1. **requestごとのlog。** 既定のlog levelがinfo・debugで、requestごとに1行以上書いている（`RUST_LOG`の既定値、tracingのsubscriber、`TraceLayer`やloggerのmiddleware、handler内の`info!`・`debug!`・`println!`）なら、既定をwarnにし、requestごとのmiddlewareを外す。warn・errorのlogと、起動時に1回だけ出るlogは残す。isuscopeの状態ログ（lane `state-log`が足す`state_log`の呼び出し）はtracingを通らないので触らない。環境変数`RUST_LOG`で戻せる形にする。
-2. **DB接続。** DBへの接続がTLSを使い得るなら（sqlxのMySQLは既定で`ssl_mode Preferred`で、MySQL 8は自動で証明書を持つので、同じVPCの別nodeでも暗号化する）、`ssl_mode`を`Disabled`にする。接続poolの上限が同時に来るrequestの数より明らかに小さい（既定の10など）なら上げ、取り出しのたびのping（sqlxの`test_before_acquire`）が既定で有効なら止める。上限はMySQLの`max_connections`（`make tare`で1000）とアプリのprocess数の積が超えない値にし、値と理由をcommit本文に書く。
-3. **allocator。** global allocatorを`mimalloc`にする（`#[global_allocator]`、`default-features = false`）。crateを取得できなければ入れずに最後の回答に書く。
-4. **TCP_NODELAY。** HTTP serverが受けたsocketにTCP_NODELAYを付けていなければ付ける（axumは`axum::serve(...).tcp_nodelay(true)`、自前のacceptなら`set_nodelay(true)`）。frameworkが既定で付けているなら何もしない（actix-webは付ける）。
-5. **async runtimeのMutex。** `tokio::sync::Mutex`・`RwLock`で守る区間に`.await`が無く短い（採番、小さなmapの読み書きなど）なら、`std::sync::Mutex`（または依存にあれば`parking_lot`）へ替える。区間の中で`.await`する、またはlockを持ったまま外部呼び出しやDBを待つものは替えない。
+1. **requestごとのlog。** requestごとに1行以上書いている（echoの`middleware.Logger()`、chiの`middleware.Logger`、handler内の`log.Printf`・`fmt.Println`、debug levelの`slog`など）なら、requestごとのmiddlewareを外し、handler内の毎回のlogを止める。errorのlogと、起動時に1回だけ出るlogは残す。isuscopeの状態ログ（lane `state-log`が足す`stateLog…`の呼び出し）は別の書き手なので触らない。echoの`e.Debug = true`も止める。
+2. **DB接続。** `database/sql`の接続poolの上限（`SetMaxOpenConns`）が無いか、同時に来るrequestの数より明らかに小さいなら設定し、`SetMaxIdleConns`を同じ値にして、使い終えた接続を閉じて開き直さないようにする。上限はMySQLの`max_connections`（`make tare`で1000）とアプリのprocess数の積が超えない値にし、値と理由をcommit本文に書く。go-sql-driver/mysqlのDSNに`interpolateParams=true`が無ければ足す（placeholderつきのqueryごとのprepareとcloseの往復が無くなる）。DSNの`tls`が有効なら、同じVPCの中なので外す。
+3. **GC。** 起動時に`debug.SetGCPercent`を既定（100）より大きくする（400程度）。環境変数`GOGC`で戻せる形にし（`GOGC`が設定されていれば何もしない）、値をcommit本文に書く。`GOMEMLIMIT`は入れない（nodeのメモリはDBと分け合う）。
 
-上の5つ以外（threadの数、HTTP clientの使い回し、serializeの改善、hash関数の変更など）は実装しない。buildをCPUに合わせる設定（`.cargo/config.toml`の`-C target-cpu=native`など）は入れない。nodeの型が混ざる構成（c7iとc6in、同じ型でも世代の違うCPU）では、builderと違うCPUのnodeでSIGILLで落ちる（`scripts/local-build.py`は`x86-64`・`x86-64-v2`・`x86-64-v3`以外の`target-cpu`を見つけるとbuildを止める）。見つけたら最後の回答に候補として書く。HTTP clientの使い回しはlane `obvious-fixes`の担当。
+上の3つ以外（goroutineの数、HTTP clientの使い回し、JSONのencoderの変更、mapの事前確保など）は実装しない。HTTP serverのTCP_NODELAYはGoの既定で付いているので何もしない。buildをCPUに合わせる設定（`GOAMD64=v3`など）は入れない。nodeの型が混ざる構成（c7iとc6in、同じ型でも世代の違うCPU）では、builderと違うCPUのnodeでSIGILLで落ちる（`scripts/local-build.py`は`GOAMD64`を外してbuildする）。HTTP clientの使い回しはlane `obvious-fixes`の担当。
 
 ## 守ること
 
 - **応答を変えない。** 返す値・件数・並び順・エラーとstatus codeを元のコードと一致させる。
 - **1つの修正を1つのcommitにする。** mainが選んで取り込めるように、commit同士の依存を避ける。該当しない項目はcommitしない。commit messageは英語で、1行目に変更、本文に直した箇所（`file:line`）と期待する観測値（どのnodeのどのCPU・待ちが減るか）を書く。
-- commitの前に`cargo build --release`（または`cargo check`）と既存のtestを通す。`config/local/compose.yaml`があれば`make local-up`と`make local-check`で動作も確かめ、終わったら`make local-down`する。確かめられなかったことはcommit本文に書く。
+- commitの前に、`webapp/go`で`go build ./...`と`go vet ./...`、既存のtest（`go test ./...`）を通す。`config/local/compose.yaml`があれば`make local-up`と`make local-check`で動作も確かめ、終わったら`make local-down`する。確かめられなかったことはcommit本文に書く。
 
 ## 終わり方
 
