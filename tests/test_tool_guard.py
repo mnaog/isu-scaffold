@@ -175,7 +175,15 @@ class ToolGuardTest(unittest.TestCase):
 
     def test_ssh_node_refuses_the_benchmark_node_without_the_adapter(self):
         inventory = self.root / '.local/ansible-inventory.json'
-        env = {**os.environ, 'ANSIBLE_INVENTORY': str(inventory)}
+        # A practice that runs its benchmark over SSH; the default (none) refuses even the adapter.
+        data = json.loads(inventory.read_text())
+        data['all']['vars']['isucon_benchmark_node_access'] = 'ssh'
+        inventory.write_text(json.dumps(data))
+        # ssh-node.sh only checks that an ssh client exists; the gate and the missing key stop it first.
+        bin_dir = self.root / 'bin'
+        write(bin_dir / 'ssh', '#!/bin/sh\nexit 99\n')
+        (bin_dir / 'ssh').chmod(0o755)
+        env = {**os.environ, 'ANSIBLE_INVENTORY': str(inventory), 'PATH': f"{bin_dir}:{os.environ['PATH']}"}
         env.pop('ISUCON_ALLOW_BENCHMARK_NODE', None)
         refused = subprocess.run([str(ROOT / 'scripts/ssh-node.sh'), 'isucon14-bench', 'uptime'],
                                  env=env, capture_output=True, text=True)
