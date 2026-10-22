@@ -23,6 +23,7 @@ function badge(over: Partial<IsuconMainBadge>): IsuconMainBadge {
     role: 'main',
     branch: 'main',
     worktree: '/repo',
+    name: 'root',
     is_root: true,
     main: { agent: 'claude', session: 'S-main-0001', branch: 'main', claimed_at: '' },
     waiting: 0,
@@ -65,11 +66,13 @@ test('a worktree session says it is not main and how its proposal stands', async
   host(on, badge({
     role: 'other',
     branch: 'idea/cache',
+    name: 'improve',
     is_root: false,
     proposal: { status: 'needs-sync', commit: 'abc', decision: null },
   }))
   await $.turn.complete(TURN)
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /⎇ improve/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /WORKTREE/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /MAIN/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /衝突/ })).toBeDefined()

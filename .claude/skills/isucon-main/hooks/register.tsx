@@ -5,7 +5,8 @@ import type { IsuconMainBadge } from '../types'
 
 // The session that ran /main gets a MAIN band above its prompt and a status line entry, so a
 // person with several Claude Code windows sees at a glance which one deploys and benchmarks.
-// Other sessions in the repository say they are not main and how their proposal stands.
+// Every other session leads with its worktree's name, so each window says where it works, and
+// says it is not main and how its proposal stands.
 // While a benchmark holds the operation lock, every session's band says so first.
 // scripts/main-session.py badge holds the logic; this module only draws what it prints.
 
@@ -51,7 +52,9 @@ async function refresh($: EngineInterface): Promise<void> {
     result.exitCode === 0 ? (JSON.parse(result.stdout) as IsuconMainBadge) : null
   await update($, badge, () => value)
   const running = value?.benchmark ? ' · ▶ ベンチ実行中' : ''
-  $.ui.status(value?.role === 'main' ? `★ MAIN${running}` : undefined)
+  $.ui.status(
+    value === null ? undefined : value.role === 'main' ? `★ MAIN${running}` : `⎇ ${value.name}${running}`,
+  )
 }
 
 export const register: Register = on => {
@@ -100,10 +103,17 @@ export const register: Register = on => {
       )
     }
 
+    const where = (
+      <Text bold inverse color="suggestion">
+        {` ⎇ ${value.name} `}
+      </Text>
+    )
+
     if (value.role === 'unclaimed') {
       return (
         <Box paddingX={1} gap={2}>
           {benchBadge}
+          {where}
           <Text color="warning">mainは未宣言</Text>
           <Text dimColor>
             {value.is_root ? 'mainにするなら /main' : 'repoのrootのセッションで /main'}
@@ -115,8 +125,9 @@ export const register: Register = on => {
     const main = value.main
     const own = value.proposal
     return (
-      <Box paddingX={1} gap={2}>
+      <Box borderStyle="round" borderColor="suggestion" paddingX={1} gap={2}>
         {benchBadge}
+        {where}
         <Text bold color="subtle">
           {value.is_root ? 'NOT MAIN' : 'WORKTREE'}
         </Text>
