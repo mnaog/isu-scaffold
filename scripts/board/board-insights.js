@@ -59,8 +59,9 @@ function renderHosts(parent,b,cpu={}){
   const p95=cpu.nodes?.[h.node]?.p95_percent,headline=p95??h.cpu_busy_avg_percent;
   const card=el('div',null,'insight-card');grid.append(card);card.append(el('h3',h.node),el('div',percentText(headline),'insight-number'),el('p',p95==null?'CPU 平均':'CPU p95（1秒区間）'));
   const bar=el('div',null,'insight-bar'),fill=el('i');fill.style.width=Math.min(100,Math.max(0,headline||0))+'%';bar.append(fill);card.append(bar);
-  dataList(card,[...(p95==null?[]:[['CPU 平均',percentText(h.cpu_busy_avg_percent)]]),['CPU peak',percentText(h.cpu_busy_max_percent)],['最繁忙core',percentText(h.busiest_core_max_percent)],['I/O wait',percentText(h.iowait_avg_percent)],['steal',percentText(h.steal_avg_percent)],['メモリpeak',h.memory_used_max_mib==null?'—':num(h.memory_used_max_mib,1)+' MiB'],['Disk peak',percentText(h.disk_util_max_percent)],['Load peak',num(h.load1_max,2)],['PSI',h.pressure?`${h.pressure.resource} ${num(h.pressure.max_percent,1)}%`:'—']]);
-  for(const service of h.top_services||[])card.append(el('p',`${service.service} · CPU peak ${num(service.cpu_max_cores,2)} cores`));
+  dataList(card,[...(p95==null?[]:[['CPU 平均',percentText(h.cpu_busy_avg_percent)]]),['CPU peak',percentText(h.cpu_busy_max_percent)],['最繁忙core',percentText(h.busiest_core_max_percent)],['I/O wait',percentText(h.iowait_avg_percent)],['steal',percentText(h.steal_avg_percent)],['メモリpeak',h.memory_used_max_mib==null?'—':num(h.memory_used_max_mib,1)+' MiB'],['Disk peak',percentText(h.disk_util_max_percent)],['Load peak',num(h.load1_max,2)],...(h.procs_running_max==null?[]:[['実行可能task peak',num(h.procs_running_max)]]),['PSI',h.pressure?`${h.pressure.resource} ${num(h.pressure.max_percent,1)}%`:'—']]);
+  // CPU待ちはthreadの数がコアより多いときに出る。CPU使用率に余裕があっても待ちがあり得る。
+  for(const service of h.top_services||[])card.append(el('p',`${service.service} · CPU peak ${num(service.cpu_max_cores,2)} cores`+(service.run_delay_avg_cores==null?'':` · CPU待ち 平均 ${num(service.run_delay_avg_cores,2)} / peak ${num(service.run_delay_max_cores,2)} threads`)));
  }
  if(!b.hosts?.items?.length)panel.append(el('p','ホスト計測がありません。','panel-note'));
 }
