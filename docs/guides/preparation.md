@@ -27,7 +27,7 @@
 - `make isuscope-node`で、nodeでaccess logの差分を集計する`isuscope-node`を、installしたisuscopeのsourceからLinuxの静的binary（amd64とarm64）としてbuildし、`.local/isuscope-node/`へ置く。bootstrapがnodeへcopyし、isuscopeの`alp` collectorがaccess logの差分をnode上で集計する。無いと`alp` collectorが失敗し、runにHTTPの計測が残らない。muslの静的binaryなのでnodeのOSに依存せず、Dockerも要らない。`./scripts/build-isuscope-node.sh --check`で、置いたbinaryがinstallしたisuscopeと同じbuildかを確かめ、BUILD_IDを記録する。isuscopeを入れ直したら作り直す。
 - `make builder-images`で`config/rust-builder/bases.json`の候補base×targetのbuilder imageを作り、所要時間と取得できなかったtagを記録する。問題のコードは使わない。
 - 配布可能な計測toolの取得元・版を固定する。ローカルへ事前取得する場合はhashと再取得手順を残す。サーバーのOS・architecture・kernelに依存するpackageの選択と導入は公開後に行う。
-- `bash tests/kickoff-automation.sh`と`make test`で、問題や実サーバーを使わずimport/deploy/rollback、worktree、ボードの動作を確認する。
+- `bash tests/kickoff-automation.sh`（5台構成は`FIXTURE_APP_NODES=5 bash tests/kickoff-automation.sh`）と`make test`で、問題や実サーバーを使わずimport/deploy/rollback、worktree、ボードの動作を確認する。
 
 ## AIと運用経路
 

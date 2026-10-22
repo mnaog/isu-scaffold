@@ -10,7 +10,8 @@ local_dir=${repo_dir}/.local
 environment_file=${ISUCON_ENV_FILE:-${local_dir}/environment.env}
 inventory_path=${ANSIBLE_INVENTORY:-${local_dir}/ansible-inventory.json}
 source "${script_dir}/parallel-lib.sh"
-parallel_init "${SSH_MAX_PARALLEL_NODES:-5}"
+# 5台のapplication nodeとベンチの台2台でも1回で済むように。
+parallel_init "${SSH_MAX_PARALLEL_NODES:-8}"
 
 command -v jq >/dev/null
 command -v ssh >/dev/null

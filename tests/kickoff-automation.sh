@@ -49,7 +49,14 @@ cp "${source_repo}/tests/fixtures/sync.json" "${fixture_repo}/config/sync.json"
 cp "${source_repo}/config/sync.rust.example.json" "${fixture_repo}/config/sync.rust.example.json"
 cp "${source_repo}/config/ansible-vars.json" "${fixture_repo}/config/ansible-vars.json"
 cp "${source_repo}/config/application.env" "${fixture_repo}/config/application.env"
-jq '.[0] as $app1 | . + [$app1 + {name:"app2", host:"192.0.2.11"}]' \
+# FIXTURE_APP_NODES=5で、5台のapplication nodeとベンチの台2台（型の違う2種類が渡る構成で、
+# 片方がベンチの台だった場合）を通す。既定は2台とベンチ1台。
+app_count=${FIXTURE_APP_NODES:-2}
+[[ "${app_count}" =~ ^[2-9]$ ]] || { echo "FIXTURE_APP_NODES must be 2-9" >&2; exit 2; }
+app_nodes=$(seq -f 'app%g' 1 "${app_count}" | tr '\n' ' ')
+jq --argjson count "${app_count}" '.[0] as $app1 | .[1] as $bench
+  | [range(1; $count + 1) | $app1 + {name: "app\(.)", host: "192.0.2.\(9 + .)"}]
+    + [$bench] + (if $count > 2 then [$bench + {name: "bench2", host: "192.0.2.21"}] else [] end)' \
   "${fixture_repo}/.local/nodes.json" >"${fixture_repo}/.local/nodes.json.tmp"
 mv "${fixture_repo}/.local/nodes.json.tmp" "${fixture_repo}/.local/nodes.json"
 
@@ -82,7 +89,7 @@ test ! -e "${fixture_repo}/.local/operation.lock/owner"
 
 jq -e '.all.children.application.hosts.app1.ansible_host == "192.0.2.10"' \
   "${fixture_repo}/.local/ansible-inventory.json" >/dev/null
-jq -e '.all.children.application.hosts | length == 2' \
+jq -e --argjson count "${app_count}" '.all.children.application.hosts | length == $count' \
   "${fixture_repo}/.local/ansible-inventory.json" >/dev/null
 grep -q '^mode = "command"$' "${fixture_repo}/.isuscope/config.toml"
 grep -q '^known_hosts_file = ".local/known-hosts"$' "${fixture_repo}/.isuscope/config.toml"
@@ -98,7 +105,8 @@ assert roles["host-sampler"] == [], roles["host-sampler"]
 PY
 grep -q '^name = "app1"$' "${fixture_repo}/.isuscope/config.toml"
 grep -q '^service_units = \["nginx.service", "isu.service"\]$' "${fixture_repo}/.isuscope/config.toml"
-if grep -q '^name = "bench"$' "${fixture_repo}/.isuscope/config.toml"; then
+test "$(grep -c '^name = "app[0-9]"$' "${fixture_repo}/.isuscope/config.toml")" -eq "${app_count}"
+if grep -q '^name = "bench2\{0,1\}"$' "${fixture_repo}/.isuscope/config.toml"; then
   echo "benchmark node must not receive collectors" >&2
   exit 1
 fi
@@ -213,7 +221,7 @@ case "$2" in
 esac
 EOF
 chmod +x "${review_dir}/ssh-node"
-printf '[{"name":"app1","roles":["app","nginx","db"]},{"name":"app2","roles":["app","nginx","db"]}]\n' \
+for node in ${app_nodes}; do printf '{"name":"%s","roles":["app","nginx","db"]}\n' "${node}"; done | jq -s . \
   >"${review_dir}/draft/node-overrides.json"
 # slow logは既定で無効（SQLはstatement digestから）。ここではslow logを使う設定で読み取りの検査を確かめる。
 printf '{"observability_mysql_slow_log":true}\n' >"${review_dir}/draft/ansible-vars.json"
@@ -250,8 +258,12 @@ server {
 }
 EOF
 write_facts app2 directory 999999 active
+# 3台目からは問題の無いnode。どのnodeもslow logを読めないWARNを1つずつ出す。
+for node in ${app_nodes}; do
+  case "${node}" in app1|app2) ;; *) write_facts "${node}" directory 2048 active ;; esac
+done
 run_review >/dev/null
-grep -q '^FAIL 0 / WARN 4 ' "${review_dir}/draft/review.md"
+grep -q "^FAIL 0 / WARN $((2 + app_count)) " "${review_dir}/draft/review.md"
 grep -q 'WARN app1: server block in /etc/nginx/sites-enabled/app.conf sets access_log off' "${review_dir}/draft/review.md"
 if grep -q 'nginx.conf sets access_log' "${review_dir}/draft/review.md"; then
   echo "http-level access_log was reported as a server override" >&2
@@ -288,7 +300,7 @@ rm -f "${review_dir}/draft/service-switch.json"
 
 # importは全nodeのdigest一致を確認してからsource nodeを回収します。
 fake_remote=${fixture_repo}/.local/fake-remote
-for node in app1 app2; do
+for node in ${app_nodes}; do
   mkdir -p "${fake_remote}/${node}/home/isucon/webapp/rust/target" \
     "${fake_remote}/${node}/home/isucon/webapp/sql" "${fake_remote}/${node}/etc/nginx"
   printf 'remote application\n' >"${fake_remote}/${node}/home/isucon/webapp/main.txt"
@@ -344,7 +356,8 @@ test ! -e "${fixture_root}/no-purpose"
 grep -q '^remote application$' "${fixture_repo}/webapp/main.txt"
 # 同期itemのexcludeはdigestと転送の両方から外し、build成果物を回収しません。
 test ! -e "${fixture_repo}/webapp/rust/target"
-test "$(wc -l <"${fixture_repo}/.local/import-comparison.tsv" | tr -d ' ')" -eq 5
+# header 1行と、同期item 2つ × node。
+test "$(wc -l <"${fixture_repo}/.local/import-comparison.tsv" | tr -d ' ')" -eq $((1 + 2 * app_count))
 # importは配布状態のdigestを残し、make first-benchはHEADがそれと一致するかで配布状態のまま測れるか決めます。
 (cd "${fixture_repo}" && python3 scripts/imported-state.py >/dev/null)
 # 内容が一致するlocal itemは再転送しません。除外したpathがlocalだけにあっても同じです。
@@ -636,6 +649,10 @@ cat >"${fixture_repo}/.local/inspection/app2.json" <<'EOF'
   "versions":{"nginx":"nginx/1","mysql":"","perf":"perf 6","sar":"sar 12","slp":"slp 1"}
 }
 EOF
+for node in ${app_nodes}; do
+  case "${node}" in app1|app2) ;; *) jq --arg node "${node}" '.node = $node' "${fixture_repo}/.local/inspection/app2.json" \
+    >"${fixture_repo}/.local/inspection/${node}.json" ;; esac
+done
 printf '[package]\nname = "isu-app"\nversion = "0.1.0"\n' >"${fixture_repo}/webapp/rust/Cargo.toml"
 mkdir -p "${fixture_repo}/webapp/rust/src"
 printf 'let cookie = Cookie::build("app_session", id);\nlet owner = jar.cookie("owner_session");\nconst SESSION_EXPIRES_KEY: &str = "EXPIRES";\n' >"${fixture_repo}/webapp/rust/src/session.rs"

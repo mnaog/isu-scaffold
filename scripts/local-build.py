@@ -136,6 +136,28 @@ def prepare_images(bases_path, dockerfile):
         raise ValueError("fix or remove these bases in config/rust-builder/bases.json: " + ", ".join(failed))
 
 
+# x86-64の基準の命令だけを使うlevel。nodeの型が混ざっても（c7iのSapphire Rapidsとc6inのIce Lake、
+# 同じ型でも世代の違うCPU）どのnodeでも動く。
+PORTABLE_CPUS = {"x86-64", "x86-64-v2", "x86-64-v3", "generic"}
+
+
+def cpu_specific_flags(tree, prefix):
+    """`.cargo/config.toml`がbuildをCPUに合わせるなら、そのfileと値を返す。
+
+    `target-cpu=native`はbuilderのCPUの命令を使うので、別のCPUのnodeでSIGILLで落ちる。
+    """
+    found = []
+    names = capture("git", "ls-tree", "-r", "--name-only", tree).splitlines()
+    for name in names:
+        if not re.search(r"(^|/)\.cargo/config(\.toml)?$", name):
+            continue
+        text = capture("git", "show", f"{tree}:{name}")
+        for cpu in re.findall(r"target-cpu\s*=\s*([A-Za-z0-9_.-]+)", text):
+            if cpu not in PORTABLE_CPUS:
+                found.append(f"{prefix}/{name}: target-cpu={cpu}")
+    return found
+
+
 def build_one(build, item, cache, strict):
     if "replace-with" in build["base_image"] or "replace-with" in build["binary"]:
         raise ValueError("After the start: configure the Rust image and binary from the imported app before building")
@@ -146,6 +168,10 @@ def build_one(build, item, cache, strict):
         clean(build["dockerfile"])
         clean("scripts/local-build.py")
     tree = capture("git", "rev-parse", f"HEAD:{source_root}")
+    flags = cpu_specific_flags(tree, source_root)
+    if flags:
+        raise ValueError("the build is tied to one CPU (" + "; ".join(flags) + "); nodes may run different CPUs "
+                         "(c7i and c6in in one stack), where it dies with SIGILL. Remove it or use x86-64-v3")
     if subprocess.run(["git", "cat-file", "-e", f"HEAD:{source_root}/Cargo.lock"], cwd=REPO,
                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
         raise ValueError(f"missing {source_root}/Cargo.lock: import the workspace root and its path dependencies, then set source_root/manifest_dir; do not regenerate the distribution lockfile")

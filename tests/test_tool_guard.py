@@ -84,6 +84,21 @@ class ToolGuardTest(unittest.TestCase):
             with self.subTest(command=command):
                 self.assert_denied('Bash', {'command': command})
 
+    def test_every_benchmark_node_is_denied_when_there_are_two(self):
+        # A stack may hand out two network-optimized nodes (c6in) that turn out to be benchmarkers.
+        write(self.root / '.local/discovered-nodes.json', json.dumps([
+            {'name': f'isucon14-app{n}', 'group': 'application', 'private_ip': f'192.168.0.1{n}'}
+            for n in range(1, 4)
+        ] + [
+            {'name': 'isucon14-bench1', 'group': 'benchmark', 'private_ip': '192.168.0.101', 'instance_type': 'c6in.large'},
+            {'name': 'isucon14-bench2', 'group': 'benchmark', 'private_ip': '192.168.0.102', 'instance_type': 'c6in.large'},
+        ]))
+        for command in ['./scripts/ssh-node.sh isucon14-bench2 uptime', 'ssh 192.168.0.102 uptime',
+                        'ssh 192.168.0.101 uptime']:
+            with self.subTest(command=command):
+                self.assert_denied('Bash', {'command': command})
+        self.assert_allowed('Bash', {'command': './scripts/ssh-node.sh isucon14-app3 uptime'})
+
     def test_codex_argument_lists_are_checked(self):
         self.assert_denied('Bash', {'command': ['bash', '-lc', 'ssh 192.168.0.100 uptime']})
         self.assert_allowed('Bash', {'command': ['bash', '-lc', 'isuscope brief latest']})

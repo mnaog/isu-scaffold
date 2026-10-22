@@ -120,6 +120,20 @@ class LocalBuildTests(unittest.TestCase):
     def record(self):
         return json.loads((self.repo / ".local/local-build.json").read_text())[0]
 
+    def test_a_build_tied_to_the_builder_cpu_is_refused(self):
+        # Nodes may run different CPUs (c7i and c6in); target-cpu=native dies with SIGILL on the other one.
+        (self.repo / "webapp/rust/.cargo").mkdir()
+        (self.repo / "webapp/rust/.cargo/config.toml").write_text(
+            '[build]\nrustflags = ["-C", "target-cpu=native"]\n')
+        self.commit()
+        result = self.command("python3", "scripts/local-build.py", "build", ok=False)
+        self.assertIn(b"webapp/rust/.cargo/config.toml: target-cpu=native", result.stderr)
+        self.assertEqual(self.calls("docker"), [])
+        (self.repo / "webapp/rust/.cargo/config.toml").write_text(
+            '[build]\nrustflags = ["-C", "target-cpu=x86-64-v3"]\n')
+        self.commit()
+        self.build()
+
     def test_stopping_build_group_removes_container(self):
         child = subprocess.Popen(['python3', 'scripts/local-build.py', 'build'], cwd=self.repo,
                                  env=dict(self.env, WAIT_BUILD='1'), start_new_session=True,
