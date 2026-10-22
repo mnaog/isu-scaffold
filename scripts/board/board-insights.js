@@ -79,6 +79,9 @@ function renderExpandedMetrics(root,q,position){
   renderScenarioGraph(root,q);renderHosts(root,b,q.cpu_p95);renderTimeline(root,q.timeline);return;
  }
  renderMysql(root,q.mysql);
+ const frequent=insightPanel(root,'http-by-count','要求数の多いAPI','合計時間の上位以外 · 選択run');sectionNotice(frequent,b.http_by_count);
+ frequent.append(el('p','HTTPの表（合計時間の順）に入らなかったAPIを、要求数の多い順に並べます。速くて回数の多い静的ファイルやpollingは、合計時間の順では下に埋もれます。','panel-note'));
+ insightTable(frequent,['node','API','回数','全要求に占める %','合計 ms','平均 ms','p95 ms','エラー'],(b.http_by_count?.items||[]).map(r=>[r.node,textCell(`${r.method||''} ${r.route||''}`.trim()),num(r.count),num(r.share_percent,1),num(r.total_ms),num(r.avg_ms,2),num(r.p95_ms,2),num(r.errors)]));
  const upstream=insightPanel(root,'upstream','nginx upstream','試行単位 · 選択run');sectionNotice(upstream,b.upstreams);
  upstream.append(el('p','retryを含む試行単位の値です。cache HIT/MISSは現在の標準計測には含まれません。','panel-note'));
  insightTable(upstream,['入口node','接続先','試行数','再試行','接続 p95 ms','ヘッダー p95 ms','応答 p95 ms'],(b.upstreams?.items||[]).map(r=>[r.node,textCell(r.upstream),num(r.requests),num(r.retried_requests),num(r.connect_p95_ms,2),num(r.header_p95_ms,2),num(r.response_p95_ms,2)]));

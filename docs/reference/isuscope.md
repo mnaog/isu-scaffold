@@ -27,6 +27,7 @@ isuscope analyze RUN_ID supported --analysis "観測結果と判断"
 ```
 
 - 仮説の対象は、`query --base`へ同じselectorを指定して比べる。HTTPは`--view http`と`--label route=...`、DBは`--view database --window load`（initializeを除いた負荷区間）、必要な`--label-contains digest=...`、`--group-by sql-shape`を使い、対象を絞らない巨大JSONを避ける。
+- briefの`http`は合計時間の順なので、速くて回数の多いAPI（静的ファイル、polling）と、SSEのように長く開いた要求の扱いに気をつける。前者は`http_by_count`（全要求に占める割合`share_percent`つき）に出る。続きと比較は`query --view http --sort count`。
 - DBの比較では、`query --base`の`total_ms_delta_by_calls`（回数の増減による分）と`total_ms_delta_by_avg`（1回あたりの時間による分）で、合計時間の変化の理由を分ける。
 - 判定には`supported`、`rejected`、`inconclusive`、`skipped`を使う。`analyze`には、実行結果か`isuscope list`で得たrun IDを明示する。本文でrunに触れるときは、isuscopeの出力が示す短縮ID（run IDの末尾8文字）にそろえる。
 - PASSしたrunは、分析を記録するまで次のベンチを開始できない。FAILまたは中断したrunに分析は不要。
