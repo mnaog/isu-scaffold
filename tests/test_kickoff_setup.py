@@ -41,6 +41,38 @@ class KickoffSetupTest(unittest.TestCase):
         self.assertIn('observability_mysql_slow_log: false',
                       (ROOT / 'ansible/playbooks/group_vars/all.yml').read_text())
 
+    def test_review_lists_node_types_and_warns_when_they_or_their_speeds_differ(self):
+        # A stack may mix instance types (c7i ×3 and c6in ×2 in one environment check).
+        spec = importlib.util.spec_from_file_location('review', ROOT / 'scripts/review-draft.py')
+        review = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(review)
+
+        def report(kind, cpu, single, every):
+            return {'instance_type': kind, 'cpu_model': cpu, 'processor_vcpus': 2, 'memory_mb': 3800,
+                    'cpu_speed': {'loop_per_second': single, 'loop_all_vcpus_per_second': every,
+                                  'sha256_mb_per_second': 800}}
+        nodes = ['app1', 'app2', 'app3', 'app4', 'app5']
+        inspections = {f'app{n}': report('c7i.large', 'Xeon 8488C', 10000, 12500) for n in (1, 2, 3)}
+        inspections.update({f'app{n}': report('c6in.large', 'Xeon 8375C', 9000, 11000) for n in (4, 5)})
+        lines, warnings = review.node_table(nodes, inspections, {})
+        table = '\n'.join(lines)
+        self.assertIn('| app1 | c7i.large | Xeon 8488C | 2 | 3800 | 100% | 100% | 800 |', table)
+        self.assertIn('| app4 | c6in.large | Xeon 8375C | 2 | 3800 | 90% | 88% | 800 |', table)
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn('c6in.large ×2 (app4, app5) / c7i.large ×3 (app1, app2, app3)', warnings[0])
+
+        # One type, but one node lands on another CPU and one runs far slower.
+        same = {f'app{n}': report('c5.large', 'Xeon 8124M', 10000, 12000) for n in (1, 2)}
+        same['app3'] = report('c5.large', 'Xeon 8275CL', 8000, 9500)
+        lines, warnings = review.node_table(['app1', 'app2', 'app3'], same, {})
+        self.assertTrue(any('run different CPUs' in warning for warning in warnings), warnings)
+        self.assertTrue(any(warning.startswith('app3 measured more than 15% slower') for warning in warnings), warnings)
+
+        # Without inspection reports the type comes from discovery and speeds stay blank.
+        lines, warnings = review.node_table(['app1'], {}, {'app1': {'instance_type': 'c7i.large'}})
+        self.assertIn('| app1 | c7i.large | — | — | — | — | — | — |', lines)
+        self.assertEqual(warnings, [])
+
     def test_review_sizes_a_directory_without_its_excluded_build_output(self):
         # practice-12-sixth: rust-app warned at 1048 MiB although import and deploy skip target/.
         spec = importlib.util.spec_from_file_location('review', ROOT / 'scripts/review-draft.py')

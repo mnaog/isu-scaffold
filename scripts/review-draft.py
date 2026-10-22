@@ -7,6 +7,7 @@ written to <draft>/review.md. Exit status 1 means at least one FAIL: the draft m
 fixed before `make kickoff-apply`. WARN lines need an explicit human or agent decision.
 """
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -274,7 +275,89 @@ def main() -> int:
         for log in sorted(checks[node]["logs"]):
             readable = (facts.get(("log", log)) or ["no"])[0] == "yes"
             record("OK" if readable else "WARN", f"{node}: log {'readable' if readable else 'not readable'}: {log}")
-    return write(draft_dir, results)
+    inspection_dir = Path(os.environ.get("INSPECTION_OUTPUT_DIR") or repo / ".local/inspection")
+    discovered_path = repo / ".local/discovered-nodes.json"
+    discovered = {entry.get("name"): entry for entry in load(discovered_path)} if discovered_path.is_file() else {}
+    table, warnings = node_table(application, load_inspections(inspection_dir), discovered)
+    for warning in warnings:
+        record("WARN", warning)
+    return write(draft_dir, results, table)
+
+
+def node_table(application: list[str], inspections: dict[str, dict], discovered: dict[str, dict]) -> tuple[list[str], list[str]]:
+    """Each application node's instance type, CPU and measured speed, and WARNs when they differ.
+
+    Nodes of different types (c7i and c6in in one stack) are not interchangeable: the roles go
+    by the measured speeds, not by the order of the names.
+    """
+    rows = []
+    for node in application:
+        report = inspections.get(node) or {}
+        speed = report.get("cpu_speed") or {}
+        rows.append({
+            "node": node,
+            "type": report.get("instance_type") or (discovered.get(node) or {}).get("instance_type") or "",
+            "cpu": report.get("cpu_model") or "",
+            "vcpus": report.get("processor_vcpus"),
+            "memory": report.get("memory_mb"),
+            "single": speed.get("loop_per_second"),
+            "all": speed.get("loop_all_vcpus_per_second"),
+            "sha256": speed.get("sha256_mb_per_second"),
+        })
+    best = {key: max((row[key] for row in rows if row[key]), default=None) for key in ("single", "all")}
+
+    def relative(row, key):
+        return f"{row[key] / best[key] * 100:.0f}%" if row[key] and best[key] else "—"
+
+    lines = [
+        "## Nodes",
+        "",
+        "1 threadと全vCPUは、inspectで数秒流したCPU計測を最も速いnodeに対する割合で並べたもの（サービスは止めていないので、動いている負荷の分だけ下振れする）。sha256はTLSの暗号処理の目安。",
+        "",
+        "| node | type | CPU | vCPU | memory MiB | 1 thread | all vCPUs | sha256 MB/s |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for row in rows:
+        lines.append(f"| {row['node']} | {row['type'] or '—'} | {row['cpu'] or '—'} | {row['vcpus'] or '—'} | "
+                     f"{row['memory'] or '—'} | {relative(row, 'single')} | {relative(row, 'all')} | {row['sha256'] or '—'} |")
+    warnings = []
+
+    def groups(key):
+        found = {}
+        for row in rows:
+            if row[key]:
+                found.setdefault(row[key], []).append(row["node"])
+        return found
+
+    advice = ("roles go by the Nodes table: CPU-heavy roles (the app, MySQL) on the nodes with the higher 1-thread speed, "
+              "the entrance (nginx, TLS) on the network-optimized type if there is one, and nginx upstream weights by the all-vCPU speed")
+    types = groups("type")
+    if len(types) > 1:
+        listed = " / ".join(f"{kind} ×{len(nodes)} ({', '.join(nodes)})" for kind, nodes in sorted(types.items()))
+        warnings.append(f"application nodes run different instance types: {listed}; {advice}")
+    cpus = groups("cpu")
+    if len(cpus) > 1 and len(types) <= 1:
+        listed = " / ".join(f"{cpu} ({', '.join(nodes)})" for cpu, nodes in sorted(cpus.items()))
+        warnings.append(f"application nodes of one instance type run different CPUs: {listed}; {advice}")
+    for kind, nodes in sorted(types.items()) if types else [("", [row["node"] for row in rows])]:
+        speeds = [row["single"] for row in rows if row["node"] in nodes and row["single"]]
+        if len(speeds) > 1 and min(speeds) < max(speeds) * 0.85:
+            slow = [row["node"] for row in rows if row["node"] in nodes and row["single"] and row["single"] < max(speeds) * 0.85]
+            warnings.append(f"{', '.join(slow)} measured more than 15% slower on one thread than the fastest node of "
+                            f"{'type ' + kind if kind else 'the same type'}; a busy service or a different host CPU. "
+                            "Check `make status`, and keep CPU-heavy roles off them")
+    return lines, warnings
+
+
+def load_inspections(directory: Path) -> dict[str, dict]:
+    reports = {}
+    for path in sorted(directory.glob("*.json")) if directory.is_dir() else []:
+        try:
+            report = load(path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        reports[report.get("node") or path.stem] = report
+    return reports
 
 
 def slow_log_enabled(repo: Path, ansible_vars: dict) -> bool:
@@ -289,7 +372,7 @@ def slow_log_enabled(repo: Path, ansible_vars: dict) -> bool:
     return bool(match) and match.group(1).lower() in ("true", "yes")
 
 
-def write(draft_dir: Path, results: list[tuple[str, str]]) -> int:
+def write(draft_dir: Path, results: list[tuple[str, str]], extra: list[str] | None = None) -> int:
     order = {"FAIL": 0, "WARN": 1, "OK": 2}
     results.sort(key=lambda result: order[result[0]])
     counts = {level: sum(1 for result in results if result[0] == level) for level in order}
@@ -302,6 +385,8 @@ def write(draft_dir: Path, results: list[tuple[str, str]]) -> int:
         "",
     ]
     lines += [f"- {level} {message}" for level, message in results]
+    if extra:
+        lines += ["", *extra]
     draft_dir.mkdir(parents=True, exist_ok=True)
     (draft_dir / "review.md").write_text("\n".join(lines) + "\n")
     for level, message in results:
