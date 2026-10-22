@@ -36,7 +36,8 @@ class SpreadTests(unittest.TestCase):
                 known = variance.spread(directory)
         self.assertIsNone(known['aaaa0001']['spread'])
         self.assertTrue(known['aaaa0002']['repeat'])
-        self.assertEqual(known['bbbb0001'], {'repeat': False, 'spread': {'sigma': 0.0199, 'groups': 1, 'runs': 2}})
+        self.assertEqual(known['aaaa0002']['config'], known['aaaa0001']['config'])
+        self.assertEqual(known['bbbb0001'], {'config': 'b', 'repeat': False, 'spread': {'sigma': 0.0199, 'groups': 1, 'runs': 2}})
 
 
 if __name__ == '__main__':
