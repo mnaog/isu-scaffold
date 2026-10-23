@@ -34,6 +34,8 @@
 目的は、終える前に「守ること」が成り立っていると分かっていること。特に、書き換える前と後で状態の変わり方が同じであることは、応答を見るだけでは分からない。どう確かめるかはこのlaneが決める。使える道具:
 
 - `config/local/flows/`の操作の列（JSON。形は`scripts/local-flow.py`の冒頭）と`make local-flow FLOW=<file>`。`FROM=<前半>`で、途中で`make local-up`し直した後の続きを流せる（再起動の確認）。
+- `make codemap CHECK=read-sql`は、APIから呼ぶコードに読み取りのSQL（SELECT、FOR UPDATE）が残っていればその場所を並べてexit 1にする（initializeは除く）。読み取りをすべてメモリへ移したかを、これで確かめる。
+- `LOCAL_RACE=1 make local-up`でrace detector付きに動かし、`make local-flow FLOW=<file> PARALLEL=8`で同じ操作を8本並行に流してから`make local-race`で報告を読む（`{copy}`で複製ごとに名前を変え、initializeは`"once": true`）。メモリの状態を複数のrequestが同時に触るので、lockの漏れはここで出る。
 - `make local-state-log NAME=<名前>`で状態ログを取り、`python3 scripts/state-log-compare.py <前>.jsonl <後>.jsonl`で比べる（`.local/local-runtime/state-log/`）。書き換える前の版のログは、分岐元に`lane/state-log`・`lane/local-env`を合わせた使い捨ての版（`git switch --detach`して`git merge`）で取れる。直さない違いは、理由を`docs/cache-design.md`に書いて`--ignore-kind`で外す。
 - `make local-*`は環境変数を前に付けずにそのまま呼ぶ（付けた形はlaneの権限で止められる）。終わったら`make local-down`する。
 
