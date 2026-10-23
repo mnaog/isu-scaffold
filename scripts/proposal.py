@@ -60,6 +60,7 @@ from datetime import datetime
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -352,6 +353,7 @@ def submit(root, hypothesis, expect, verified, note=None, cwd=None, based_on=Non
                                 'decision': previous.get('decision')})
     save(root, data)
     progress(root, 'submitted', f'{branch} {commit[:8]}: {hypothesis[:120]}')
+    start_prebuild(root, branch)
     # Submitted, it shows in the queue; it no longer needs saying what this worktree works on.
     declared = working_dir(root) / f'{worktree_name(root, here)}.json'
     was_working = declared.is_file()
@@ -369,6 +371,22 @@ def submit(root, hypothesis, expect, verified, note=None, cwd=None, based_on=Non
         lines.append('作り始めたときに`python3 scripts/proposal.py working "<狙う制約と変更>"`で宣言していなかったようです。'
                      '次の変更からは、作り始めたら宣言してください（ボードの「作業中」に出て、誰が何をしているか分かる）。')
     return '\n'.join(lines)
+
+
+def start_prebuild(root, branch):
+    """Build and test the proposal on main's branch now, in the background (scripts/prebuild.py), so main
+    finds it built when it merges it, and hears before that if it conflicts or fails its tests."""
+    script = Path(root) / 'scripts/prebuild.py'
+    if os.environ.get('PROPOSAL_AUTO_PREBUILD') == '0' or not script.is_file():
+        return
+    log = Path(root) / '.local/prebuild.log'
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open('a') as out:
+            subprocess.Popen([sys.executable, str(script), '--proposal', branch], cwd=root, stdin=subprocess.DEVNULL,
+                             stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
+    except OSError:
+        pass  # the prebuild at the next benchmark covers it
 
 
 def merge_check(root, base, commit):

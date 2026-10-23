@@ -7,7 +7,9 @@ the machine sat idle for the whole benchmark. The benchmark hook starts this in 
 `proposal.py sync`: in a worktree of its own (.local/prebuild, detached), it makes the trees main may
 end up with and builds each with scripts/local-build.py, which keeps the binary and the test result
 by source tree in the shared cache. If main's merge gives the same tree, `make deploy` neither builds
-nor tests again.
+nor tests again. `proposal.py submit` also starts it for the proposal just submitted (--proposal), since
+most proposals arrive while a benchmark already runs; builds never wait for each other
+(scripts/local-build.py), so this never holds up main's deploy.
 
 The trees: the branch as measured ("keep") and with every measured proposal reverted ("drop"), each
 alone and with one waiting proposal merged (`git merge --no-ff`), the oldest waiting ones first, at
@@ -16,8 +18,9 @@ most MAX_VARIANTS builds. Other combinations are simply built when main makes th
 Nothing here touches main's worktree, the branches or the proposals; the commits stay detached in
 .local/prebuild. A waiting proposal that conflicts, fails to build or fails its tests on top of main's
 branch is reported on `.local/progress.log` (`prebuild failed`), before main merges it. The results
-are in .local/prebuild.json. PROPOSAL_AUTO_PREBUILD=0 turns it off.
+of the last run are in .local/prebuild.json (with a few earlier ones). PROPOSAL_AUTO_PREBUILD=0 turns it off.
 """
+import argparse
 import fcntl
 import importlib.util
 import json
@@ -30,6 +33,8 @@ import time
 
 SCRIPTS = Path(__file__).resolve().parent
 MAX_VARIANTS = 6
+LOCK_WAIT_SECONDS = 600
+HISTORY = 10
 
 
 def load(name, file):
@@ -111,7 +116,23 @@ def build(work, plan, head):
     return {**result, 'status': 'ok', 'cached': 'local build: cached' in built.stderr}
 
 
+def wait_for_lock(lock):
+    """One prebuild at a time in the shared work tree; a later one waits for it rather than giving up."""
+    deadline = time.monotonic() + LOCK_WAIT_SECONDS
+    while True:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.5)
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--proposal', help='build only this waiting proposal (on the measured branch kept and dropped)')
+    args = parser.parse_args()
     if os.environ.get('PROPOSAL_AUTO_PREBUILD') == '0':
         return 0
     root = root_of(SCRIPTS)
@@ -124,18 +145,22 @@ def main():
     with (local / 'proposal-sync.lock').open('a') as sync_lock:
         fcntl.flock(sync_lock, fcntl.LOCK_EX)
     with (local / 'prebuild.lock').open('a') as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            print('prebuild: another prebuild is running')
+        if not wait_for_lock(lock):
+            print(f'prebuild: another prebuild held the work tree for {LOCK_WAIT_SECONDS}s; giving up')
             return 0
         base = proposal.main_session.main_branch(root)
         head = git('rev-parse', '--verify', base, cwd=root).stdout.strip()
         everything = proposal.load_all(root)
         measuring = [data for data in everything if data.get('status') == 'measuring']
-        waiting = sorted((data for data in everything if data.get('status') in ('submitted', 'delivered')),
+        waiting = sorted((data for data in everything if data.get('status') in ('submitted', 'delivered')
+                          and (not args.proposal or data['branch'] == args.proposal)),
                          key=lambda data: data.get('first_submitted_at') or '')
+        if args.proposal and not waiting:
+            print(f'prebuild: {args.proposal} is not waiting in the queue; nothing to build')
+            return 0
         plans = variants(measured_merges(root, head, measuring), waiting)
+        if args.proposal:
+            plans = [plan for plan in plans if plan['merge']]
         work = local / 'prebuild'
         if not (work / '.git').exists():
             added = git('worktree', 'add', '--quiet', '--detach', str(work), head, cwd=root)
@@ -147,8 +172,16 @@ def main():
             results.append(build(work, plan, head))
             print(json.dumps(results[-1], ensure_ascii=False), flush=True)
         git('reset', '--quiet', '--hard', head, cwd=work)
-        record = {'base': base, 'head': head, 'finished_at': proposal.now(), 'results': results}
-        (local / 'prebuild.json').write_text(json.dumps(record, ensure_ascii=False, indent=2) + '\n')
+        record = {'base': base, 'head': head, 'proposal': args.proposal, 'finished_at': proposal.now(),
+                  'results': results}
+        path = local / 'prebuild.json'
+        try:
+            earlier = json.loads(path.read_text())
+            history = [{key: value for key, value in earlier.items() if key != 'history'}, *earlier.get('history', [])]
+        except (OSError, ValueError, AttributeError):
+            history = []
+        record['history'] = history[:HISTORY]
+        path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + '\n')
         # A waiting proposal that fails on main's branch as measured: main hears of it before merging.
         failed = {}
         for result in results:

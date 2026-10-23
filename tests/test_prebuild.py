@@ -68,13 +68,14 @@ class PrebuildTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         return result
 
-    def submit(self, branch, path, text):
+    def submit(self, branch, path, text, prebuild=False):
         self.git('switch', '-q', '-c', branch, 'main', cwd=self.human)
         (self.human / path).write_text(text)
         self.git('add', path, cwd=self.human)
         self.git('commit', '-qm', f'Change {path}', cwd=self.human)
+        # The cases below run the prebuild themselves; a submit would start one in the background.
         self.script('proposal.py', 'submit', '--hypothesis', f'{branch} is faster', '--expect', 'x',
-                    cwd=self.human, session='S-human')
+                    cwd=self.human, session='S-human', env={} if prebuild else {'PROPOSAL_AUTO_PREBUILD': '0'})
         self.git('switch', '-q', '--detach', cwd=self.human)
 
     def start_benchmark(self):
@@ -156,16 +157,44 @@ class PrebuildTest(unittest.TestCase):
         result = subprocess.run([sys.executable, str(hook), '--post'], input=json.dumps(payload), text=True,
                                 capture_output=True, env=dict(self.env, TOOL_GUARD_ROOT=str(self.repo)))
         self.assertEqual(result.returncode, 0, result.stderr)
+        record = self.wait_for_record()
+        self.assertTrue((self.repo / '.local/proposal-sync.log').exists(), 'the sync ran first')
+        variants = [result['variant'] for result in record['results']]
+        self.assertEqual(variants, ['keep+improve-e', 'keep'])
+
+    def wait_for_record(self, proposal=None):
         record = self.repo / '.local/prebuild.json'
         for _ in range(300):
             if record.exists():
-                break
+                data = json.loads(record.read_text())
+                if proposal is None or data.get('proposal') == proposal:
+                    return data
             time.sleep(0.1)
-        self.assertTrue(record.exists(), (self.repo / '.local/prebuild.log').read_text()
-                        if (self.repo / '.local/prebuild.log').exists() else 'no prebuild log')
-        self.assertTrue((self.repo / '.local/proposal-sync.log').exists(), 'the sync ran first')
-        variants = [result['variant'] for result in json.loads(record.read_text())['results']]
-        self.assertEqual(variants, ['keep+improve-e', 'keep'])
+        log = self.repo / '.local/prebuild.log'
+        self.fail(log.read_text() if log.exists() else 'no prebuild log')
+
+    def test_a_submit_prebuilds_that_proposal_on_the_measured_branch_kept_and_dropped(self):
+        self.submit('improve-a', 'webapp/go/a.go', 'package main\n// a\n')
+        self.git('merge', '-q', '--no-ff', '-m', 'Merge improve-a', 'improve-a')
+        self.start_benchmark()  # improve-a is measured now; the next one arrives during the benchmark
+        self.submit('improve-f', 'webapp/go/f.go', 'package main\n// f\n', prebuild=True)
+        record = self.wait_for_record('improve-f')
+        self.assertEqual([result['variant'] for result in record['results']], ['keep+improve-f', 'drop+improve-f'])
+        self.assertTrue(all(result['status'] == 'ok' for result in record['results']), record)
+        builds = len(self.go_builds())
+        self.git('merge', '-q', '--no-ff', '-m', 'Merge improve-f', 'improve-f')
+        self.assertIn('local build: cached', self.deploy_build())
+        self.assertEqual(len(self.go_builds()), builds)
+
+    def test_the_record_keeps_the_earlier_runs(self):
+        self.submit('improve-g', 'webapp/go/g.go', 'package main\n// g\n')
+        self.script('prebuild.py')
+        self.script('prebuild.py', '--proposal', 'improve-g')
+        record = json.loads((self.repo / '.local/prebuild.json').read_text())
+        self.assertEqual(record['proposal'], 'improve-g')
+        self.assertEqual(len(record['history']), 1)
+        self.assertIsNone(record['history'][0]['proposal'])
+        self.assertNotIn('history', record['history'][0])
 
     def test_it_can_be_turned_off(self):
         self.script('prebuild.py', env={'PROPOSAL_AUTO_PREBUILD': '0'})
