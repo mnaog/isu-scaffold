@@ -43,7 +43,7 @@ MANIFEST_NAMES = {
     "pom.xml",
     "build.gradle",
 }
-OBSERVABILITY_TOOLS = ("sar", "perf", "slp", "stackcollapse-perf.pl", "flamegraph.pl", "offcputime-bpfcc")
+OBSERVABILITY_TOOLS = ("sar", "slp", "offcputime-bpfcc")
 
 
 def read_json(path: Path):
@@ -65,8 +65,6 @@ def infer_roles(report: dict) -> list[str]:
     for needle, inferred in ROLE_RULES.items():
         if needle in haystack:
             roles.update(inferred)
-    if report.get("versions", {}).get("perf"):
-        roles.add("perf")
     return sorted(roles, key=lambda role: (role != "app", role))
 
 

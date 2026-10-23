@@ -14,7 +14,7 @@ mainは、ベンチを止めずに回し、その結果を正しく読む。改�
 
 - **merge**: improve・人間（worktree `human`）の投稿、laneのcommit、portalを取り込む。キューの追従と衝突の解消（両方の意図を残す）、取り込んだ変更の戻し（`git revert`）まで。投稿は投稿者へ戻さない。buildやdeployが通らない、衝突する投稿は、直せるならmainが直し、直せないなら棄却する。
 - **次に測るものの判断**: 下の「キュー」。何をまとめて測るか、測らずに棄却するか、保留にするかをmainが決める。
-- **deploy・ベンチ**: mainだけが、deploy・rollback・import・kickoff、ベンチ（`make bench`・`isuscope run`・`survey-run`・`make first-bench`）、isuscopeの記録、laneの起動・停止、`.local/operation.lock`を使う。ほかのセッションからの同じ操作は`scripts/tool-guard.py`が止める。
+- **deploy・ベンチ**: mainだけが、deploy・rollback・import・kickoff、ベンチ（`make bench`・`isuscope run`・`make first-bench`）、isuscopeの記録、laneの起動・停止、`.local/operation.lock`を使う。ほかのセッションからの同じ操作は`scripts/tool-guard.py`が止める。
 - **分析と採否**: runを分析し、最大の制約を特定して`isuscope analyze`に書く。improveはまずこの分析を読んで次の変更を選ぶので、そこから次の最大の制約と、その根拠を自分で確かめられるように書く。mainが記録する分析は、振れ幅やwaitのものも含め、最後の1件の先頭300字が`main analyzed`としてimproveへ届く。なので、どの分析も1文目に、次の最大の制約とその場所（AGENTS.mdの「判断の原則」の3つ）を書き、決めきれなければ候補を並べる。
 - **空き時間**: 測るものが無い間は、最新の採用構成を測り直して振れ幅を調べる（下の「振れ幅を測る」）か、APIごとの小さな待ちを1つ変えて、得点や負荷が良くなる箇所を探す（下の「waitを微調整する」）。どちらに使うかは、そのときの状況で決める。投稿は1回のrunで決め、2度は回さない。
 
@@ -57,7 +57,7 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 
 ### ベンチを回すときの決まり
 
-- ベンチ（`make bench`・`isuscope run`・`survey-run`・`make first-bench`）は、Bashの`run_in_background`で起動する（foregroundはhookが止める）。`kickoff`・`bootstrap`・`bench-check`・laneからは起動しない。
+- ベンチ（`make bench`・`isuscope run`・`make first-bench`）は、Bashの`run_in_background`で起動する（foregroundはhookが止める）。`kickoff`・`bootstrap`・`bench-check`・laneからは起動しない。
 - PASSしたrunは、分析を記録するまで次のベンチを始められない。分析・判定・採否の記録の仕方とrunの読み方は`docs/reference/isuscope.md`。
 - 最後にdeployしたcommitとHEADがずれていると、ベンチは始まらない。commitして`make deploy`するか、HEADを戻す。
 - Monitorで`python3 scripts/progress.py follow main`を追う。`.local/progress.log`のうちmain宛ての行（投稿、laneの結果、段階の失敗、`benchmark slow`など）だけが、何をするかの一言と一緒に出る（宛先と一言は`config/progress.json`）。

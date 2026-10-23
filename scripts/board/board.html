@@ -183,7 +183,7 @@ function renderQueue(q){
   body.append(meta);item.append(body);root.append(item);
  }
 }
-const benchNames={'isuscope run':'ベンチ実行中','isuscope survey-run':'初回ベンチ（survey-run）実行中'};
+const benchNames={'isuscope run':'ベンチ実行中'};
 function renderBenchBanner(d){
  const op=d.activity?.operation,name=benchNames[op?.operation],banner=document.querySelector('#bench-banner');
  banner.hidden=!name;document.title=(name?'▶ '+name+' · ':'')+'ISUCON Board';

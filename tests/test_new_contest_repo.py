@@ -31,8 +31,7 @@ class NewContestRepoTests(unittest.TestCase):
         (self.source / ".claude/rules").mkdir(parents=True)
         os.symlink("../../AGENTS.md", self.source / ".claude/rules/agents.md")
         for name in ("docs/agent-history/Readme.md", "docs/agent-history/20261013-123404.md",
-                     "docs/official/lithosai-20261001/opencode.md", "docs/official/README.md",
-                     "docs/ai-compare/Readme.md", "isuscope-data/README.md", "isuscope-data/runs/x.json",
+                     "docs/official/README.md", "isuscope-data/README.md", "isuscope-data/runs/x.json",
                      "tests/test_deploy.py", "tests/fixtures/sync.json", ".github/workflows/test.yml"):
             (self.source / name).parent.mkdir(parents=True, exist_ok=True)
             (self.source / name).write_text(name + "\n")
@@ -55,8 +54,7 @@ class NewContestRepoTests(unittest.TestCase):
         self.assertIn("docs/agent-history/Readme.md", files)
         self.assertIn("docs/official/README.md", files)
         self.assertIn("isuscope-data/README.md", files)
-        for name in ("docs/agent-history/20261013-123404.md", "docs/official/lithosai-20261001/opencode.md",
-                     "docs/ai-compare/Readme.md", "isuscope-data/runs/x.json", "practice.md",
+        for name in ("docs/agent-history/20261013-123404.md", "isuscope-data/runs/x.json", "practice.md",
                      "config/new-repo.json", "config/preparation/readiness.md", "scripts/new-contest-repo.py",
                      # The scaffold's own tests and CI stay in the scaffold: less for the contest's AI to read.
                      "tests/test_deploy.py", "tests/fixtures/sync.json", ".github/workflows/test.yml"):

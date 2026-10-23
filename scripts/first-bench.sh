@@ -34,14 +34,14 @@ print(row.get("id", ""), row.get("state", ""))' 2>/dev/null || true
 # before the output's shape is known. A pending baseline is the expected
 # first result: it is completed later with the saved output and `isuscope rescore`, so the
 # deploy after it still runs. A new run in any other state stays a failure.
-survey_run() {
+baseline_run() {
   local before code=0 id state
   before=$(latest_run)
-  isuscope survey-run --hypothesis "${hypothesis}" || code=$?
+  isuscope run --hypothesis "${hypothesis}" || code=$?
   [[ "${code}" -eq 0 ]] && return 0
   read -r id state <<<"$(latest_run)"
   if [[ "${state}" == pending && -n "${id}" && "${id}" != "${before%% *}" ]]; then
-    echo "survey-run ${id} is pending: check how its output is read with python3 scripts/benchmark-sample.py ${id}, then --apply --score N --pass true|false"
+    echo "run ${id} is pending: check how its output is read with python3 scripts/benchmark-sample.py ${id}, then --apply --score N --pass true|false"
     printf '%s\n' "${id}" >.local/first-bench-pending
     return 0
   fi
@@ -84,9 +84,9 @@ fi
 
 if [[ "${distributed}" == true ]]; then
   progress distributed "benchmarking the distributed build at $(git rev-parse --short HEAD) without waiting for build and deploy"
-  stage survey-run survey_run
+  stage baseline baseline_run
   progress baseline-ready "analyze with isuscope brief latest; deploying the same commit meanwhile"
-  # Deploy only what was measured: a change committed during the survey-run (make tare, a
+  # Deploy only what was measured: a change committed during the baseline (make tare, a
   # cherry-picked lane commit) must get its own run, so it is not shipped here unmeasured.
   if "${script_dir}/check-deployed-commit.sh" >/dev/null 2>&1; then
     stage deploy "${script_dir}/deploy.sh"
@@ -96,8 +96,8 @@ if [[ "${distributed}" == true ]]; then
   fi
 else
   stage deploy "${script_dir}/deploy.sh"
-  progress deployed "$(git rev-parse --short HEAD); starting survey-run"
-  stage survey-run survey_run
+  progress deployed "$(git rev-parse --short HEAD); starting the baseline"
+  stage baseline baseline_run
   progress baseline-ready "analyze with isuscope brief latest"
 fi
 if [[ -s .local/first-bench-pending ]]; then

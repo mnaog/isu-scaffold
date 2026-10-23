@@ -30,10 +30,9 @@ const STATUS_WORDS: Record<string, string> = {
 function benchmarkText(value: IsuconMainBadge): string | null {
   const bench = value.benchmark
   if (!bench) return null
-  const name = bench.kind === 'survey-run' ? '初回ベンチ実行中' : 'ベンチ実行中'
   const s = bench.elapsed_seconds
   const since = s == null ? '' : s < 60 ? ` ${s}秒` : ` ${Math.floor(s / 60)}分${s % 60}秒`
-  return `▶ ${name}${since}`
+  return `▶ ベンチ実行中${since}`
 }
 
 async function refresh($: EngineInterface): Promise<void> {

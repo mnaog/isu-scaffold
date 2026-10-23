@@ -63,7 +63,7 @@ LANE_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-
                 'benchmark-prepare.sh', 'ansible-install.sh', 'tare.py', 'durability.py', 'kickoff-build.py',
                 'lane.py', 'review-draft.py', 'check-deployed-commit.sh', 'first-bench.sh', 'bench.sh',
                 'benchmark-markers.py', 'deploy-plan.py', 'final-verification.py'}
-LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'final-check', 'final-reboot', 'final-db-late', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap',
+LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'final-check', 'final-reboot', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap',
                      'bench-check', 'first-bench', 'bench', 'tare', 'durability'}
 # Read-only isuscope commands; everything else records, benchmarks or reaches nodes.
 LANE_ISUSCOPE = {'list', 'brief', 'query', 'sql', 'series', 'help', '--help', '-h', '--version', 'version'}
@@ -79,7 +79,7 @@ MAIN_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-
                 'run-ansible-playbook.sh', 'switch-language-service.sh', 'benchmark.sh', 'benchmark-prepare.sh',
                 'benchmark-stop.sh', 'ansible-install.sh', 'tare.py', 'durability.py', 'first-bench.sh',
                 'bench.sh', 'final-verification.py'}
-MAIN_MAKE_TARGETS = {'deploy', 'rollback', 'final-reboot', 'final-db-late', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap', 'bench-check',
+MAIN_MAKE_TARGETS = {'deploy', 'rollback', 'final-reboot', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap', 'bench-check',
                      'first-bench', 'bench', 'tare', 'durability'}
 LOCAL_URL = re.compile(r'^(?:https?://)?(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:/|$)')
 
@@ -196,7 +196,7 @@ class Guard:
 
     def check_bench_host(self, target):
         if host_of(target) in self.bench_ids:
-            raise Denied(f'ベンチnode（{host_of(target)}）へ直接入らない。ベンチは isuscope run / survey-run'
+            raise Denied(f'ベンチnode（{host_of(target)}）へ直接入らない。ベンチは isuscope run'
                          '（.isuscope/benchmark.sh）からだけ動かし、ベンチnodeの観測もしない。')
 
     # --- shell commands ----------------------------------------------------------------
@@ -241,7 +241,7 @@ class Guard:
         for line in text.splitlines():
             for pattern in patterns:
                 if re.search(pattern, line):
-                    raise Denied('ベンチnodeへ直接入らない。ベンチは isuscope run / survey-run'
+                    raise Denied('ベンチnodeへ直接入らない。ベンチは isuscope run'
                                  '（.isuscope/benchmark.sh）からだけ動かし、ベンチnodeの観測もしない。')
 
     def check_arguments(self, words):
@@ -317,7 +317,7 @@ class Guard:
         elif program == 'ansible':
             for arg in args:
                 if arg == 'benchmark' or host_of(arg) in self.bench_ids:
-                    raise Denied('ベンチnodeへ直接入らない。ベンチは isuscope run / survey-run'
+                    raise Denied('ベンチnodeへ直接入らない。ベンチは isuscope run'
                                  '（.isuscope/benchmark.sh）からだけ動かし、ベンチnodeの観測もしない。')
         elif program == 'gh' and self.keywords:
             lowered = ' '.join(args).lower()

@@ -137,7 +137,7 @@ class LocalBuildTests(unittest.TestCase):
         self.assertEqual(call["env"]["GOTOOLCHAIN"], "auto")
         self.assertEqual(call["args"][-1], ".")
         self.assertIn("/.local/go-build/work/", call["cwd"])
-        # perf・Goのprofile・PGOは関数名で読むので、symbolを外すflagを付けない。
+        # Goのprofile・PGOは関数名で読むので、symbolを外すflagを付けない。
         self.assertEqual(call["env"]["GOFLAGS"], "-trimpath")
         self.assertFalse(any("-ldflags" in arg or arg in ("-s", "-w") for arg in call["args"]), call["args"])
         self.assertFalse(self.record()["pgo"])

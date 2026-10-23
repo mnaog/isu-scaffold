@@ -13,8 +13,8 @@ export type IsuconMainBadge = {
     commit: string
     decision: { decision: string; run: string; note: string } | null
   } | null
-  /** The benchmark holding the operation lock now (isuscope run / survey-run), or null. */
-  benchmark: { kind: 'run' | 'survey-run'; started_at: string | null; elapsed_seconds: number | null } | null
+  /** The benchmark holding the operation lock now (isuscope run), or null. */
+  benchmark: { kind: 'run'; started_at: string | null; elapsed_seconds: number | null } | null
 }
 
 declare module 'claude-code' {

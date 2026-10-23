@@ -1,4 +1,4 @@
-.PHONY: help session discover kickoff kickoff-apply build deploy rollback status bench-check first-bench bench tare durability pgo codemap lanes proposals builder-images isuscope-node final-check final-reboot final-db-late
+.PHONY: help session discover kickoff kickoff-apply build deploy rollback status bench-check first-bench bench tare durability pgo codemap lanes proposals builder-images isuscope-node final-check final-reboot
 
 help:
 	@printf '%s\n' \
@@ -21,9 +21,8 @@ help:
 		'make status                           全nodeを並列に検査する（様子とstatus_commands、20秒で打ち切り）' \
 		'make final-check                      終了前: 再起動せずに追試で落ちる原因を確かめる' \
 		'make final-reboot                     終了前: 全台を再起動し、戻った後と数分後を確かめる' \
-		'make final-db-late                    終了前: DBが後から起動してもアプリが立ち直るか確かめる' \
 		'make bench-check                      ベンチ前の全node・isuscope検査を行う' \
-		'make first-bench                      import commit後にbench-check・初回survey-run・deployを続けて行う' \
+		'make first-bench                      import commit後にbench-check・初回ベンチ・deployを続けて行う' \
 		'make bench                            mergeした投稿をdeployしてベンチを回し、結果とbriefを出す（mainがbackgroundで）' \
 		'make tare                             baseline後に接続・fdの上限を上げる1 commitを作る' \
 		'make durability                       DBの書き込み待ちが見えたらMySQLの耐久性を緩める1 commitを作る' \
@@ -79,9 +78,6 @@ final-check:
 
 final-reboot:
 	@python3 scripts/final-verification.py reboot --yes
-
-final-db-late:
-	@python3 scripts/final-verification.py db-late --yes
 
 tare:
 	@python3 scripts/tare.py

@@ -119,7 +119,7 @@ def release(root, session, force=False):
     return 'mainの宣言を外した。'
 
 
-BENCH_OPERATIONS = {'isuscope run': 'run', 'isuscope survey-run': 'survey-run'}
+BENCH_OPERATIONS = {'isuscope run': 'run'}
 
 
 def benchmark(root):

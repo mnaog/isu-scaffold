@@ -6,7 +6,7 @@
 
 また、アプリケーションコードと設定ファイルをすべてローカルリポジトリで管理し、コマンドからサーバーへデプロイできる状態を作る。
 
-SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を8本起動する。`full-memory`が全メモリ化（読み取りと状態の判定をメモリへ移す）を、`indexes`が索引を、`n-plus-one`がN+1を、`obvious-fixes`が索引とN+1以外の自明な修正のうち全メモリ化の後も残るもの（書き込みと、DBを読まない処理）を、`runtime`が問題に依存しない実行時の設定（requestごとのlog、DB接続のpoolと`interpolateParams`、GC）を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書き、`waits`がAPIごとの待ちの口（表`ISUCON_WAITS`は空のまま。値はmainが空き時間に変える）を入れる。kickoffは、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。開始と同時に、worktree `portal`で起動したもう1つのセッションが`/portal`で、ポータルと当日マニュアルの保存、サーバーの起動に要る情報、ベンチ接続を作る。mainのセッションはその間にサーバーの起動、kickoff build設定、draftの判断を進め、portalの公式資料をmergeしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせ、完全importをcommitしたらlane `static-edge`を起動して静的ファイルの配り方（nginxからの配信、Cache-Control、gzip_static、open_file_cache）を1件1commitで先行実装させる。
+SSH確立直後に採用言語のコードとDB schemaを先行importし、初期状態をcommitする。その時点で`make kickoff`がClaude Codeのlane（`claude -p`、各自のworktreeとbranch）を7本起動する。`full-memory`が全メモリ化（読み取りと状態の判定をメモリへ移す）を、`indexes`が索引を、`n-plus-one`がN+1を、`runtime`が問題に依存しない実行時の設定（requestごとのlog、DB接続のpoolと`interpolateParams`、GC）を、それぞれ1件1commitで先行実装し、`local-env`がローカル実行環境を作り、`state-log`が状態を変える箇所へisuscopeの状態ログの呼び出しを入れて`docs/state-log.md`を書き、`waits`がAPIごとの待ちの口（表`ISUCON_WAITS`は空のまま。値はmainが空き時間に変える）を入れる。kickoffは、initializeの経路がコードに1つだけなら`.isuscope/routes.toml`の`[initialize]`も設定してcommitする。開始と同時に、worktree `portal`で起動したもう1つのセッションが`/portal`で、ポータルと当日マニュアルの保存、サーバーの起動に要る情報、ベンチ接続を作る。mainのセッションはその間にサーバーの起動、kickoff build設定、draftの判断を進め、portalの公式資料をmergeしたらlane `scenario`を起動して`docs/benchmark-scenario.md`を書かせ、完全importをcommitしたらlane `static-edge`を起動して静的ファイルの配り方（nginxからの配信、Cache-Control、gzip_static、open_file_cache）を1件1commitで先行実装させる。
 
 merge・次に測るものの判断・deploy・ベンチ・分析・採否の責任はmainのセッションが持ち、改善の調査・実装・ローカル検証はimproveのセッション（`/improve`）が持つ（mainは改善を実装しない。詳しくは`/main`）。laneの成果は根拠を照合してからmergeする。初回baseline取得前の性能変更はremoteへ反映しない。初期状態の回収と改善commitは分け、比較可能性を守る。
 
@@ -28,8 +28,7 @@ make kickoff（backgroundで実行し、.local/progress.logを追う）
   → initializeの経路がコードに1つだけなら.isuscope/routes.tomlの[initialize]へ書いてcommit（initialize-route）。
     isuscopeがaccess logからinitializeと負荷走行を分けるので、初回runから要約にinitializeが混ざらない
   → 並行してlane full-memory（全メモリ化。書き込みはDBのまま）、indexes（索引を1件1commit）、
-    n-plus-one（N+1を1handler1commit）、obvious-fixes（索引とN+1以外の、全メモリ化の後も残る自明な修正を1件1commit）、
-    runtime（log・DB接続・allocator・TCP_NODELAY・Mutexを1件1commit）、local-env（config/local/compose.yaml）、
+    n-plus-one（N+1を1handler1commit）、runtime（log・DB接続・allocator・TCP_NODELAY・Mutexを1件1commit）、local-env（config/local/compose.yaml）、
     state-log（状態ログの書き手と呼び出し、docs/state-log.md）、waits（APIごとの待ちの口。表は空）を起動。
     full-memoryは、state-log・local-envが終わったら自分で取り込んで確かめる
   → 全nodeのSSH確立、Ansible導入、初期収束、初期構成の調査
@@ -48,15 +47,15 @@ review.mdのFAILを直し、WARNをすべて判断してからCONFIRM_DRAFT=true
   → すぐlane static-edge（python3 scripts/lane.py start static-edge。nginxの設定のcommitが要る）を起動
 make first-bench（人間の確認を待たずにすぐ実行する。失敗した段階で止まる）
   → make bench-check: 全node、同期、ベンチadapterと接続先、isuscope doctorをベンチなしで検査
-  → HEADが完全importの内容のままで、アプリのunitが全nodeで動いていれば、配布されたbuildのままsurvey-runで初回ベンチ
+  → HEADが完全importの内容のままで、アプリのunitが全nodeで動いていれば、配布されたbuildのまま初回ベンチ（isuscope run）
     （ローカルbuildとdeployを待たない。baseline-readyで分析を始める）。その後に同じcommitをmake deploy
-  → そうでなければ、make deploy（kickoff buildの完了を待つ）の後にsurvey-run
+  → そうでなければ、make deploy（kickoff buildの完了を待つ）の後に初回ベンチ
   → 出力の形を確かめる前ならresultはPENDING。python3 scripts/benchmark-sample.py <run>で読み取りを確かめ、
     --apply --score N --pass true|false（自分で読んだ値）でsample・contract・--check・rescoreまで済ませる
 初回runを分析し（スコア・エラー・HTTP・SQL・ホスト負荷。最大の制約と根拠をisuscope analyzeに書く）。hookがその冒頭を`main analyzed`でimproveへ知らせる。improveが観測に基づいて改善を実装・検証して投稿する
   → baselineの後の最初のdeployで、lane state-log、続けてlane n-plus-oneを`git merge --no-ff`で取り込む
     （次のrunからbriefのstates欄が埋まり、状態についての問いに計測を足さずに答えられる）
-  → lane indexes・obvious-fixes・runtime・static-edgeのcommitをbaselineの観測と照合して選んで取り込む（laneの途中でもcommit単位で取り込める）
+  → lane indexes・runtime・static-edgeのcommitをbaselineの観測と照合して選んで取り込む（laneの途中でもcommit単位で取り込める）
   → 全メモリ化の間もimproveは全メモリ化が書き換えない所の改善を止めない。lane full-memoryが終わったら（mainを1度だけ取り込み済み）、
     mainへmergeし、laneが取り込んだ後にmainへ入ったwebapp/の変更をベンチを待つ間に全メモリ化の形へ移し、
     deployして次のベンチで最優先に測る
@@ -71,7 +70,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 - `make first-bench`は段階の間でAIの手番を待たない。
 - kickoff buildは手元のGoで数十秒で終わる。最初のdeploy前はサーバーが配布状態のまま動いていることを使い、baselineをbuildとdeployの前に取る。
 - `bench-check`はdeployに依存しないので、deployの前に流す。deployで設定（nginx、MySQL、unit）を変えたときだけ再実行する。
-- 段階を個別にやり直すときは`make bench-check`、`make deploy`、`isuscope survey-run`を直接使う。
+- 段階を個別にやり直すときは`make bench-check`、`make deploy`、`isuscope run`を直接使う。
 
 ### 再実行と判断の分担
 
@@ -84,7 +83,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 
 ### laneの起動と取り込み
 
-- `make kickoff`が起動するlaneは`config/lanes.json`の`kickoff`（既定は`full-memory`、`indexes`、`n-plus-one`、`obvious-fixes`、`local-env`、`state-log`、`waits`、`runtime`）。`KICKOFF_LANES=`で止め、`KICKOFF_LANES="indexes"`のように選べる。
+- `make kickoff`が起動するlaneは`config/lanes.json`の`kickoff`（既定は`full-memory`、`indexes`、`n-plus-one`、`local-env`、`state-log`、`waits`、`runtime`）。`KICKOFF_LANES=`で止め、`KICKOFF_LANES="indexes"`のように選べる。
 - `scenario`は公式資料が要るので、mainが`docs/official/`をcommitした直後に`python3 scripts/lane.py start scenario`で起動する。
 - `static-edge`はnginxの設定が要るので（`requires`の`config/nginx/nginx.conf`）、mainが完全importをcommitした直後に`python3 scripts/lane.py start static-edge`で起動する。`listen`・`proxy_pass`を変える`make tare`とは別の行だけを変えるが、衝突したら両方の意図を残す。open_file_cacheのcommitは`make tare`（fdの上限）の後に取り込む。
 - `full-memory`（全メモリ化）は、先行回収の直後に他のkickoffのlaneと同時に始まり、他のlaneの終わりを待たない。`config/lanes.json`の`joins`にある`state-log`・`local-env`は、laneが書き換えを済ませた後に、終わったかを`lane.py status`で見て自分で取り込み、書き換える前と後の状態ログを比べる。`n-plus-one`などの読み取りの修正は、mainが取り込んだ分を「最新のmainを取り込む」で受け取る。
@@ -94,7 +93,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
 - `state-log`は書き手のmoduleと呼び出しを2つのcommitにする。baselineの後の最初のdeployで、他のlaneより先に`git merge --no-ff lane/state-log`で取り込む（全メモリ化も同じbranchをmergeしているので、cherry-pickにしない）。取り込む前に、`docs/state-log.md`と最後の回答で、lockの中に残した呼び出しや`entered`にした箇所を確かめる。
 - `n-plus-one`は1handler1commitで積む。baselineの後の最初のdeployで、`state-log`の次に`git merge --no-ff lane/n-plus-one`で丸ごと取り込む（buildが通らない・応答を変えるcommitがあれば、mergeの後に`git revert`する）。全メモリ化が入ると読み取りはstoreへ移るので、全メモリ化が先に終わっていれば取り込まなくてよい。
 - `waits`はmoduleとmiddlewareの1commit。表が空なら挙動を変えないので、baselineの後の最初のdeployで`git merge --no-ff lane/waits`で取り込む。表に書けるrouteの一覧はlaneの最後の回答にある。
-- `indexes`・`obvious-fixes`・`runtime`・`static-edge`は1件1commitで積み、commitのたびに`.local/progress.log`へ`lane:<名前> commit <hash>`が出る。初回baselineの分析の後、観測と照合して効くcommitから`git cherry-pick`で取り込み（laneの完了は待たない）、deployして`isuscope run`で測る。laneの最後の回答にある「実装しなかった候補」も次の変更を選ぶ材料にする。
+- `indexes`・`runtime`・`static-edge`は1件1commitで積み、commitのたびに`.local/progress.log`へ`lane:<名前> commit <hash>`が出る。初回baselineの分析の後、観測と照合して効くcommitから`git cherry-pick`で取り込み（laneの完了は待たない）、deployして`isuscope run`で測る。laneの最後の回答にある「実装しなかった候補」も次の変更を選ぶ材料にする。
 
 ## ローカル実行環境を構築する
 
@@ -167,7 +166,7 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 
 ## 初回ベンチを実行する
 
-初期状態のまま`isuscope survey-run`を一度だけ実行し、標準観測と行動遷移を記録する（行動遷移と生のaccess logは以後の`run`でも毎回残る）。initializeと負荷走行の境界は、初回runより前に`.isuscope/routes.toml`の`[initialize]`で決めておく。コードに候補が1つだけならkickoffが書いてcommitする。`.local/progress.log`の`initialize-route`が`needs_choice`なら、`scripts/benchmark-markers.py suggest-route`の候補から選んで`set-route`する。完全importのcommit後に`make first-bench`で、人間の確認を待たずに実行する。
+初期状態のまま`isuscope run`を一度実行し、標準観測と行動遷移を記録する（行動遷移と生のaccess logは毎回のrunに残る）。initializeと負荷走行の境界は、初回runより前に`.isuscope/routes.toml`の`[initialize]`で決めておく。コードに候補が1つだけならkickoffが書いてcommitする。`.local/progress.log`の`initialize-route`が`needs_choice`なら、`scripts/benchmark-markers.py suggest-route`の候補から選んで`set-route`する。完全importのcommit後に`make first-bench`で、人間の確認を待たずに実行する。
 
 最初のdeployの前は、配布状態のままbaselineを取り、その後に同じcommitをdeployする（配布状態で測れなければ先にdeployする。動きは[自動化の仕様](../reference/automation.md)の「ベンチ前gateと初回run」）。baselineは配布されたbuild、2本目以降は自前のbuildなので、最初の改善runとの比較にはその差が混ざり得る。
 

@@ -62,9 +62,6 @@
     "ansible/roles/observability/files/vendor/SHA256SUMS",
     "ansible/roles/observability/files/vendor/slp_v0.2.1_linux_amd64.tar.gz",
     "ansible/roles/observability/files/vendor/slp_v0.2.1_linux_arm64.tar.gz",
-    "ansible/roles/observability/files/vendor/FlameGraph/stackcollapse-perf.pl",
-    "ansible/roles/observability/files/vendor/FlameGraph/flamegraph.pl",
-    "ansible/roles/observability/files/vendor/FlameGraph/cddl1.txt",
     "scripts/ssh-node.sh",
     "scripts/status.sh",
     "scripts/final-verification.py",
@@ -96,7 +93,6 @@
     "scripts/lane.py",
     "scripts/progress.py",
     "config/lanes.json",
-    "config/lanes/obvious-fixes.md",
     "config/lanes/runtime.md",
     "config/lanes/static-edge.md",
     "config/lanes/n-plus-one.md",
@@ -156,6 +152,10 @@
     ".claude/skills/isucon-main/types/index.d.ts"
   ],
   "remove_files": [
+    "ansible/roles/observability/files/vendor/FlameGraph/stackcollapse-perf.pl",
+    "ansible/roles/observability/files/vendor/FlameGraph/flamegraph.pl",
+    "ansible/roles/observability/files/vendor/FlameGraph/cddl1.txt",
+    "config/lanes/obvious-fixes.md",
     "ansible/roles/observability/files/vendor/alp_v1.0.21_linux_amd64.tar.gz",
     "ansible/roles/observability/files/vendor/alp_v1.0.21_linux_arm64.tar.gz",
     "scripts/spread.py",

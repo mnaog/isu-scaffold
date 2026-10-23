@@ -35,7 +35,7 @@ if jq -e --arg name "${node_name}" '.all.children.benchmark.hosts // {} | has($n
     exit 1
   fi
   if [[ "${ISUCON_ALLOW_BENCHMARK_NODE:-}" != 1 ]]; then
-    echo "refusing to connect to the benchmark node ${node_name}: run benchmarks through isuscope run / survey-run (.isuscope/benchmark.sh)" >&2
+    echo "refusing to connect to the benchmark node ${node_name}: run benchmarks through isuscope run (.isuscope/benchmark.sh)" >&2
     exit 1
   fi
 fi

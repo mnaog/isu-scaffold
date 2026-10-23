@@ -38,7 +38,6 @@ class BenchHookTest(unittest.TestCase):
     def test_benchmarks_start_only_in_the_background(self):
         for command in [
             'isuscope run --hypothesis "indexを足す"',
-            'isuscope survey-run --hypothesis "初期状態"',
             'make first-bench',
             'cd /repo && isuscope run --repeat "再測定" --hypothesis x',
             'bash scripts/first-bench.sh',

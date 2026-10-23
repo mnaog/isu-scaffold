@@ -110,7 +110,7 @@ def go_command():
 
 
 def go_environment(cache, target):
-    # 関数名のsymbolは外さない（`-ldflags=-s -w`を付けない）。perfとGoのprofileは名前で集計し、PGOも
+    # 関数名のsymbolは外さない（`-ldflags=-s -w`を付けない）。Goのprofileは名前で集計し、PGOも
     # 名前で関数を探す。`default.pgo`が`main` packageにあれば、`go build`の既定（`-pgo=auto`）がそれを使う。
     goos, goarch = target.split("/")
     environment = dict(os.environ, CGO_ENABLED="0", GOOS=goos, GOARCH=goarch, GOFLAGS="-trimpath",

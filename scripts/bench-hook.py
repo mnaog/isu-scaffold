@@ -2,7 +2,7 @@
 """Claude Code hooks around a benchmark: start it in the background, and read meanwhile.
 
 .claude/settings.json runs this next to scripts/tool-guard.py, whose shell parsing it reuses to
-find a benchmark (isuscope run / survey-run, make first-bench, scripts/first-bench.sh) in a
+find a benchmark (isuscope run, make first-bench, scripts/first-bench.sh) in a
 Bash call. Heredoc bodies and `bash -n` syntax checks do not count as starting one.
 
 - `--pre` (PreToolUse) refuses a benchmark started in the foreground, so the session can read
@@ -30,8 +30,8 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-BENCH_ISUSCOPE = {'run', 'survey-run'}
-BACKGROUND_HINT = ('ベンチ（isuscope run / survey-run / make first-bench）はBashのrun_in_background: trueで起動する。'
+BENCH_ISUSCOPE = {'run'}
+BACKGROUND_HINT = ('ベンチ（isuscope run / make first-bench）はBashのrun_in_background: trueで起動する。'
                    '完了の通知を待つ間に、次の候補を`make build`しておく。'
                    'sleepやpollingで待たない。')
 SCENARIO = 'docs/benchmark-scenario.md'
@@ -52,7 +52,7 @@ spec.loader.exec_module(isuscope_prune)
 
 
 def is_benchmark(program, args):
-    """isuscope run / survey-run, make first-bench / bench, or scripts/first-bench.sh / bench.sh, but not their help."""
+    """isuscope run, make first-bench / bench, or scripts/first-bench.sh / bench.sh, but not their help."""
     options = [a for a in args if a.startswith('-')]
     if '-h' in options or '--help' in options:
         return False

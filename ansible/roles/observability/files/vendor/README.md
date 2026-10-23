@@ -8,7 +8,6 @@ behind a rate limit still gets the same versions. The versions are pinned in
 | File | Source | License |
 | --- | --- | --- |
 | `slp_<version>_linux_<arch>.tar.gz` | `https://github.com/tkuchiki/slp/releases` (`slp_linux_<arch>.tar.gz`, LICENSE inside) | MIT |
-| `FlameGraph/stackcollapse-perf.pl`, `FlameGraph/flamegraph.pl` | `https://github.com/brendangregg/FlameGraph` at `observability_flamegraph_version` | CDDL 1.0 (`FlameGraph/cddl1.txt`) |
 
 The archives are kept as released; only the version is added to their file names.
 `SHA256SUMS` lists every file.

@@ -176,7 +176,7 @@ def measure(read, prefix, run_id, base, limit, brief):
     with ThreadPoolExecutor(max_workers=4) as pool:
         section_futures = {name: pool.submit(read, argv) for name, argv in sections.items()}
         futures = {name: pool.submit(read, argv) for name, argv in queries.items()}
-        futures['survey'] = pool.submit(survey, read)
+        futures['initial'] = pool.submit(initial, read)
         result = {name: future.result() for name, future in futures.items()}
         result['cpu_p95'] = cpu_p95(result.pop('cpu'))
         result['sections'] = {name: {'command': prefix + sections[name], 'data': future.result()}
@@ -213,8 +213,8 @@ def cpu_p95(series):
     return result
 
 
-def survey(read):
-    index = read(['sql', "SELECT id, started_at FROM runs WHERE mode='survey-run' AND passed=1 "
+def initial(read):
+    index = read(['sql', "SELECT id, started_at FROM runs WHERE passed=1 "
                   "AND state IN ('complete','degraded') ORDER BY started_at, id LIMIT 1", '--limit', '1'])
     if not index.get('rows'):
         return {'error': index.get('error'), 'run': None}
@@ -225,12 +225,12 @@ def survey(read):
 
 
 def complete(measurements):
-    """Errors may be transient and a later survey-run may appear, so neither is kept."""
+    """Errors may be transient and the first passing run may appear later, so neither is kept."""
     parts = [measurements['graph_http'], measurements['timeline'], measurements['mysql'], measurements['cpu_p95'],
-             measurements['survey'],
-             measurements['survey'].get('quality') or {},
+             measurements['initial'],
+             measurements['initial'].get('quality') or {},
              *(section['data'] for section in measurements['sections'].values())]
-    return measurements['survey'].get('run') is not None and not any(part.get('error') for part in parts)
+    return measurements['initial'].get('run') is not None and not any(part.get('error') for part in parts)
 
 
 class BoundedCache:

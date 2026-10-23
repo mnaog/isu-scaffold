@@ -1,17 +1,17 @@
-// The graph structure comes from the initial survey. HTTP labels always use the selected run.
+// The graph structure comes from the first passing run. HTTP labels always use the selected run.
 const scenarioPrefs={edgeCounts:true,scale:1};
 let scenarioRenderId=0;
 // Mermaid entity escapes keep log-derived strings out of diagram syntax and HTML.
 function mermaidText(value){return String(value).replace(/[&#"<>`\\\r\n]/g,c=>`#${c.codePointAt(0)};`);}
 function buildScenario(q,showCounts=false){
- const survey=q.survey||{},all=survey.transitions?.items||[],edges=all.slice(0,80);
+ const initial=q.initial||{},all=initial.transitions?.items||[],edges=all.slice(0,80);
  const routes=[...new Set(edges.flatMap(e=>[e.from_route,e.to_route]))].sort();
  const ids=new Map(routes.map((route,i)=>[route,'api'+i]));
  const metrics=new Map(routes.map(route=>[route,[]]));
  for(const row of q.graph_http?.rows||[]){const route=`${row.method} ${row.route}`;if(metrics.has(route))metrics.get(route).push(row);}
- const qualities=survey.quality?.rows||[],version=qualities.some(r=>r.metric==='transition.ordering_version'&&r.value>=2);
+ const qualities=initial.quality?.rows||[],version=qualities.some(r=>r.metric==='transition.ordering_version'&&r.value>=2);
  const peak=Math.max(1,...[...metrics.values()].flat().map(r=>r.total_ms??0));
- const lines=['flowchart LR',`%% Structure: ${mermaidText(survey.run||'unknown')}`,`%% HTTP values: ${mermaidText(q.latest?.short_id||'unknown')}`];
+ const lines=['flowchart LR',`%% Structure: ${mermaidText(initial.run||'unknown')}`,`%% HTTP values: ${mermaidText(q.latest?.short_id||'unknown')}`];
  for(const route of routes){const rows=metrics.get(route),max=Math.max(0,...rows.map(r=>r.total_ms??0));
   const label=[mermaidText(route),...rows.flatMap(r=>[mermaidText(`${r.node} | ${num(r.count)}回 | error ${num(r.errors)}`),mermaidText(`avg ${num(r.avg_ms,2)}ms | p95 ${num(r.p95_ms,2)}ms`),mermaidText(`合計 ${num(r.total_ms,1)}ms`)])];
   if(!rows.length)label.push('選択runの計測なし');
@@ -22,11 +22,11 @@ function buildScenario(q,showCounts=false){
  for(const edge of edges){const match=qualities.filter(r=>r.labels?.from===edge.from_route&&r.labels?.to===edge.to_route);
   const overlap=match.find(r=>r.metric==='transition.overlap_count')?.value,ambiguous=match.find(r=>r.metric==='transition.ambiguous_count')?.value;
   const unsure=!version||overlap==null||ambiguous==null||overlap>0||ambiguous>0;if(unsure)uncertain++;
-  const label=showCounts?`|"survey ${edge.count}回${unsure?' / 順序注意':''}"|`:'';
+  const label=showCounts?`|"初回 ${edge.count}回${unsure?' / 順序注意':''}"|`:'';
   lines.push(`${ids.get(edge.from_route)} ${unsure?'-.->':'-->'}${label} ${ids.get(edge.to_route)}`);
  }
  lines.push('classDef normal fill:#303d3b,stroke:#809e94,color:#edf1ee','classDef warm fill:#403d34,stroke:#b9aa84,color:#fff0cf','classDef hot fill:#493a36,stroke:#c99680,color:#fff0e8','classDef missing fill:#363b42,stroke:#929ba6,color:#c2c9d1,stroke-dasharray:4 3');
- return {source:lines.join('\n'),routes,ids,metrics,uncertain,truncated:all.length>80||survey.transitions?.truncated,version};
+ return {source:lines.join('\n'),routes,ids,metrics,uncertain,truncated:all.length>80||initial.transitions?.truncated,version};
 }
 function openScenarioRoute(route,rows,q){
  const dialog=document.querySelector('#metric-dialog'),body=document.querySelector('#metric-dialog-body');body.replaceChildren(el('h2',route));
@@ -61,12 +61,12 @@ function layoutScenario(graph,edges){
 }
 function transitionWidth(count,maximum){return 1+5*Math.max(0,Number(count)||0)/Math.max(1,maximum);}
 function drawScenarioSvg(canvas,graph,q){
- const edges=(q.survey.transitions.items||[]).slice(0,80),layout=layoutScenario(graph,edges),id='flow-arrow-'+(++scenarioRenderId);
+ const edges=(q.initial.transitions.items||[]).slice(0,80),layout=layoutScenario(graph,edges),id='flow-arrow-'+(++scenarioRenderId);
  const svg=svgEl('svg',{viewBox:`0 0 ${layout.width} ${layout.height}`,role:'img','aria-label':'APIの観測された接続とサーバー別処理時間'});
  svg.style.width=Math.max(canvas.clientWidth-36,layout.width*.8)*scenarioPrefs.scale+'px';
  const defs=svgEl('defs'),marker=svgEl('marker',{id,viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:8,markerHeight:8,markerUnits:'userSpaceOnUse',orient:'auto'});marker.append(svgEl('path',{d:'M0 0 L10 5 L0 10',fill:'#82949d'}));defs.append(marker);svg.append(defs);
  const maxTransitions=Math.max(1,...edges.map(e=>Number(e.count)||0));
- const qualities=q.survey.quality?.rows||[],peak=Math.max(1,...[...graph.metrics.values()].flat().map(r=>r.total_ms||0));
+ const qualities=q.initial.quality?.rows||[],peak=Math.max(1,...[...graph.metrics.values()].flat().map(r=>r.total_ms||0));
  for(const [i,e]of edges.entries()){
   const a=layout.nodes.get(e.from_route),b=layout.nodes.get(e.to_route),forward=b.x>a.x;
   const x=a.x+250,y=a.y+22,tx=forward?b.x:b.x+250,ty=b.y+22;
@@ -87,10 +87,10 @@ function drawScenarioSvg(canvas,graph,q){
  canvas.replaceChildren(svg);
 }
 function renderScenarioGraph(parent,q){
- const survey=q.survey||{},panel=insightPanel(parent,'transitions','APIの流れと処理時間',survey.run?`構造 ${survey.run}`:'未計測');
- if(!survey.transitions?.items?.length){renderScenarioPlaceholder(panel);return;}
- sectionNotice(panel,survey);sectionNotice(panel,q.graph_http);sectionNotice(panel,survey.quality);
- panel.append(el('p',`矢印の太さ・回数は初回surveyの遷移頻度、カードの処理時間は選択run ${q.latest?.short_id||q.latest?.id||'—'}。並行処理の合計時間はベンチ全体の待ち時間ではありません。`,'panel-note'));
+ const initial=q.initial||{},panel=insightPanel(parent,'transitions','APIの流れと処理時間',initial.run?`構造 ${initial.run}`:'未計測');
+ if(!initial.transitions?.items?.length){renderScenarioPlaceholder(panel);return;}
+ sectionNotice(panel,initial);sectionNotice(panel,q.graph_http);sectionNotice(panel,initial.quality);
+ panel.append(el('p',`矢印の太さ・回数は最初にPASSしたrunの遷移頻度、カードの処理時間は選択run ${q.latest?.short_id||q.latest?.id||'—'}。並行処理の合計時間はベンチ全体の待ち時間ではありません。`,'panel-note'));
  const toolbar=el('div',null,'scenario-toolbar'),label=el('label'),checkbox=el('input');checkbox.type='checkbox';checkbox.checked=scenarioPrefs.edgeCounts;label.append(checkbox,document.createTextNode('初回の遷移回数を表示'));toolbar.append(label);
  for(const [text,scale]of [['縮小',.75],['等倍',1],['拡大',1.25]]){const button=el('button',text);button.type='button';button.addEventListener('click',()=>{scenarioPrefs.scale=scale;const svg=canvas.querySelector('svg');if(svg)svg.style.width=`${svg.viewBox.baseVal.width*scale}px`});toolbar.append(button);}
  const download=el('button','Mermaidを保存');download.type='button';toolbar.append(download);const settings=disclosure(panel,'図の表示設定・保存','scenario-settings');settings.className='scenario-settings';settings.append(toolbar);
@@ -99,7 +99,7 @@ function renderScenarioGraph(parent,q){
  let graph;
  async function draw(){
   graph=buildScenario(q,scenarioPrefs.edgeCounts);source.textContent=graph.source;
-  note.textContent=`${graph.routes.length} API · ${Math.min(80,survey.transitions.items.length)} 遷移 · 順序注意 ${graph.uncertain}本。ノードをクリックしてHTTP詳細へ。${graph.truncated?' 遷移は上位の一部です。':''}${!graph.version?' 旧形式のsurveyのため、すべての矢印を破線で表示しています。':''}`;
+  note.textContent=`${graph.routes.length} API · ${Math.min(80,initial.transitions.items.length)} 遷移 · 順序注意 ${graph.uncertain}本。ノードをクリックしてHTTP詳細へ。${graph.truncated?' 遷移は上位の一部です。':''}${!graph.version?' 旧形式のrunのため、すべての矢印を破線で表示しています。':''}`;
   drawScenarioSvg(canvas,graph,q);
  }
  checkbox.addEventListener('change',()=>{scenarioPrefs.edgeCounts=checkbox.checked;draw()});

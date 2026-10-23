@@ -3,7 +3,6 @@
 
   python3 scripts/final-verification.py check    # make final-check: 再起動しない確認
   python3 scripts/final-verification.py reboot   # make final-reboot: 全台を再起動して、戻った後と数分後を確かめる
-  python3 scripts/final-verification.py db-late  # make final-db-late: DBが後から起動してもアプリが立ち直るか
 
 追試は、全台の再起動（順序は保証されず、長く置かれることもある）→ envcheck → 最後の負荷走行の対象へのベンチ
 （再現スコアが規定のしきい値を下回ればfail）→ もう一度再起動 → 書いたデータが残っているか → フロントエンド、
@@ -18,7 +17,6 @@ import json
 import os
 import re
 import shlex
-import signal
 import subprocess
 import sys
 import time
@@ -169,7 +167,7 @@ def node_script(config, units, http, envcheck=False, settled=False):
         '  case "$slow" in 1) say WARN "mysql slow log" "on (also check that the setting is not only SET GLOBAL)";; 0) say OK "mysql slow log" off;; *) say WARN "mysql slow log" "could not ask mysql";; esac',
         'fi',
         # このshell自身（command lineに探す語を含む）は除く。
-        'probes=$(pgrep -af "perf record|offcputime|bpftrace|isuscope-[0-9a-f]{8}|pprof" 2>/dev/null | grep -v -e pgrep -e "say()" | cut -c1-80 | paste -sd"; " -)',
+        'probes=$(pgrep -af "offcputime|bpftrace|isuscope-[0-9a-f]{8}|pprof" 2>/dev/null | grep -v -e pgrep -e "say()" | cut -c1-80 | paste -sd"; " -)',
         '[ -n "$probes" ] && say WARN "measurement processes" "$probes" || say OK "measurement processes" none',
         # Goのアプリのprofileの窓口（profile.go）。ISUCON_PROFILE_ADDRを空にすると聞かない。
         'if command -v ss >/dev/null 2>&1; then listen=$(ss -Hltn "sport = :6060" 2>/dev/null | head -n 1); '
@@ -445,77 +443,13 @@ def node_commands(report, commands, name, timeout):
     return results
 
 
-def db_late(report, config, groups, nodes):
-    databases = db_nodes(report, nodes)
-    if report.failed():
-        return
-    if not databases:
-        report.add('FAIL', 'db-late', 'database', 'no active mysql or mariadb; test not performed')
-        return
-    protected = {unit if '.' in unit else unit + '.service' for unit in config.get('protected_units', [])}
-    units = [unit for unit in unit_names(config)
-             if unit.endswith('.service') and unit.removesuffix('.service') not in MIDDLEWARE
-             and unit not in protected]
-    if not units:
-        report.add('FAIL', 'db-late', 'app units', 'no application services to restart')
-        return
-    restart = ' '.join(shlex.quote(unit) for unit in units)
-    try:
-        stopped = node_commands(report, {
-            node: f'sudo -n systemctl stop {unit} || exit $?; '
-                  f'state=$(systemctl is-active {unit}); '
-                  '[ "$state" = inactive ] || { echo "database is $state" >&2; exit 1; }'
-            for node, unit in databases.items()
-        }, 'stop database', 120)
-        if any(code != 0 for code, _, _ in stopped.values()):
-            return
-        restarted = node_commands(report, {
-            node: f'for unit in {restart}; do '
-                  'if systemctl is-enabled -q "$unit" 2>/dev/null; then '
-                  'sudo -n systemctl restart "$unit" || exit $?; '
-                  'printf "restarted\\t%s\\n" "$unit"; fi; done; '
-                  'printf "ISUSCOPE_APP_RESTART_COMPLETE\\n"'
-            for node in nodes
-        }, 'restart app without database', 120)
-        tested = False
-        for node, (code, out, _) in restarted.items():
-            if code == 0 and 'ISUSCOPE_APP_RESTART_COMPLETE' not in out.splitlines():
-                report.add('FAIL', node, 'restart app without database', 'incomplete restart output')
-            tested |= any(line.startswith('restarted\t') for line in out.splitlines())
-        if not tested:
-            report.add('FAIL', 'db-late', 'app units', 'no enabled application service was restarted')
-        if report.failed():
-            return
-        time.sleep(15)
-    except (Exception, KeyboardInterrupt) as error:
-        report.add('FAIL', 'db-late', 'interrupted', str(error) or type(error).__name__)
-    finally:
-        # Even a failed/timed-out stop may have stopped the DB remotely. Restore every
-        # database that was active before the test, and keep failures visible.
-        node_commands(report, {
-            node: f'sudo -n systemctl start {unit} && systemctl is-active --quiet {unit}'
-            for node, unit in databases.items()
-        }, 'restore database', 180)
-    if report.failed():
-        return
-    deadline = time.monotonic() + 90
-    while True:
-        attempt = Report(quiet=True)
-        check_nodes(attempt, config, groups, nodes, envcheck=False)
-        if not attempt.failed() or time.monotonic() > deadline:
-            break
-        time.sleep(10)
-    for line in attempt.lines:
-        report.add(*line)
-
-
 def emit_progress(state, message):
     subprocess.run([sys.executable, str(ROOT / 'scripts/progress.py'), 'emit', 'final', state, message],
                    cwd=ROOT, capture_output=True)
 
 
 def lock_or_exec():
-    """再起動とDBの停止は、deployやベンチと重ならないよう操作lockの中で行う。"""
+    """再起動は、deployやベンチと重ならないよう操作lockの中で行う。"""
     if os.environ.get('ISUSCOPE_LOCK_HELD') != '1':
         os.execvp('isuscope', ['isuscope', 'lock', '--path', str(LOCAL / 'operation.lock'), '--',
                                sys.executable, *sys.argv])
@@ -523,10 +457,10 @@ def lock_or_exec():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=['check', 'reboot', 'db-late', 'settled'])
+    parser.add_argument('command', choices=['check', 'reboot', 'settled'])
     parser.add_argument('--nodes', help='settled: 確かめるnode（reboot が渡す）')
     parser.add_argument('--settle', type=int, help='再起動の後、もう一度確かめるまでの秒数（既定は設定のsettle_seconds）')
-    parser.add_argument('--yes', action='store_true', help='全台を再起動する・DBを止めることの確認を省く')
+    parser.add_argument('--yes', action='store_true', help='全台を再起動することの確認を省く')
     args = parser.parse_args()
     config = load_config()
     try:
@@ -540,7 +474,7 @@ def main():
         report.add('FAIL', 'inventory', 'application nodes', 'no nodes to check')
         report.summary()
         return 1
-    if args.command in ('reboot', 'db-late'):
+    if args.command == 'reboot':
         if not args.yes:
             print(f'{args.command} touches every node ({" ".join(nodes)}); rerun with --yes', file=sys.stderr)
             return 2
@@ -587,15 +521,6 @@ def main():
         emit_progress('failed' if failed else 'settled',
                       f'after {args.settle}s: ' + ('; '.join(f'{line[1]} {line[2]}: {line[3]}' for line in failed)[:300]
                                                   if failed else 'every unit still up'))
-    elif args.command == 'db-late':
-        def interrupted(signum, frame):
-            raise KeyboardInterrupt(f'interrupted by signal {signum}')
-
-        previous = signal.signal(signal.SIGTERM, interrupted)
-        try:
-            db_late(report, config, groups, nodes)
-        finally:
-            signal.signal(signal.SIGTERM, previous)
     report.summary()
     return 1 if report.failed() else 0
 

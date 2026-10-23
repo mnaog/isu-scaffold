@@ -1,12 +1,12 @@
 # lane: full-memory（全メモリ化）
 
-あなたは、アプリが持つ状態をすべてメモリに置く書き換え（全メモリ化）を、このbranchで作る。読み取りと状態の判定はメモリで行い、書き込みはDBに残す。このlaneは、`make kickoff`がコードを先行回収した直後に、lane `state-log`・`local-env`・`indexes`・`n-plus-one`・`obvious-fixes`・`runtime`と同時に始まる。早く終えることに価値がある。mainのセッションはその間に環境構築と初回ベンチを進め、improveは全メモリ化が書き換えない所（設定・node分割など）を改善する。このlaneは、`state-log`と`local-env`が終わったら自分で取り込んで確かめ、最後に最新のmainを1度だけ取り込んでから終わる。mainはこのbranchをmainへmergeしてdeployし、PASSしてスコアが上がれば残す。価値は、応答と永続性を変えずに、DBへの読み取りとDBでの判定をなくすこと。
+あなたは、アプリが持つ状態をすべてメモリに置く書き換え（全メモリ化）を、このbranchで作る。読み取りと状態の判定はメモリで行い、書き込みはDBに残す。このlaneは、`make kickoff`がコードを先行回収した直後に、lane `state-log`・`local-env`・`indexes`・`n-plus-one`・`runtime`と同時に始まる。早く終えることに価値がある。mainのセッションはその間に環境構築と初回ベンチを進め、improveは全メモリ化が書き換えない所（設定・node分割など）を改善する。このlaneは、`state-log`と`local-env`が終わったら自分で取り込んで確かめ、最後に最新のmainを1度だけ取り込んでから終わる。mainはこのbranchをmainへmergeしてdeployし、PASSしてスコアが上がれば残す。価値は、応答と永続性を変えずに、DBへの読み取りとDBでの判定をなくすこと。
 
 ## 前提
 
 - 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。
 - このbranchは、先行回収したコードのcommitから分かれている。lane `state-log`（状態ログの呼び出し）と`local-env`（ローカル環境）は同時に動いていて、まだこのbranchに無い。取り込みは下の「state-logとlocal-envを取り込む」にある。終わった後に`docs/state-log.md`か`config/local/compose.yaml`が無ければ、そのlaneが失敗している。確かめられない範囲を最後の回答に書いて進める。
-- `indexes`・`n-plus-one`・`obvious-fixes`・`runtime`も同時に動いており、mainが取り込んだ分は「最新のmainを取り込む」で1度だけ受け取る。N+1や読み取りのSQLの修正は、全メモリ化で読み取りがstoreへ移れば要らなくなるので、衝突したらstoreの形を残す。
+- `indexes`・`n-plus-one`・`runtime`も同時に動いており、mainが取り込んだ分は「最新のmainを取り込む」で1度だけ受け取る。N+1や読み取りのSQLの修正は、全メモリ化で読み取りがstoreへ移れば要らなくなるので、衝突したらstoreの形を残す。
 - 読むもの: `docs/official/`（あれば。特に、更新の即時反映、整合性の検査、再起動の後に求められること）、`docs/benchmark-scenario.md`（あれば）、状態ログの書き手`config/state-log/state_log.go`とアプリ計測の書き手`config/app-metrics/app_metrics.go`（lane `state-log`がこれらを写す）。`docs/state-log.md`と`config/local/compose.yaml`の冒頭のコメント（ローカルで動くもの・動かないもの）は、取り込んだ後に読む。
 - 変えてよいもの: `webapp/`のアプリのコード、`docs/cache-design.md`、`config/local/flows/`（確かめるための操作の列）。schema、他の`config/`・`scripts/`・文書は変えない（mainを取り込んで入ってくる変更は別）。このlaneの間もimproveの投稿やlaneのcommitがmainへ入り続けるので、変更はメモリ化に要る範囲に留め、衝突を小さくする。
 

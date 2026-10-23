@@ -16,10 +16,10 @@ class KickoffReportTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             runs = [
-                ['run-survey-failed', '2026-10-10T06:27:52+00:00', '2026-10-10T06:28:43+00:00', 'survey-run', 'failed', None, 0],
-                ['run-baseline', '2026-10-10T06:33:04+00:00', '2026-10-10T06:34:41+00:00', 'survey-run', 'complete', 880, 1],
-                ['run-index', '2026-10-10T06:40:17+00:00', '2026-10-10T06:42:04+00:00', 'run', 'complete', 4701, 1],
-                ['run-backlog1', '2026-10-10T07:19:51+00:00', '2026-10-10T07:21:13+00:00', 'run', 'failed', 287456, 0],
+                ['run-first-failed', '2026-10-10T06:27:52+00:00', '2026-10-10T06:28:43+00:00', 'failed', None, 0],
+                ['run-baseline', '2026-10-10T06:33:04+00:00', '2026-10-10T06:34:41+00:00', 'complete', 880, 1],
+                ['run-index', '2026-10-10T06:40:17+00:00', '2026-10-10T06:42:04+00:00', 'complete', 4701, 1],
+                ['run-backlog1', '2026-10-10T07:19:51+00:00', '2026-10-10T07:21:13+00:00', 'failed', 287456, 0],
             ]
             for run_id, _, finished, *_ in runs:
                 path = root / 'isuscope-data/runs' / run_id / 'run.json'
@@ -29,7 +29,7 @@ class KickoffReportTest(unittest.TestCase):
                 path.write_text(json.dumps({'benchmark': {'finished_at': benchmark_end}}))
             stub = root / 'bin/isuscope'
             stub.parent.mkdir()
-            sql = json.dumps({'columns': ['id', 'started_at', 'finished_at', 'mode', 'state', 'score', 'passed'], 'rows': runs})
+            sql = json.dumps({'columns': ['id', 'started_at', 'finished_at', 'state', 'score', 'passed'], 'rows': runs})
             brief = json.dumps({'limits': {'columns': ['node', 'config_key', 'value', 'evidence'],
                                            'rows': [['app1', 'listen backlog', 4096, '1198 TCP listen overflows'],
                                                     ['app1', 'net.core.somaxconn', 4096, None]]}})
@@ -58,7 +58,7 @@ esac
             report = json.loads(result.stdout)
             self.assertEqual(report['baseline_run'], 'baseline')
             self.assertEqual(report['baseline_minutes'], 33.6)
-            self.assertEqual(report['survey_runs_before_baseline'], 1)
+            self.assertEqual(report['runs_before_baseline'], 1)
             self.assertEqual(report['limit_failures'], [{'run': 'backlog1', 'settings': ['listen backlog']}])
             self.assertEqual(report['best_score_60_minutes_after_baseline'], 4701)
             self.assertEqual(report['questions'], 1)

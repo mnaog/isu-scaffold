@@ -55,46 +55,6 @@
         - observability_download_tools | bool
         - observability_tools_source == 'download'
 
-    - name: Install FlameGraph scripts from the repository
-      when:
-        - observability_download_tools | bool
-        - observability_tools_source == 'bundled'
-      block:
-        - name: Create the FlameGraph directory
-          ansible.builtin.file:
-            path: "{{ observability_flamegraph_directory }}"
-            state: directory
-            owner: root
-            group: root
-            mode: '0755'
-
-        - name: Copy the bundled FlameGraph scripts
-          ansible.builtin.copy:
-            src: "vendor/FlameGraph/{{ item }}"
-            dest: "{{ observability_flamegraph_directory }}/{{ item }}"
-            owner: root
-            group: root
-            mode: "{{ '0644' if item.endswith('.txt') else '0755' }}"
-          loop: [stackcollapse-perf.pl, flamegraph.pl, cddl1.txt]
-
-    - name: Fetch FlameGraph scripts
-      ansible.builtin.git:
-        repo: https://github.com/brendangregg/FlameGraph.git
-        dest: "{{ observability_flamegraph_directory }}"
-        version: "{{ observability_flamegraph_version }}"
-        depth: 1
-      when:
-        - observability_download_tools | bool
-        - observability_tools_source == 'download'
-
-    - name: Link FlameGraph scripts into PATH
-      ansible.builtin.file:
-        src: "{{ observability_flamegraph_directory }}/{{ item }}"
-        dest: "/usr/local/bin/{{ item }}"
-        state: link
-      loop: [stackcollapse-perf.pl, flamegraph.pl]
-      when: observability_download_tools | bool
-
     - name: Install explicitly supplied observability tools
       ansible.builtin.copy:
         src: "{{ item.source }}"
@@ -135,23 +95,6 @@
   when: not ((observability_isuscope_node_directory ~ '/isuscope-node-linux-' ~ observability_go_arch[ansible_facts.architecture]) is file)
   tags: [observability_isuscope_node]
 
-- name: Allow system-wide perf sampling with kernel symbols
-  ansible.builtin.copy:
-    dest: /etc/sysctl.d/60-isuscope-perf.conf
-    content: |
-      # Managed by ansible/roles/observability: perf needs these to sample the whole node.
-      kernel.perf_event_paranoid = -1
-      kernel.kptr_restrict = 0
-    owner: root
-    group: root
-    mode: '0644'
-  register: observability_perf_sysctl
-
-- name: Apply perf sysctl settings
-  ansible.builtin.command:
-    argv: [sysctl, -p, /etc/sysctl.d/60-isuscope-perf.conf]
-  when: observability_perf_sysctl.changed
-
 - name: Probe optional observability commands
   ansible.builtin.command:
     argv: [sh, -lc, "command -v -- {{ item }}"]
@@ -168,18 +111,3 @@
   loop: "{{ observability_command_probes.results }}"
   loop_control:
     label: "{{ item.item }}"
-
-- name: Probe actual perf event access
-  ansible.builtin.command:
-    argv: [perf, stat, -e, task-clock, --, "true"]
-  register: observability_perf_probe
-  failed_when: false
-  changed_when: false
-  when: "'perf' in observability_required_commands"
-
-- name: Report unusable perf without hiding the verification failure
-  ansible.builtin.debug:
-    msg: "perf sampling is unavailable: {{ observability_perf_probe.stderr | default('not installed') }}; repair it or explicitly disable its collector before baseline"
-  when:
-    - "'perf' in observability_required_commands"
-    - observability_perf_probe.rc | default(1) != 0

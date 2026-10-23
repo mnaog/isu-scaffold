@@ -56,7 +56,7 @@ Goのruntimeが自分で数えた値があるので、次の手は計測を根�
 - `go_waits`の`mutex`、`app_runtime`の`mutex_wait_ms_per_s`が大きい: その関数がlockを持つ範囲を縮める、lockを分ける、読み取りだけの値をatomicやcopy-on-writeにする。`sched_wait_p99_max_ms`が大きいならgoroutineがCPUを待っている（core不足、GOMAXPROCS、重い処理の並列数）。
 - `go_classes`の`http`・`net`・`syscall`が大きい: nginxとアプリの間をunix socketにする（Goでは`net.Listen("unix", path)`の数行とnginxの`upstream`）、upstreamのkeepaliveを増やす、要求ごとのheaderの読み書きを減らす。
 - `go_classes`の`json`が大きい: 回数の多い応答（通知、近くの一覧など）の組み立てを手で書く、変わらない部分を前もってencodeしておく。
-- アプリの外のprocess（curlの繰り返しなど）がCPUを使っている（`cpu`欄・`hosts`のservice）: アプリの中のgoroutine（`time.Ticker`）で同じことをする。
+- アプリの外のprocess（curlの繰り返しなど）がCPUを使っている（`hosts`のservice）: アプリの中のgoroutine（`time.Ticker`）で同じことをする。
 - CPUで詰まり、上位の関数に当てる手が残っていない: PGO。最新の採用構成のrunのCPUのprofileを`make pgo RUN=<短縮ID>`で`default.pgo`にしてcommitし、投稿する（`make build`がそれを使う。仮説には、そのrunの`go_cpu`の上位とcoreの使い方を書く）。
 
 ### 1つの変更の流れ
@@ -83,7 +83,7 @@ Goのruntimeが自分で数えた値があるので、次の手は計測を根�
 
 - `code-ready`の後、コード・schema・`docs/official/`・（lane `scenario`が書いたら）`docs/benchmark-scenario.md`を読み、得点の仕組みと重そうな処理の見当をつける。
 - 初回baselineの前の性能変更はmainがremoteへ入れない。投稿は作ってよいが、測るのはbaselineの後。
-- lane `indexes`・`n-plus-one`・`obvious-fixes`・`runtime`（kickoffが起動）、`full-memory`（kickoffと同時に起動）、`static-edge`（完全importの後にmainが起動）の範囲は作らない。`make lanes`と`lane:<名前> commit`の行で確かめる。
+- lane `indexes`・`n-plus-one`・`runtime`（kickoffが起動）、`full-memory`（kickoffと同時に起動）、`static-edge`（完全importの後にmainが起動）の範囲は作らない。`make lanes`と`lane:<名前> commit`の行で確かめる。
 
 ### しないこと
 

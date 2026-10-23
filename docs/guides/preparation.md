@@ -23,7 +23,7 @@
 - `./scripts/ansible-install.sh --all`を実行し、legacy・modernの両controllerのlocalhostでAnsible moduleが動くことを確認する。Pythonと解決した依存版を記録する。対象nodeのPythonは開始後に`ansible-runtime.py`が調べて選ぶ。
 - 使用版のisuscopeをbuild/installし、`lock`、`routes`、`rescore`、`doctor`等の必要なコマンドがあることを確認する。version表示だけで同一buildとは判定しない。
 - Go（`go version`。brewが使えなければ公式tarballを`~/.local/go`へ）と採用予定の汎用開発ツールを確認し、問題を使わない小さなGoプログラムでbuild・testする。配布アプリのGoの版・依存module・DB schemaは公開後に合わせる（go.modが求める版は`GOTOOLCHAIN=auto`が取得する）。
-- `./scripts/fetch-observability-tools.sh`で、repoへ取り込んだslp・FlameGraphがpin済みの版とSHA256SUMSに一致することを確認する。版を上げる場合だけ`--update`で取り直してcommitする。
+- `./scripts/fetch-observability-tools.sh`で、repoへ取り込んだslpがpin済みの版とSHA256SUMSに一致することを確認する。版を上げる場合だけ`--update`で取り直してcommitする。
 - `make isuscope-node`で、nodeでaccess logの差分を集計する`isuscope-node`を、installしたisuscopeのsourceからLinuxの静的binary（amd64とarm64）としてbuildし、`.local/isuscope-node/`へ置く。bootstrapがnodeへcopyし、isuscopeの`alp` collectorがaccess logの差分をnode上で集計する。無いと`alp` collectorが失敗し、runにHTTPの計測が残らない。muslの静的binaryなのでnodeのOSに依存せず、Dockerも要らない。`./scripts/build-isuscope-node.sh --check`で、置いたbinaryがinstallしたisuscopeと同じbuildかを確かめ、BUILD_IDを記録する。isuscopeを入れ直したら作り直す。
 - `make builder-images`で`linux/amd64`・`linux/arm64`の標準libraryを事前にbuildし、所要時間を記録する。問題のコードは使わない。
 - 配布可能な計測toolの取得元・版を固定する。ローカルへ事前取得する場合はhashと再取得手順を残す。サーバーのOS・architecture・kernelに依存するpackageの選択と導入は公開後に行う。

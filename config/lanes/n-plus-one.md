@@ -1,19 +1,19 @@
 # lane: n-plus-one
 
-あなたは`make kickoff`が先行回収したアプリのN+1を、先行して直す。索引はlane `indexes`が、N+1以外の自明な修正はlane `obvious-fixes`が同時に行う。lane `full-memory`（全メモリ化）も同時に始まり、読み取りをstoreへ移す。このlaneのcommitは、全メモリ化が入るまでの間と、全メモリ化が入らなかったときの土台なので、速さが価値。高頻度の経路から順に、小さく確実に入れ、残りは候補として回答に書いて早く終える。mainのセッションは同時に環境構築と初回ベンチ（baseline）を進め、baselineの後にこのbranchを取り込む。
+あなたは`make kickoff`が先行回収したアプリのN+1を、先行して直す。索引はlane `indexes`が同時に行う。lane `full-memory`（全メモリ化）も同時に始まり、読み取りをstoreへ移す。このlaneのcommitは、全メモリ化が入るまでの間と、全メモリ化が入らなかったときの土台なので、速さが価値。高頻度の経路から順に、小さく確実に入れ、残りは候補として回答に書いて早く終える。mainのセッションは同時に環境構築と初回ベンチ（baseline）を進め、baselineの後にこのbranchを取り込む。
 
 ## 前提
 
 - 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。baseline前の変更をremoteへ反映しない規則は、mainが取り込み時に守る。
 - 変更してよいのは`webapp/`のアプリのコードだけ。schema（`webapp/sql`）、`config/`、`scripts/`、他の文書は変えない（索引はlane `indexes`の担当）。
-- lane `obvious-fixes`が同じhandlerの別の箇所を変えることがある。mergeで衝突しにくいよう、N+1を直すのに要る行だけを変え、周りを書き換えない（整形し直さない、`gofmt`をpackage全体へかけない）。
+- lane `full-memory`・`state-log`が同じhandlerの別の箇所を変えることがある。mergeで衝突しにくいよう、N+1を直すのに要る行だけを変え、周りを書き換えない（整形し直さない、`gofmt`をpackage全体へかけない）。
 
 ## 対象
 
 - ループ内SQL：要素ごとのSELECTを、IN・JOINなど1つのqueryにまとめる。要素ごとのUPDATE・INSERTも1つの文にまとめる
 - 同一request内で同じ行・同じ集計を読み直す重複query
 
-それ以外（lockingや単一行のカウンタ、transactionの範囲、不要なカラム・全件走査、外部呼び出し）はlane `obvious-fixes`の担当なので触らない。キャッシュ・メモリ化、非同期化、write-behind、整合性や永続化の時機を変える変更は実装しない。見つけたら最後の回答に候補として書く。
+それ以外（lockingや単一行のカウンタ、transactionの範囲、不要なカラム・全件走査、外部呼び出し）は、baselineの計測を見てimproveが作るので触らない。キャッシュ・メモリ化、非同期化、write-behind、整合性や永続化の時機を変える変更は実装しない。見つけたら最後の回答に候補として書く。
 
 ## 守ること
 

@@ -2,7 +2,7 @@
 """Measure the kickoff of a practice from what is already recorded.
 
 The four numbers that show whether the changes to the kickoff worked:
-- minutes from the start to the baseline (the first passing survey-run)
+- minutes from the start to the baseline (the first finished run)
 - runs in the window that failed on a connection or file limit (brief's `limits`)
 - seconds isuscope spent after each benchmark (collection and parsing)
 - questions the agents stopped on, and how long they waited for the answer
@@ -45,7 +45,7 @@ def table(section):
 
 
 def runs(root):
-    rows = table(isuscope('sql', 'SELECT id, started_at, finished_at, mode, state, score, passed '
+    rows = table(isuscope('sql', 'SELECT id, started_at, finished_at, state, score, passed '
                                  'FROM runs ORDER BY started_at'))
     for row in rows:
         row['started'] = when(row['started_at'])
@@ -108,10 +108,9 @@ def main():
     end = start + timedelta(hours=args.hours)
     all_runs = runs(args.root)
     window = [run for run in all_runs if start <= run['started'] <= end]
-    baseline = next((run for run in all_runs if run['started'] >= start and run['mode'] == 'survey-run'
-                     and run['state'] in FINISHED_STATES), None)
-    failed_surveys = [run for run in all_runs if run['started'] >= start and run['mode'] == 'survey-run'
-                      and baseline and run['started'] < baseline['started']]
+    baseline = next((run for run in all_runs if run['started'] >= start and run['state'] in FINISHED_STATES), None)
+    before_baseline = [run for run in all_runs if run['started'] >= start
+                       and baseline and run['started'] < baseline['started']]
     failed = [run for run in window if run['state'] in ('failed', 'aborted')]
     after = [run['after_seconds'] for run in window if run['after_seconds'] is not None]
     best_60 = None
@@ -128,7 +127,7 @@ def main():
         'baseline_minutes': round((baseline['finished'] - start).total_seconds() / 60, 1)
         if baseline and baseline['finished'] else None,
         'baseline_run': baseline['id'][-8:] if baseline else None,
-        'survey_runs_before_baseline': len(failed_surveys),
+        'runs_before_baseline': len(before_baseline),
         'runs': len(window),
         'passed': sum(1 for run in window if run['passed'] == 1),
         'failed': len(failed),
@@ -146,7 +145,7 @@ def main():
     hours = f'{args.hours:g}'
     print(f'kickoffの指標（{start:%Y-%m-%d %H:%M:%S}から{hours}時間）')
     print(f"- 開始からbaselineまで: {report['baseline_minutes']}分（{report['baseline_run']}、"
-          f"その前のsurvey-run {report['survey_runs_before_baseline']}回）")
+          f"その前のrun {report['runs_before_baseline']}回）")
     print(f"- run: {report['runs']}回（PASS {report['passed']}、FAIL・中断 {report['failed']}）、"
           f"1サイクル平均 {report['cycle_minutes']}分")
     settings = '、'.join(f"{item['run']} {' / '.join(item['settings'])}" for item in report['limit_failures'])

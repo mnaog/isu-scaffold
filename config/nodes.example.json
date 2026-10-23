@@ -3,7 +3,7 @@
     "name": "app1",
     "host": "192.0.2.10",
     "group": "application",
-    "roles": ["app", "nginx", "mysql", "perf"],
+    "roles": ["app", "nginx", "mysql"],
     "user": "ubuntu"
   },
   {

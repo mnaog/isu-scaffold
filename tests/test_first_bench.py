@@ -73,13 +73,13 @@ class FirstBenchTests(unittest.TestCase):
         result = self.run_first_bench(HYPOTHESIS='初期状態を記録する')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.lines(), ['bench-check', 'benchmark-prepare REQUIRE_ACTIVE=1 check-only',
-                                        'isuscope survey-run --hypothesis 初期状態を記録する', 'deploy'])
+                                        'isuscope run --hypothesis 初期状態を記録する', 'deploy'])
         self.assertEqual((self.repo / '.local/current-import-commit').read_text().strip(), self.head())
         self.assertEqual(self.states(), ['started', 'checked', 'distributed', 'baseline-ready',
                                          'deployed', 'complete'])
 
-    def fake_survey_run(self, state):
-        """A survey-run that records one run in the given state and exits 1, as isuscope does for
+    def fake_baseline_run(self, state):
+        """A baseline run that records one run in the given state and exits 1, as isuscope does for
         every result that is not a PASS."""
         runs = json.dumps({'runs': {'columns': ['id', 'state'], 'rows': [['new-run', state]]}})
         (self.repo / 'bin/isuscope').write_text(
@@ -90,24 +90,24 @@ class FirstBenchTests(unittest.TestCase):
         # practice-12-sixth: the adapter left the first result pending, isuscope exited 1 and
         # first-bench stopped before baseline-ready and deploy.
         self.record_import()
-        self.fake_survey_run('pending')
+        self.fake_baseline_run('pending')
         result = self.run_first_bench(HYPOTHESIS='初期状態を記録する')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.lines()[-2:], ['isuscope survey-run --hypothesis 初期状態を記録する', 'deploy'])
+        self.assertEqual(self.lines()[-2:], ['isuscope run --hypothesis 初期状態を記録する', 'deploy'])
         self.assertIn('scripts/benchmark-sample.py new-run', result.stdout)
         self.assertEqual(self.states(), ['started', 'checked', 'distributed', 'baseline-ready',
                                          'deployed', 'complete'])
 
     def test_a_failed_baseline_stops_before_deploy(self):
         self.record_import()
-        self.fake_survey_run('failed')
+        self.fake_baseline_run('failed')
         result = self.run_first_bench()
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn('deploy', self.lines())
 
     def test_a_change_committed_during_the_baseline_is_not_deployed_unmeasured(self):
         self.record_import()
-        # The fake survey-run stands for the agent cherry-picking a lane commit meanwhile.
+        # The fake baseline run stands for the agent cherry-picking a lane commit meanwhile.
         (self.repo / 'bin/isuscope').write_text(
             self.FAKE_LIST + 'echo "isuscope $*" >> "$EVENTS"\n'
             'echo "fn main() { indexed() }" > webapp/go/main.go\n'
@@ -140,7 +140,7 @@ class FirstBenchTests(unittest.TestCase):
                 result = self.run_first_bench(**case.get('env', {}))
                 self.assertEqual(result.returncode, 0, result.stderr)
                 steps = [line for line in self.lines() if not line.startswith('benchmark-prepare')]
-                self.assertEqual(steps, ['bench-check', 'deploy', 'isuscope survey-run --hypothesis 初期状態の負荷構造とベンチシナリオを記録する'])
+                self.assertEqual(steps, ['bench-check', 'deploy', 'isuscope run --hypothesis 初期状態の負荷構造とベンチシナリオを記録する'])
                 self.assertFalse((self.repo / '.local/current-import-commit').exists())
 
     def test_failed_check_never_deploys_or_benchmarks(self):

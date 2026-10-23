@@ -5,12 +5,6 @@
     "isuscope-data/*",
     "tests/*",
     ".github/*",
-    "docs/ai-compare/*",
-    "scripts/ai-compare/*",
-    "config/ai-compare/*",
-    "docs/research/*",
-    "docs/roles/*",
-    "docs/official/lithosai-*",
     "config/new-repo.json",
     "config/preparation/*",
     "scripts/new-contest-repo.py"

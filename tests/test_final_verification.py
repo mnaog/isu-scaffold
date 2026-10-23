@@ -1,7 +1,6 @@
 import importlib.util
 import json
 import os
-import signal
 import shutil
 import subprocess
 import tempfile
@@ -85,36 +84,6 @@ class FinalVerificationTests(unittest.TestCase):
         self.assertIn("table counts", result.stdout)
         self.assertFalse((self.repo / ".local/final-snapshot.json").exists())
         self.assertEqual((self.repo / ".local/app1.boot").read_text(), "0")
-
-    def test_sigterm_during_db_test_restores_database_and_fails(self):
-        script = self.repo / "scripts/ssh-node.sh"
-        script.write_text(r'''#!/usr/bin/env python3
-import os, pathlib, signal, sys
-root = pathlib.Path(os.environ["FAKE_ROOT"])
-node, command = sys.argv[1:]
-if "cannot identify database" in command:
-    print("db\tmariadb" if node == "app1" else "no-db")
-elif "systemctl stop" in command:
-    (root / "db-stopped").touch()
-elif "systemctl restart" in command:
-    if node == "app1":
-        os.kill(int((root / "parent-pid").read_text()), signal.SIGTERM)
-    print("restarted\tapp.service\nISUSCOPE_APP_RESTART_COMPLETE")
-elif "systemctl start mariadb" in command:
-    (root / "db-restored").touch()
-''')
-        (self.repo / "config/systemd").mkdir()
-        (self.repo / "config/systemd/app.service").write_text("")
-        # Write the parent's PID before exec, so the fake SSH can signal the actual command.
-        command = ("import os,pathlib,sys; pathlib.Path('.local/parent-pid').write_text(str(os.getpid())); "
-                   "os.execv(sys.executable, "
-                   "[sys.executable, 'scripts/final-verification.py', 'db-late', '--yes'])")
-        result = subprocess.run(["python3", "-c", command], cwd=self.repo, env=self.env,
-                                capture_output=True, text=True, timeout=20)
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertTrue((self.repo / ".local/db-stopped").exists(), result.stdout + result.stderr)
-        self.assertTrue((self.repo / ".local/db-restored").exists(), result.stdout + result.stderr)
-        self.assertIn(f"signal {signal.SIGTERM}", result.stdout)
 
 
 class UnitAndScoreTests(unittest.TestCase):
@@ -224,70 +193,6 @@ class UnitAndScoreTests(unittest.TestCase):
                 report = module.Report(quiet=True)
                 self.assertEqual(module.db_nodes(report, ["app"]), {})
                 self.assertEqual(report.failed(), failed)
-
-
-class DbLateTests(unittest.TestCase):
-    def setUp(self):
-        spec = importlib.util.spec_from_file_location("final_verification", ROOT / "scripts/final-verification.py")
-        self.module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(self.module)
-        self.calls = []
-
-    def run_test(self, failure=None, interruption=None):
-        module = self.module
-
-        def ssh(node, command, timeout=30):
-            self.calls.append((node, command))
-            if "systemctl stop" in command:
-                stage = "stop"
-            elif "systemctl restart" in command:
-                stage = "restart"
-            elif "systemctl start" in command:
-                stage = "restore"
-            else:
-                self.fail(command)
-            if stage == failure:
-                return 1, "", "simulated " + stage + " failure"
-            if stage == "restart":
-                return 0, "restarted\tapp.service\nISUSCOPE_APP_RESTART_COMPLETE\n", ""
-            return 0, "", ""
-
-        report = module.Report(quiet=True)
-        with patch.object(module, "db_nodes", return_value={"db": "mariadb"}), \
-                patch.object(module, "unit_names", return_value=["app.service", "mariadb.service"]), \
-                patch.object(module, "ssh", side_effect=ssh), \
-                patch.object(module.time, "sleep", side_effect=interruption), \
-                patch.object(module, "check_nodes") as checks:
-            module.db_late(report, {"http_checks": []}, {}, ["db", "app"])
-        return report, checks
-
-    def test_stop_and_restart_failures_still_restore_the_original_database(self):
-        for failure in ["stop", "restart", "restore"]:
-            with self.subTest(failure=failure):
-                self.calls.clear()
-                report, checks = self.run_test(failure=failure)
-                self.assertTrue(report.failed(), report.lines)
-                restores = [(node, cmd) for node, cmd in self.calls if "systemctl start mariadb" in cmd]
-                self.assertEqual(len(restores), 1)
-                self.assertEqual(restores[0][0], "db")
-                checks.assert_not_called()
-                if failure == "stop":
-                    self.assertFalse(any("systemctl restart" in cmd for _, cmd in self.calls))
-
-    def test_exceptions_and_interrupts_restore_the_database(self):
-        for error in [RuntimeError("unexpected failure"), KeyboardInterrupt()]:
-            with self.subTest(error=error):
-                self.calls.clear()
-                report, checks = self.run_test(interruption=error)
-                self.assertTrue(report.failed())
-                self.assertTrue(any("systemctl start mariadb" in cmd for _, cmd in self.calls))
-                checks.assert_not_called()
-
-    def test_success_checks_recovery_after_restoring_database(self):
-        report, checks = self.run_test()
-        self.assertFalse(report.failed(), report.lines)
-        checks.assert_called_once()
-        self.assertIn("systemctl start mariadb", self.calls[-1][1])
 
 
 if __name__ == "__main__":

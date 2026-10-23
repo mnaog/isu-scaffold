@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 準備で計測tool（slpのrelease、FlameGraphのscript）をrepoへ取り込み、当日nodeが
+# 準備で計測tool（slpのrelease）をrepoへ取り込み、当日nodeが
 # GitHubへ取りに行かずにAnsibleからcopyで入れられるようにする。版はAnsibleのdefaultsが正。
 #   ./scripts/fetch-observability-tools.sh           # 取り込み済みの内容をSHA256SUMSで検査する
 #   ./scripts/fetch-observability-tools.sh --update  # defaultsの版を取得し直し、SHA256SUMSを書き直す
@@ -19,8 +19,7 @@ release_tools() {
   sed -n 's/^  - {name: \([a-z]*\), version: \(v[0-9.]*\)}$/\1 \2/p' "${defaults}"
 }
 
-flamegraph_version=$(sed -n 's/^observability_flamegraph_version: \([0-9a-f]\{40\}\)$/\1/p' "${defaults}")
-if [[ -z "${flamegraph_version}" ]] || [[ -z "$(release_tools)" ]]; then
+if [[ -z "$(release_tools)" ]]; then
   echo "cannot read the pinned tool versions from ${defaults}" >&2
   exit 1
 fi
@@ -32,13 +31,11 @@ expected_files() {
       printf '%s_%s_linux_%s.tar.gz\n' "${name}" "${version}" "${arch}"
     done
   done < <(release_tools)
-  printf '%s\n' FlameGraph/stackcollapse-perf.pl FlameGraph/flamegraph.pl FlameGraph/cddl1.txt
 }
 
 if [[ "${1:-}" == --update ]]; then
   work=$(mktemp -d)
   trap 'rm -rf -- "${work}"' EXIT
-  mkdir -p "${work}/FlameGraph"
   while read -r name version; do
     for arch in "${arches[@]}"; do
       curl -fsSL -o "${work}/${name}_${version}_linux_${arch}.tar.gz" \
@@ -49,14 +46,9 @@ if [[ "${1:-}" == --update ]]; then
       }
     done
   done < <(release_tools)
-  for file in stackcollapse-perf.pl flamegraph.pl docs/cddl1.txt; do
-    curl -fsSL -o "${work}/FlameGraph/$(basename "${file}")" \
-      "https://raw.githubusercontent.com/brendangregg/FlameGraph/${flamegraph_version}/${file}"
-  done
   rm -rf -- "${vendor}"
   mkdir -p "${vendor}"
   cp -R "${work}/." "${vendor}/"
-  chmod 0755 "${vendor}/FlameGraph/"*.pl
   (cd "${vendor}" && expected_files | xargs -I{} sh -c 'test -f "{}" || { echo "missing {}" >&2; exit 1; }' && \
     expected_files | while read -r file; do sha256 "${file}"; done >SHA256SUMS)
   echo "fetched into ${vendor#"${repo_dir}"/}; review and commit it with SHA256SUMS"

@@ -29,7 +29,7 @@
 - 計測を外す。NginxのLTSV access logと、有効にしていればMySQL slow logは、`ansible/playbooks/group_vars/all.yml`の`observability_nginx_ltsv`と`observability_mysql_slow_log`をfalseにし、bootstrapを該当tagだけ再実行して撤去する（手順は`docs/reference/automation.md`）。`make tare`がnginx.confの既定のaccess_logを外しているので、LTSVを外すときはnginx.confのhttpへ`access_log off;`を書く（httpに`access_log`が1つも無いと、nginxは組み込みの既定のlogを書く）。profiler、デバッグログ、調査用processも止める。Goのアプリの計測は、アプリのunitが読むEnvironmentFile（`ISUCON_WAITS`と同じfile）で`ISUSCOPE_STATE_LOG=`・`ISUSCOPE_APP_METRICS=`・`ISUCON_PROFILE_ADDR=`を空にして止め、`ISUCON_FLIGHT_RECORDER`は消す（どれも空なら何もしない。profileの窓口が聞いていれば`make final-check`が`Go profile endpoint`で知らせる）。PGOの`default.pgo`は残してよい（buildの最適化で、動いている間は何もしない）。障害調査に最低限要るログは残す。計測の有無を比べるためのベンチは回さない。
 - `make final-check`を通す（再起動しない。数十秒）。FAILを全部直し、WARNは理由を確かめる。見る項目は次のとおり。
   - 手元: git（clean、push済み）、HEADとdeploy済みのcommit、最後のrunのPASSと、最後のrunと同じ構成のrunの最悪値が最後のスコアのしきい値以上か、EC2（全台running、同じVPC、台数・種別、security group）
-  - 全node: 動いているのに自動起動しないunit・自動起動するのに動いていないunit・failedのunit、残った計測（LTSV log、slow log、perfやpprofなどのprocess）、`nginx -t`、起動時のsysctl.dのfileと今の値の差（再起動で消える設定）、diskとメモリ、管理ユーザーと守るunit、`http_checks`
+  - 全node: 動いているのに自動起動しないunit・自動起動するのに動いていないunit・failedのunit、残った計測（LTSV log、slow log、pprofなどのprocess）、`nginx -t`、起動時のsysctl.dのfileと今の値の差（再起動で消える設定）、diskとメモリ、管理ユーザーと守るunit、`http_checks`
 
 ## 3. 最終ベンチと追試の再現
 
@@ -38,7 +38,6 @@
 ```text
 make final-check
 → isuscope run（1回目）、isuscope run --repeat "最終確認"（2回目）
-→ make final-db-late   DBを止めてアプリを再起動し、DBが後から戻ってもアプリが立ち直るか（再起動の順序は保証されない）
 → make final-reboot    全台を同時に再起動し、戻った後と5分後を確かめる
 → isuscope run --repeat "追試の再現"（3回目）
 → make final-reboot    3回目のベンチで書いたデータが、もう一度の再起動の後も残っているか
@@ -56,7 +55,7 @@ make final-check
 
 行数は減っていないことしか確かめない。write-behindで書き込みを遅らせるアプリは、停止時に書き切ることまで確かめる（`docs/cache-design.md`）。主催者は再起動の後に長く置くこともある。
 
-nodeの診断は、SSHの失敗・時間切れ・空の出力・途中で終わった出力もFAILにする。`final-db-late`は、DB停止とアプリ再起動の成否を確かめ、試験前に動いていたDBのunitを最後に起動する。途中の例外・Ctrl-C・SIGTERMでも復旧を試み、起動できなければFAILとして残す。強制終了（SIGKILL）や端末停止では復旧処理を実行できないので、再接続後に`make status`で確認する。
+nodeの診断は、SSHの失敗・時間切れ・空の出力・途中で終わった出力もFAILにする。
 
 - 3回のPASSと再現率は、最後の`make final-check`が出す。崩れた回があれば、原因を調べて直す。
 - 整合性エラー・失格条件・タイムアウト、資源の余裕、ベンチ後のserviceの状態は、各runの`brief`で読める。

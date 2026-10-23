@@ -13,12 +13,9 @@ observability_packages:
   - ethtool
   # isuscopeが毎runで持ち帰る生のaccess log・状態ログを、node上で約20分の1にしてから送る。
   - zstd
-  # `linux-tools-aws`などのmeta packageは、起動中kernelと異なる世代のperfを入れることがある。
-  # 実行中kernelに対応するbinaryを明示し、requiredにしたperfは`perf stat -e task-clock -- true`まで検査する。
-  - "linux-tools-{{ ansible_facts['kernel'] }}"
 # off-CPU解析はpackageが大きく導入に時間がかかるため、必要になってから有効化します。
 observability_install_offcpu: false
-# slpのpin済みreleaseとFlameGraph scriptsをnodeへ入れます。bundledはrepoへ取り込んだもの
+# slpのpin済みreleaseをnodeへ入れます。bundledはrepoへ取り込んだもの
 # （ansible/roles/observability/files/vendor、scripts/fetch-observability-tools.sh）をcopyし、
 # downloadは各nodeがGitHubから取得します。
 observability_download_tools: true
@@ -27,15 +24,12 @@ observability_tools_source: bundled
 # 存在を調べるcommandです。requiredへ移したものだけverifyを失敗させます。
 observability_probe_commands:
   - sar
-  - perf
   - slp
-  - stackcollapse-perf.pl
-  - flamegraph.pl
   - offcputime-bpfcc
   # 準備でbuildしたaccess logの集計binary。isuscopeのalp collectorはこれが無いと失敗する。
   - isuscope-node
   - zstd
-observability_required_commands: [sar, perf, slp, isuscope-node]
+observability_required_commands: [sar, slp, isuscope-node]
 
 # 事前に.local/toolsへ用意したbinary/scriptを全application nodeへ配置できます。
 observability_local_tools: []

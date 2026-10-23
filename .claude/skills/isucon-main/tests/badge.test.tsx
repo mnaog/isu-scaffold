@@ -98,10 +98,10 @@ test('a running benchmark is shown first, to main and to the other sessions', as
 
 test('a worktree session also sees the benchmark run', async ($, on) => {
   host(on, badge({ role: 'other', is_root: false, branch: 'idea/x',
-                   benchmark: { kind: 'survey-run', started_at: '', elapsed_seconds: 12 } }))
+                   benchmark: { kind: 'run', started_at: '', elapsed_seconds: 12 } }))
   await $.turn.complete(TURN)
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: /初回ベンチ実行中 12秒/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /ベンチ実行中 12秒/ })).toBeDefined()
   await ui.unmount()
 })
 

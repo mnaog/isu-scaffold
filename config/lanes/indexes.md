@@ -5,7 +5,7 @@
 ## 前提
 
 - 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。
-- 変更してよいのはschema（`webapp/sql`、initializeが流す索引定義）だけ。アプリのコードは変えない（N+1はlane `n-plus-one`、それ以外の自明な修正はlane `obvious-fixes`の担当で、同じfileを触るとmergeで衝突する）。
+- 変更してよいのはschema（`webapp/sql`、initializeが流す索引定義）だけ。アプリのコードは変えない（N+1はlane `n-plus-one`の担当で、同じfileを触るとmergeで衝突する）。
 
 ## 進め方
 

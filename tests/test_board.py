@@ -223,7 +223,7 @@ class BoardTests(unittest.TestCase):
         calls = []
         def fake(repo, argv, **kwargs):
             calls.append((argv, kwargs))
-            if 'sql' in argv: return {'rows': [{'id': 'initial-survey'}]}
+            if 'sql' in argv: return {'rows': [{'id': 'first-pass'}]}
             if 'series' in argv: return {'rows': [], 'window': 'load', 'truncated': False}
             if 'brief' in argv:
                 return {'run': 'resolved-' + argv[2], 'summary': {'state': 'complete', 'score': 0},
@@ -245,9 +245,9 @@ class BoardTests(unittest.TestCase):
         self.assertIsNone(data['sections']['sql']['data']['rows'][0]['candidate'])
         self.assertTrue(all(options['max_bytes'] == 2_000_000 for _, options in calls))
         self.assertIsNone(self.cfg.get('base_run'))
-        self.assertEqual(data['survey']['run'], 'resolved-initial-survey')
+        self.assertEqual(data['initial']['run'], 'resolved-first-pass')
         self.assertIn(self.cfg['isuscope'] + ['query', 'resolved-candidate', '--view', 'http', '--limit', '500'], [c for c, _ in calls])
-        self.assertIn(self.cfg['isuscope'] + ['query', 'initial-survey', '--metric-prefix', 'transition.', '--limit', '1000'], [c for c, _ in calls])
+        self.assertIn(self.cfg['isuscope'] + ['query', 'first-pass', '--metric-prefix', 'transition.', '--limit', '1000'], [c for c, _ in calls])
         series = [c for c, _ in calls if 'series' in c]
         self.assertEqual(len(series), 3)
         cpu = next(c for c in series if '--bucket' in c and c[c.index('--bucket') + 1] == '1')
@@ -275,7 +275,7 @@ class BoardTests(unittest.TestCase):
         self.assertEqual(data['latest']['short_id'], 'candidate')
         self.assertNotIn('error', data['sections']['http']['data'])
         self.assertEqual(data['timeline']['error'], 'load window unavailable')
-        self.assertIsNone(data['survey']['run'])
+        self.assertIsNone(data['initial']['run'])
 
     def test_board_cpu_headline_is_the_p95_of_the_source_brief_prefers(self):
         def row(node, value, collector, metric='host.cpu_busy_percent'):
@@ -312,7 +312,7 @@ class BoardTests(unittest.TestCase):
         analysis = {'body': 'first'}
         def fake(repo, argv, **kwargs):
             calls.append(argv)
-            if 'sql' in argv: return {'rows': [{'id': 'survey'}]}
+            if 'sql' in argv: return {'rows': [{'id': 'first-pass'}]}
             if 'brief' in argv:
                 return {'run': argv[2], 'summary': {'state': 'complete'}, 'review': {'latest_analysis': dict(analysis)}}
             return {'rows': []}
@@ -325,7 +325,7 @@ class BoardTests(unittest.TestCase):
         self.assertEqual([c[1] for c in calls], ['brief', 'brief'])
         self.assertEqual(second['brief']['review']['latest_analysis']['body'], 'second')
         self.assertEqual(second['sections'], first['sections'])
-        self.assertEqual(second['survey']['run'], 'survey')
+        self.assertEqual(second['initial']['run'], 'first-pass')
 
     def test_board_detail_retries_measurements_that_failed(self):
         calls = []
@@ -341,7 +341,7 @@ class BoardTests(unittest.TestCase):
             board_data.detail(self.repo, self.cfg, 'candidate', '', 50, measured)
         self.assertIn('series', [c[1] for c in calls])
 
-    def test_board_detail_rereads_until_the_initial_survey_exists(self):
+    def test_board_detail_rereads_until_the_first_passing_run_exists(self):
         calls = []
         def fake(repo, argv, **kwargs):
             calls.append(argv)

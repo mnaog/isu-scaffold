@@ -1,5 +1,5 @@
 {
-  "description": "make final-check / final-reboot / final-db-late の問題ごとの入力。kickoffで当日マニュアルの追試の節から埋める。空の項目は確かめない（そう表示する）。",
+  "description": "make final-check / final-reboot の問題ごとの入力。kickoffで当日マニュアルの追試の節から埋める。空の項目は確かめない（そう表示する）。",
   "envcheck_command": "",
   "protected_units": [],
   "admin_users": [],

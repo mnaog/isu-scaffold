@@ -205,7 +205,6 @@ class ToolGuardTest(unittest.TestCase):
             'make deploy',
             'make -j2 kickoff',
             'make first-bench',
-            'isuscope survey-run --hypothesis "初期状態"',
             'bash scripts/deploy.sh',
             './scripts/import.sh',
             'python3 scripts/tare.py',

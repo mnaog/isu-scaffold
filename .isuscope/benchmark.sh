@@ -345,7 +345,7 @@ record_run_pid() {
   local pid=$PPID args
   while [[ "${pid}" -gt 1 ]]; do
     args=$(ps -o args= -p "${pid}" 2>/dev/null) || return 0
-    if [[ "${args}" =~ isuscope[[:space:]]+(run|survey-run)([[:space:]]|$) ]]; then
+    if [[ "${args}" =~ isuscope[[:space:]]+run([[:space:]]|$) ]]; then
       printf '%s\n' "${pid}" >"${run_pid_file}"
       return 0
     fi

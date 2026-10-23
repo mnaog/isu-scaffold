@@ -100,7 +100,7 @@ python3 - "${fixture_repo}/.isuscope/config.toml" <<'PY'
 import sys, tomllib
 config = tomllib.load(open(sys.argv[1], "rb"))
 roles = {collector["name"]: collector.get("roles", []) for collector in config["collectors"]}
-assert roles["perf-series"] == ["app"], roles["perf-series"]
+assert roles["offcpu"] == ["app"], roles["offcpu"]
 assert roles["nginx-log-mark"] == ["nginx", "edge"], roles["nginx-log-mark"]
 assert roles["mysql-log-mark"] == ["db", "mysql"], roles["mysql-log-mark"]
 assert roles["host-sampler"] == [], roles["host-sampler"]
@@ -640,7 +640,7 @@ cat >"${fixture_repo}/.local/inspection/app1.json" <<'EOF'
   "service_exec_starts":["isu-go.service\t/home/isucon/webapp/go/isu-app -port 8080","nginx.service\t/usr/sbin/nginx"],
   "nginx_access_logs":["/var/log/nginx/custom.log","/var/log/nginx/isuscope-access.log"],
   "mysql_slow_logs":["/var/log/mysql/slow.log"],
-  "versions":{"nginx":"nginx/1","mysql":"mysql 8","perf":"perf 6","sar":"sar 12","slp":"slp 1"}
+  "versions":{"nginx":"nginx/1","mysql":"mysql 8","sar":"sar 12","slp":"slp 1"}
 }
 EOF
 cat >"${fixture_repo}/.local/inspection/app2.json" <<'EOF'
@@ -653,7 +653,7 @@ cat >"${fixture_repo}/.local/inspection/app2.json" <<'EOF'
   "service_fragments":["nginx.service\t/etc/systemd/system/nginx.service"],
   "nginx_access_logs":["/var/log/nginx/custom.log"],
   "mysql_slow_logs":[],
-  "versions":{"nginx":"nginx/1","mysql":"","perf":"perf 6","sar":"sar 12","slp":"slp 1"}
+  "versions":{"nginx":"nginx/1","mysql":"","sar":"sar 12","slp":"slp 1"}
 }
 EOF
 for node in ${app_nodes}; do

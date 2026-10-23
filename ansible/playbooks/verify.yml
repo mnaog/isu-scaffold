@@ -55,14 +55,6 @@
       changed_when: false
       when: inventory_hostname in groups['application']
 
-    - name: Require perf for the running kernel
-      ansible.builtin.command:
-        argv: [perf, stat, -e, task-clock, --, "true"]
-      changed_when: false
-      when:
-        - inventory_hostname in groups['application']
-        - "'perf' in observability_required_commands"
-
     - name: Show node summary
       ansible.builtin.debug:
         msg:

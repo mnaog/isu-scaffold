@@ -6,7 +6,7 @@
 
 - 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。baseline前の変更をremoteへ反映しない規則は、mainが取り込み時に守る。
 - 変更してよいのは`webapp/`のアプリのコードだけ。schema（`webapp/sql`）、`config/`、`scripts/`、文書は変えない（表を置く環境変数の行は、mainが`scripts/waits.py set`で書く）。
-- lane `full-memory`・`indexes`・`n-plus-one`・`obvious-fixes`・`state-log`・`runtime`が同時に同じpackageを変える（`runtime`はrouterからrequestごとのlogのmiddlewareを外す）。mergeで衝突しにくいよう、変更はfileの追加とrouterへのmiddlewareの1行だけにし、周りの行を書き換えない（整形し直さない、`gofmt`をpackage全体へかけない）。
+- lane `full-memory`・`indexes`・`n-plus-one`・`state-log`・`runtime`が同時に同じpackageを変える（`runtime`はrouterからrequestごとのlogのmiddlewareを外す）。mergeで衝突しにくいよう、変更はfileの追加とrouterへのmiddlewareの1行だけにし、周りの行を書き換えない（整形し直さない、`gofmt`をpackage全体へかけない）。
 
 ## 手順
 

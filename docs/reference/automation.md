@@ -1,8 +1,8 @@
 # 自動化の仕様（kickoff・deploy・rollback・ベンチ接続）
 
-大会ごとに変わる接続先、配布path、ベンチ起動方法だけを宣言し、node発見からisuscopeの初回`survey-run`直前までを再現可能にします。生成されるIP、SSH秘密鍵、調査結果は`.local/`へ置き、コード、同期規則、ベンチ接続はGitへ残します。
+大会ごとに変わる接続先、配布path、ベンチ起動方法だけを宣言し、node発見からisuscopeの初回ベンチ直前までを再現可能にします。生成されるIP、SSH秘密鍵、調査結果は`.local/`へ置き、コード、同期規則、ベンチ接続はGitへ残します。
 
-`discover`、`bootstrap`、`inspect`、設定draft生成・反映、`import`、`deploy`、`rollback`、ベンチ実行などの変更系操作は`.local/operation.lock`を共有します。scriptは`isuscope lock --path .local/operation.lock -- <script>`で自分自身を実行し直し、`isuscope run`/`survey-run`は`make discover`が書き出す`[lock] path`で同じlockを取ります。複数セッションから同時に開始した場合、後から来た操作は実行中のPID・開始時刻・操作名を表示して終了します。lockは`flock`で握るので、processが落ちればkernelが外し、古いlockは残りません。lock file自体は解放後も残ります。
+`discover`、`bootstrap`、`inspect`、設定draft生成・反映、`import`、`deploy`、`rollback`、ベンチ実行などの変更系操作は`.local/operation.lock`を共有します。scriptは`isuscope lock --path .local/operation.lock -- <script>`で自分自身を実行し直し、`isuscope run`は`make discover`が書き出す`[lock] path`で同じlockを取ります。複数セッションから同時に開始した場合、後から来た操作は実行中のPID・開始時刻・操作名を表示して終了します。lockは`flock`で握るので、processが落ちればkernelが外し、古いlockは残りません。lock file自体は解放後も残ります。
 
 ## 1. local設定を作る
 
@@ -22,7 +22,7 @@ make kickoff   # バックグラウンドで実行し、python3 scripts/progress
 # .local/draft/review.mdのFAILを直し、WARNを判断する
 CONFIRM_DRAFT=true make kickoff-apply
 # importを確認して初期状態をcommitし、python3 scripts/lane.py start static-edge
-make first-bench   # bench-check → 配布状態のままsurvey-run → deploy（配布状態で測れなければdeploy → survey-run）
+make first-bench   # bench-check → 配布状態のまま初回ベンチ → deploy（配布状態で測れなければdeploy → 初回ベンチ）
 ```
 
 `kickoff`は最初に、実行したClaude Codeのセッションがこのrepoの`docs/agent-history/`へ会話を記録しているかを`scripts/check-agent-session.py`で確かめます。別のdirectoryで起動したセッションは、ここで止まります（ベンチをこの会話へ結び付けられず、`bench-check`の`isuscope doctor`で止まるため）。Claude Codeの外の端末から実行した場合は確かめません。続いてnode発見後、回収元の1台（既定では最初のapplication node）だけSSHを確立し、`/home/isucon/webapp/go`と`/home/isucon/webapp/sql`のDDL・初期化script（`.sql`、`.sh`、`.py`、`.rb`、`.pl`）だけを先行回収します。1ファイル1MiB・合計16MiBを超えるものやそれ以外の初期データは後回しにし、`.local/code-schema-manifest.log`へ`INCLUDED`／`DEFERRED`として記録します。上限は`CODE_SCHEMA_MAX_FILE_BYTES`、`CODE_SCHEMA_MAX_TOTAL_BYTES`で変更できます。生成物の`target`、`node_modules`、`.git`は除外します。pathが異なる場合は`CODE_SOURCE_NODE`、`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`、`CODE_SCHEMA_PATH`を環境変数で明示します。回収した`config/application.env`、`webapp/go`、`webapp/sql`だけを自動commitし、他の未commit変更は含めません。この回収はコード読解開始用の暫定snapshotであり、全node一致の保証は後続の完全importが担当します。残りのnodeのSSH確立はこの転送と並行して行い（log は`.local/kickoff-other-ssh.log`）、同じkickoffの`bootstrap`はnodeの発見をやり直さず、全nodeへ届いていればSSHの確認も飛ばします。届かなかったnodeがあれば`bootstrap`のSSH段階が改めて確立し、失敗を報告します。
@@ -124,11 +124,11 @@ draft reviewはnodeごとに1回のSSHで事実を集め、次をFAILにしま�
 
 draft生成は、採用言語のコードからsessionを識別するheaderやcookie（`x-session`、`Cookie::build("app_session"`、`const SESSION_ID_KEY: &str = "SESSIONID"`など）を探し、`observability_nginx_session_source`の候補（例: `$http_x_session`、`$cookie_SESSIONID`）を`ansible-vars.json`へ入れてWARNで確認を促します。見つからなければ設定を促すWARNになります。`kickoff-apply`は反映後に計測用logのdrop-inだけを書き直します。アプリがSQLiteやPostgreSQLに依存する場合、またはPostgreSQLが動いている場合は、DB計測がMySQL slow logだけであることをWARNにします。inspectはapplication nodeだけを調べ、ベンチの台には接続しません（本番でベンチの台が参加者のaccountに置かれても、それは運営の台です）。inspectは各nodeのインスタンスの型（IMDSv2）・CPUの型番・数秒のCPU計測（1 thread、全vCPU、sha256）を`.local/inspection/<node>.json`へ残し、discoveryも`discovered-nodes.json`へ型を残します。reviewはそれを末尾の「Nodes」の表に並べ、型やCPUが混ざっているとき、同じ型で1 threadが15%以上遅いnodeがあるときにWARNを出します。結果は`.local/draft/review.md`へ残ります。FAILがある場合`kickoff`は非0で終わり、draftを直して`python3 scripts/review-draft.py`で再検査します。`kickoff-apply`は反映前にもう一度同じ検査を行い、FAILなら何も変更しません。WARNの判断は、`review.md`を読んだ操作者（人間またはその作業セッション）が行います。
 
-`kickoff-apply`は検査済みdraftの反映、再discover、sync検査、完全import、採用言語の固定まで進めます。ベンチ前の検査（`make bench-check`）は`make first-bench`が最初に行います。deployで設定（nginx、MySQL、unit）を変えたときだけ単独で再実行します。個別の段階をやり直す場合は、以下の各節にある`scripts/`のscriptを直接実行します。kickoff・kickoff-apply・laneは初回`survey-run`、deploy、mergeを実行しません。
+`kickoff-apply`は検査済みdraftの反映、再discover、sync検査、完全import、採用言語の固定まで進めます。ベンチ前の検査（`make bench-check`）は`make first-bench`が最初に行います。deployで設定（nginx、MySQL、unit）を変えたときだけ単独で再実行します。個別の段階をやり直す場合は、以下の各節にある`scripts/`のscriptを直接実行します。kickoff・kickoff-apply・laneは初回ベンチ、deploy、mergeを実行しません。
 
-完全importをcommitしたら、`make first-bench`が`bench-check`、`isuscope survey-run --hypothesis "${HYPOTHESIS}"`（既定は「初期状態の負荷構造とベンチシナリオを記録する」）、`deploy`を続けて実行し、失敗した段階で止まります。
+完全importをcommitしたら、`make first-bench`が`bench-check`、`isuscope run --hypothesis "${HYPOTHESIS}"`（既定は「初期状態の負荷構造とベンチシナリオを記録する」）、`deploy`を続けて実行し、失敗した段階で止まります。
 
-最初のdeployの前は、サーバーが完全importと同じ内容で動いています。importは各itemのdigestを`.local/imported-state.json`へ残し（nodeごとに内容が違うimportでは残しません）、`first-bench`は`scripts/imported-state.py`でHEADがまだその内容かを確かめ、`REQUIRE_ACTIVE=1 scripts/benchmark-prepare.sh`でアプリのunitが全nodeで動いてlistenするのを確かめます。どちらも通れば、そのcommitを`.local/current-import-commit`へ記録し、ローカルbuildとdeployを待たずに配布されたbuildのままsurvey-runを始めます。`check-deployed-commit.sh`は、deployの記録がない間はこの記録を稼働中のcommitとして照合します。survey-runの後に同じcommitをdeployするので、deploy経路は最初の改善の前に確かめられ、以後のrunは自前のbuildになります。survey-runの間に配る対象のfileを変えるcommit（`make tare`、laneのcommitの`cherry-pick`など）が入っていたら、測っていない変更を配らないようdeployを飛ばし（`deploy-skipped`）、次の`isuscope run`の前に`make deploy`します。どちらかが通らなければ`fallback`を出し、従来どおりdeployしてからsurvey-runします。`FIRST_BENCH_MODE=deploy`なら常にdeployが先です。AIが段階ごとに終了へ気づいて次を打つ待ち時間を消すためのもので、draftの判断とimportのcommitは前もって操作者が済ませます。`webapp/`か`config/`に未commitの変更があれば何もしません。lane（`ISUCON_LANE`）からは動かず、tool-guardも止めます。runへ会話を紐付けるため、mainのセッションから実行します。各段階は自分で操作lockを取るので、このcommand自体はlockを持ちません。進行は`.local/progress.log`の`first-bench`の行（`checked`、`distributed`／`fallback`、`baseline-ready`、`deployed`／`deploy-skipped`、`complete`、段階の`failed`）に出ます。`baseline-ready`が出たら、deployの終了を待たずに`isuscope brief latest`で分析を始めます。
+最初のdeployの前は、サーバーが完全importと同じ内容で動いています。importは各itemのdigestを`.local/imported-state.json`へ残し（nodeごとに内容が違うimportでは残しません）、`first-bench`は`scripts/imported-state.py`でHEADがまだその内容かを確かめ、`REQUIRE_ACTIVE=1 scripts/benchmark-prepare.sh`でアプリのunitが全nodeで動いてlistenするのを確かめます。どちらも通れば、そのcommitを`.local/current-import-commit`へ記録し、ローカルbuildとdeployを待たずに配布されたbuildのまま初回ベンチを始めます。`check-deployed-commit.sh`は、deployの記録がない間はこの記録を稼働中のcommitとして照合します。初回ベンチの後に同じcommitをdeployするので、deploy経路は最初の改善の前に確かめられ、以後のrunは自前のbuildになります。初回ベンチの間に配る対象のfileを変えるcommit（`make tare`、laneのcommitの`cherry-pick`など）が入っていたら、測っていない変更を配らないようdeployを飛ばし（`deploy-skipped`）、次の`isuscope run`の前に`make deploy`します。どちらかが通らなければ`fallback`を出し、従来どおりdeployしてから初回ベンチを取ります。`FIRST_BENCH_MODE=deploy`なら常にdeployが先です。AIが段階ごとに終了へ気づいて次を打つ待ち時間を消すためのもので、draftの判断とimportのcommitは前もって操作者が済ませます。`webapp/`か`config/`に未commitの変更があれば何もしません。lane（`ISUCON_LANE`）からは動かず、tool-guardも止めます。runへ会話を紐付けるため、mainのセッションから実行します。各段階は自分で操作lockを取るので、このcommand自体はlockを持ちません。進行は`.local/progress.log`の`first-bench`の行（`checked`、`distributed`／`fallback`、`baseline-ready`、`deployed`／`deploy-skipped`、`complete`、段階の`failed`）に出ます。`baseline-ready`が出たら、deployの終了を待たずに`isuscope brief latest`で分析を始めます。
 
 ベンチの台には、既定では何も接続しません。`.local/environment.env`の`BENCHMARK_NODE_ACCESS`が`none`（既定）なら、`make discover`がinventoryの`all.vars.isucon_benchmark_node_access`へそれを書き、SSHの初期設定（鍵の登録を含む）はベンチの台を飛ばし、`scripts/run-ansible-playbook.sh`はどのplaybookにも`--limit 'all:!benchmark'`を付け、`scripts/ssh-node.sh`はベンチadapterからでもベンチの台へ接続しません。本番でベンチの台が参加者のaccountに置かれても、それは運営の台だからです。練習でベンチをベンチの台へのSSHで起動する（`BENCHMARK_TRANSPORT=ssh`）ときだけ`ssh`にし、`make discover`をやり直します（`ssh`でも、手での接続はhookが止めます）。`BENCHMARK_TRANSPORT=ssh`なのに`none`のままなら、`.isuscope/benchmark.sh --check`が止めます。
 
@@ -175,12 +175,11 @@ local venvへ固定versionのAnsibleを導入し、SSH接続を確立してか�
 
 Ansibleのcontrollerは対象nodeのPythonに合わせて選びます。`bootstrap.sh`はSSH確立後に`scripts/ansible-runtime.py`で全nodeの`/usr/bin/python3`の版を調べ、`legacy`（ansible-core 2.19、target Python 3.8〜3.13）か`modern`（ansible-core 2.21、target Python 3.9〜3.14）を`.local/ansible-runtime.env`へ記録します。両方に収まらない組み合わせはinventoryを分ける必要があるため停止します。依存版は`ansible/requirements-<profile>.txt`、venvは`.local/ansible-venv-<profile>`です。controller自体はPython 3.12または3.13で動かし（`config/ansible-controller.env`の`PYTHON_BIN`）、準備では`./scripts/ansible-install.sh --all`で両方を用意しておきます。Ansibleが対象nodeへ配るhelper（`tree-digest.py`など）は、`tests/test_remote_helpers.py`でPython 3.8でも動くことを確認します。
 
-slpのreleaseとFlameGraphのscriptは、準備のうちに`./scripts/fetch-observability-tools.sh --update`でrepo（`ansible/roles/observability/files/vendor/`、x86_64とarm64）へ取り込んであり、bootstrapはそれをnodeへcopyします（`observability_tools_source: bundled`）。nodeがGitHubへ出られない、`git`が無い、rate limitに当たる場合も同じ版が入ります。各nodeにGitHubから取らせる場合だけ`download`にします。版を上げたらscriptを再実行してcommitし、引数なしの実行でSHA256SUMSと照合します。計測toolの取得（package、slp、FlameGraph）が失敗しても、log・時刻同期・journalなどの土台の設定は続けます。必須toolの欠落は`verify.yml`（`make bench-check`）が検出します。取得の失敗で止めたい場合は`observability_tools_strict: true`にし、取得だけをやり直すときは`--tags observability_acquire`を使います。access logの差分を集計する`isuscope-node`は、準備で`make isuscope-node`（`scripts/build-isuscope-node.sh`）がinstallしたisuscopeのsourceからmuslの静的binaryとして`.local/isuscope-node/`へ作り、bootstrapがnodeのarchitectureに合うものを`/usr/local/bin/isuscope-node`へcopyします。無ければbootstrapはそう表示して続けますが、`isuscope-node`は必須toolなので`verify.yml`（`make bench-check`）が失敗し、isuscopeの`alp` collectorも失敗します（awkとalpで集計する経路はありません）。isuscopeを入れ直したら作り直し、`./scripts/run-ansible-playbook.sh bootstrap.yml --tags observability_isuscope_node`で置き直します。置いたbinaryが手元のisuscopeと違うbuildなら、`isuscope doctor`（`make bench-check`）のpreflightが失敗します。perfは`perf stat -e task-clock -- true`で実際にeventを取れるかまで確認します。
+slpのreleaseは、準備のうちに`./scripts/fetch-observability-tools.sh --update`でrepo（`ansible/roles/observability/files/vendor/`、x86_64とarm64）へ取り込んであり、bootstrapはそれをnodeへcopyします（`observability_tools_source: bundled`）。nodeがGitHubへ出られない、`git`が無い、rate limitに当たる場合も同じ版が入ります。各nodeにGitHubから取らせる場合だけ`download`にします。版を上げたらscriptを再実行してcommitし、引数なしの実行でSHA256SUMSと照合します。計測toolの取得（package、slp）が失敗しても、log・時刻同期・journalなどの土台の設定は続けます。必須toolの欠落は`verify.yml`（`make bench-check`）が検出します。取得の失敗で止めたい場合は`observability_tools_strict: true`にし、取得だけをやり直すときは`--tags observability_acquire`を使います。access logの差分を集計する`isuscope-node`は、準備で`make isuscope-node`（`scripts/build-isuscope-node.sh`）がinstallしたisuscopeのsourceからmuslの静的binaryとして`.local/isuscope-node/`へ作り、bootstrapがnodeのarchitectureに合うものを`/usr/local/bin/isuscope-node`へcopyします。無ければbootstrapはそう表示して続けますが、`isuscope-node`は必須toolなので`verify.yml`（`make bench-check`）が失敗し、isuscopeの`alp` collectorも失敗します（awkとalpで集計する経路はありません）。isuscopeを入れ直したら作り直し、`./scripts/run-ansible-playbook.sh bootstrap.yml --tags observability_isuscope_node`で置き直します。置いたbinaryが手元のisuscopeと違うbuildなら、`isuscope doctor`（`make bench-check`）のpreflightが失敗します。
 
 | 項目 | 内容 | 無効化する変数 |
 | --- | --- | --- |
-| 計測tool | `sysstat`、`ethtool`（ENAの上限超過counter）、実行中kernel用のperf、pin済みの`slp`、FlameGraph scripts、準備でbuildした`isuscope-node`。off-CPU用の`bpfcc-tools`は既定では入れない | `observability_install_packages`、`observability_download_tools`（取得元は`observability_tools_source`、`observability_install_offcpu`で有効化） |
-| perf権限 | `kernel.perf_event_paranoid=-1`、`kernel.kptr_restrict=0` | — |
+| 計測tool | `sysstat`、`ethtool`（ENAの上限超過counter）、pin済みの`slp`、準備でbuildした`isuscope-node`。off-CPU用の`bpfcc-tools`は既定では入れない | `observability_install_packages`、`observability_download_tools`（取得元は`observability_tools_source`、`observability_install_offcpu`で有効化） |
 | Nginx access log | `conf.d/00-isuscope-log.conf`でLTSVを`/var/log/nginx/isuscope-access.log`へ追加出力（既存のaccess_logは変えない）。sessionは`observability_nginx_session_source`で問題に合わせる | `observability_nginx_ltsv` |
 | MySQL slow log | 既定は無効。SQLはisuscopeがperformance_schemaのstatement digestから取る（`mysql-digest`）。digestが使えないMariaDBなどでだけtrueにし、`zzz-isuscope-slow.cnf`で`long_query_time=0`を`/var/log/mysql/isuscope-slow.log`へ出力する | `observability_mysql_slow_log`（既定false） |
 | log rotation | 上記2つを512MiBで世代交代し、logrotateを1時間ごとに実行 | — |
@@ -240,7 +239,7 @@ DBを別のnodeへ移すなど、nodeの役割を変えるときは、次をま�
 1. `.local/node-overrides.json`で各nodeの`roles`を書き換え、`make discover`をやり直す。groupの所属（`role_mysql`など）はここから決まる。
 2. `config/sync.json`で、移した役割のitemの`source_node`を、新しくその役割を持つnodeにする。古いnodeのままだと、deployの検証が`source_node ... is not in sync item group`で止まる。
 3. `post_deploy_commands`・`rollback_commands`・`status_commands`の文字列のcommand（全application nodeで動く）を、役割のgroupを持つobjectにする。役割を外したnodeでは、そのserviceを`systemctl disable --now`しておく。止めたserviceの検査が全nodeに残っていると、deployが失敗してrollbackする。
-4. 別のnodeのDBへつなぐアプリは、DBより先に起動し得る。deployは全nodeの検査を同時に流し、再起動の順序も保証されない。そのため、アプリが起動時にDBを待つか、再接続するようにする。起動の検査も、`is-active`を数秒待つ形にする。終了前の再起動試験（`make final-db-late`）でも同じことを確かめる。
+4. 別のnodeのDBへつなぐアプリは、DBより先に起動し得る。deployは全nodeの検査を同時に流し、再起動の順序も保証されない。そのため、アプリが起動時にDBを待つか、再接続するようにする。起動の検査も、`is-active`を数秒待つ形にする。終了前の再起動試験（`make final-reboot`、全台を同時に再起動する）でも同じことを確かめる。
 
 commandのobjectには`"when": ["nginx-*"]`のように、そのcommandが扱うitemの名前（fnmatchのpattern）を書けます。deployはそのitemが変わったときだけ実行します（`scripts/deploy-plan.py`）。`when`のないcommandは毎回実行します。draftはnginxの検査とreloadに`nginx-*`、Goの再起動に`go-app`・`go-service`・`app-env*`、daemon-reloadに`go-service`を付け、`make tare`と`make durability`はMySQLの再起動に`mysql-*`、`99-tare.conf`の読み込み（`sysctl -q -p`。OS既定のfileは読み直さないので、存在しないkeyの警告が出ない）に`tare-sysctl`を付けます。Goのコードだけを変えたdeployでMySQLを再起動しないので、毎回のベンチがbuffer poolの冷えた状態から始まることもありません。
 
@@ -274,7 +273,7 @@ make deploy
 make status
 ```
 
-`make final-check`・`make final-reboot`・`make final-db-late`（`scripts/final-verification.py`）は、終了前に主催者の追試で落ちる原因を確かめます（手順は`docs/guides/finish.md`）。問題ごとの値（envcheckのcommand、守るunitと管理ユーザー、確かめるURL、インスタンス種別と台数、再現スコアのしきい値）は`config/final-check.json`に書きます。確かめるunitは、その設定の`units`、`config/sync.json`の`systemctl`の行（is-active、enable、restartなど）、`config/systemd/`のunit、nginx・mysql・mariadbなどのmiddlewareで、nodeに無いunitと、止まっていてenableもされていないunitは数えません。結果は1行ずつOK・WARN・FAIL・INFOで出し、FAILがあれば1で終わります。再起動とDBの停止は操作lockの中で行い、mainのセッションだけが実行できます（`make final-check`は読み取りなので、どのセッションからも実行できます）。ISUCON9〜14の追試の手順と、実際に失格・事故になった例（enableしていないservice、DBより先に起動して落ちるアプリ、15分後に止められたDB、再起動で消える設定、追試の2回目で落ちるアプリ）から項目を選んでいます。
+`make final-check`・`make final-reboot`（`scripts/final-verification.py`）は、終了前に主催者の追試で落ちる原因を確かめます（手順は`docs/guides/finish.md`）。問題ごとの値（envcheckのcommand、守るunitと管理ユーザー、確かめるURL、インスタンス種別と台数、再現スコアのしきい値）は`config/final-check.json`に書きます。確かめるunitは、その設定の`units`、`config/sync.json`の`systemctl`の行（is-active、enable、restartなど）、`config/systemd/`のunit、nginx・mysql・mariadbなどのmiddlewareで、nodeに無いunitと、止まっていてenableもされていないunitは数えません。結果は1行ずつOK・WARN・FAIL・INFOで出し、FAILがあれば1で終わります。再起動とDBの停止は操作lockの中で行い、mainのセッションだけが実行できます（`make final-check`は読み取りなので、どのセッションからも実行できます）。ISUCON9〜14の追試の手順と、実際に失格・事故になった例（enableしていないservice、DBより先に起動して落ちるアプリ、15分後に止められたDB、再起動で消える設定、追試の2回目で落ちるアプリ）から項目を選んでいます。
 
 `make status`（`scripts/status.sh`）は全nodeを並列に検査します。nodeごとに1回のSSHで、そのnodeの様子（load、メモリ、disk、失敗したunit、待ち受けport、直近30分のOOM kill、直近10分のerror、MySQLの実行中のSQL）と、`config/sync.json`の`status_commands`の結果を返します。node上の各行は5秒、node全体は`STATUS_TIMEOUT_SECONDS`（既定20秒）で打ち切り、応答しないnodeは「no answer」、接続できないnodeは「SSH failed」と出します。終了コードが失敗になるのは`status_commands`の失敗と、応答しない・接続できないnodeだけです。このSSHは使い回しの接続（ControlMaster）を使いません。固まったnodeへの古い接続に乗って待たないためです。`scripts/ssh-node.sh`はどの接続にも`ServerAliveInterval=5`・`ServerAliveCountMax=3`を付け、接続した後にnodeが応答しなくなった場合も約15秒で切ります（接続の段階は`ConnectTimeout=5`）。メモリを使い切ったnodeには、時間制限の無い手打ちのsshが長く固まり、portが開くのを待つloopでは原因に気付くのが遅れます。
 
@@ -354,7 +353,7 @@ python3 scripts/isuxportal-bench.py probe --portal https://portal.example --targ
 ```bash
 make first-bench   # 次を続けて実行する（配布状態で測れないときはdeployが先）
 # make bench-check
-# isuscope survey-run --hypothesis "初期状態の負荷構造とベンチシナリオを記録する"
+# isuscope run --hypothesis "初期状態の負荷構造とベンチシナリオを記録する"
 # make deploy
 ```
 

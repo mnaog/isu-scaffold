@@ -28,12 +28,12 @@ function elapsedSince(value){
 function operationLines(d){
  const a=d.activity||{},q=d.metrics||{},op=a.operation,lines=[];
  if(op){
-  const names={'isuscope run':'ベンチ実行中','isuscope survey-run':'初回ベンチ実行中','deploy.sh':'deploy実行中','rollback.sh':'rollback実行中'};
+  const names={'isuscope run':'ベンチ実行中','deploy.sh':'deploy実行中','rollback.sh':'rollback実行中'};
   lines.push((names[op.operation]||'共有操作実行中')+(elapsedSince(op.started_at)?' · '+elapsedSince(op.started_at)+'経過':''));
  }
  const run=q.latest;
  if(run)lines.push(`直近ベンチ ${(run.short_id||run.id.slice(-8))} · ${run.passed===true?'PASS':run.passed===false?'FAIL':run.state} · ${analysisLabel(run)}`);
- if(!(op?.operation==='isuscope run'||op?.operation==='isuscope survey-run')){
+ if(op?.operation!=='isuscope run'){
   for(const r of q.running||[])lines.push(`未終了ベンチの記録 ${r.short_id||r.id.slice(-8)} · 開始から${elapsedSince(r.started_at)||'不明'}（実行継続は未確認）`);
  }
  if(a.deploy){
