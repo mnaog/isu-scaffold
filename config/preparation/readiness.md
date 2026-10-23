@@ -28,7 +28,7 @@
 | `./scripts/fetch-observability-tools.sh`（slp・FlameGraph） | 未完了 | | |
 | `make isuscope-node`と`./scripts/build-isuscope-node.sh --check`（BUILD_ID） | 未完了 | | |
 | `make builder-images`（Goの版と所要時間） | 未完了 | | |
-| `bash tests/kickoff-automation.sh`と`make test` | 未完了 | | |
+| 元のisu-scaffoldのcommitで`bash tests/kickoff-automation.sh`と`make test`（またはそのcommitのGitHub Actions）が通っている | 未完了 | | |
 
 ## AIと運用経路
 

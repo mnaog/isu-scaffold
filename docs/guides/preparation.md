@@ -27,7 +27,7 @@
 - `make isuscope-node`で、nodeでaccess logの差分を集計する`isuscope-node`を、installしたisuscopeのsourceからLinuxの静的binary（amd64とarm64）としてbuildし、`.local/isuscope-node/`へ置く。bootstrapがnodeへcopyし、isuscopeの`alp` collectorがaccess logの差分をnode上で集計する。無いと`alp` collectorが失敗し、runにHTTPの計測が残らない。muslの静的binaryなのでnodeのOSに依存せず、Dockerも要らない。`./scripts/build-isuscope-node.sh --check`で、置いたbinaryがinstallしたisuscopeと同じbuildかを確かめ、BUILD_IDを記録する。isuscopeを入れ直したら作り直す。
 - `make builder-images`で`linux/amd64`・`linux/arm64`の標準libraryを事前にbuildし、所要時間を記録する。問題のコードは使わない。
 - 配布可能な計測toolの取得元・版を固定する。ローカルへ事前取得する場合はhashと再取得手順を残す。サーバーのOS・architecture・kernelに依存するpackageの選択と導入は公開後に行う。
-- `bash tests/kickoff-automation.sh`（5台構成は`FIXTURE_APP_NODES=5 bash tests/kickoff-automation.sh`）と`make test`で、問題や実サーバーを使わずimport/deploy/rollback、worktree、ボードの動作を確認する。
+- 問題や実サーバーを使わない確認（import/deploy/rollback、worktree、ボードの動作）は、repoを作った元のisu-scaffoldのcommitで済ませる。大会用repoには`tests/`とCIを入れない（`config/new-repo.json`。AIが読む量を減らすため）。isu-scaffoldの`bash tests/kickoff-automation.sh`（5台構成は`FIXTURE_APP_NODES=5 bash tests/kickoff-automation.sh`）と`make test`を回すか、そのcommitのGitHub Actions（`test` workflow）が通っていることを確かめ、`docs/preparation/scaffold-source.json`のcommitと照らす。
 
 ## AIと運用経路
 

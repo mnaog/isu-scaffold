@@ -29,7 +29,7 @@ help:
 		'make pgo RUN=<run> [NODE=<node>]      runで取ったGoのCPU profileをPGOのprofile（default.pgo）にする' \
 		'make codemap [CHECK=read-sql] [JSON=1]  GoのアプリのAPI・handler・SQL・tableの対応表を出す' \
 		'make board                            人間向けボードを開く (127.0.0.1:8765)' \
-		'make test                             問題と実サーバーを使わないテストを実行する'
+		'make test                             問題と実サーバーを使わないテストを実行する（isu-scaffoldだけ。大会用repoにtests/は無い）'
 
 session:
 	@./scripts/session.sh "$(ROLE)" $(if $(PROMPT),"$(PROMPT)")
@@ -107,7 +107,8 @@ board:
 	@python3 scripts/board/main.py
 
 test:
-	@python3 -m unittest discover -s tests -p 'test_*.py' -v
+	@if [ -d tests ]; then python3 -m unittest discover -s tests -p 'test_*.py' -v; \
+		else echo 'tests/はisu-scaffoldにだけある（大会用repoには入れない）。testはisu-scaffoldで回す'; fi
 
 .PHONY: local-up local-check local-down local-logs local-reset local-state-log local-flow local-race
 local-up:

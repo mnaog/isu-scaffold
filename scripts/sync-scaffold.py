@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Export only the declared generic files from a committed scaffold revision."""
 import argparse
+import fnmatch
 import importlib.util
 import hashlib
 import json
@@ -25,6 +26,15 @@ def main():
         p.error('source and target must differ')
     commit = git(source, 'rev-parse', '--verify', a.ref + '^{commit}').decode().strip()
     manifest = json.loads(git(source, 'show', commit + ':config/scaffold-export.json'))
+    # What a new contest repo leaves out (the scaffold's own tests and CI, its history) is not sent
+    # to an existing one either.
+    try:
+        new_repo = json.loads(git(source, 'show', commit + ':config/new-repo.json'))
+    except subprocess.CalledProcessError:
+        new_repo = {'exclude': [], 'keep': []}
+    for name in manifest['files']:
+        if name not in new_repo.get('keep', []) and any(fnmatch.fnmatch(name, pattern) for pattern in new_repo['exclude']):
+            p.error('config/new-repo.json leaves this out of contest repos: ' + name)
     files = {}
     removals = manifest.get('remove_files', [])
     for name in [*manifest['files'], *removals]:

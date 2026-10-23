@@ -32,7 +32,8 @@ class NewContestRepoTests(unittest.TestCase):
         os.symlink("../../AGENTS.md", self.source / ".claude/rules/agents.md")
         for name in ("docs/agent-history/Readme.md", "docs/agent-history/20261013-123404.md",
                      "docs/official/lithosai-20261001/opencode.md", "docs/official/README.md",
-                     "docs/ai-compare/Readme.md", "isuscope-data/README.md", "isuscope-data/runs/x.json"):
+                     "docs/ai-compare/Readme.md", "isuscope-data/README.md", "isuscope-data/runs/x.json",
+                     "tests/test_deploy.py", "tests/fixtures/sync.json", ".github/workflows/test.yml"):
             (self.source / name).parent.mkdir(parents=True, exist_ok=True)
             (self.source / name).write_text(name + "\n")
         git(self.source.parent, "init", "-q", "-b", "main", str(self.source))
@@ -56,8 +57,11 @@ class NewContestRepoTests(unittest.TestCase):
         self.assertIn("isuscope-data/README.md", files)
         for name in ("docs/agent-history/20261013-123404.md", "docs/official/lithosai-20261001/opencode.md",
                      "docs/ai-compare/Readme.md", "isuscope-data/runs/x.json", "practice.md",
-                     "config/new-repo.json", "config/preparation/readiness.md", "scripts/new-contest-repo.py"):
+                     "config/new-repo.json", "config/preparation/readiness.md", "scripts/new-contest-repo.py",
+                     # The scaffold's own tests and CI stay in the scaffold: less for the contest's AI to read.
+                     "tests/test_deploy.py", "tests/fixtures/sync.json", ".github/workflows/test.yml"):
             self.assertNotIn(name, files)
+        self.assertFalse(any(name.startswith(("tests/", ".github/")) for name in files), files)
         self.assertEqual((target / "AGENTS.md").read_text(), "# Repository instructions\n\n## ディレクトリ\n")
         self.assertTrue((target / ".claude/rules/agents.md").is_symlink())
         self.assertEqual(json.loads((target / "docs/preparation/scaffold-source.json").read_text())["commit"],

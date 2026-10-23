@@ -24,7 +24,7 @@ make lanes                             # AI lane（config/lanes.json）の結果
 
 ## templateの検査
 
-`scripts/`などを変更してpushすると、GitHub Actionsの`test` workflowがisuscopeをbuildし、shell構文と`tests/kickoff-automation.sh`を実行します。EC2やSSHは使わず、偽のremoteでdiscover、lock、import、deploy、rollback、draft検査などを検査します。手元で確認する場合は`./tests/kickoff-automation.sh`を直接実行します。application nodeの台数は`FIXTURE_APP_NODES`（既定2、CIは5も通す。3台以上ではベンチの台も2台にする）で変えられます。
+testとCIはisu-scaffoldにだけ置き、`scripts/new-contest-repo.py`が作る大会用repoと`scripts/sync-scaffold.py`の更新には入れません（`config/new-repo.json`）。`scripts/`などを変更してpushすると、GitHub Actionsの`test` workflowがisuscopeをbuildし、shell構文と`tests/kickoff-automation.sh`を実行します。EC2やSSHは使わず、偽のremoteでdiscover、lock、import、deploy、rollback、draft検査などを検査します。手元で確認する場合は`./tests/kickoff-automation.sh`を直接実行します。application nodeの台数は`FIXTURE_APP_NODES`（既定2、CIは5も通す。3台以上ではベンチの台も2台にする）で変えられます。
 
 ## ローカル実行・ビルド
 

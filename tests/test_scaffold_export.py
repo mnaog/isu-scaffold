@@ -48,6 +48,36 @@ class ExportTest(unittest.TestCase):
             self.assertIn('local changes',result.stderr)
             self.assertEqual((target/'scripts/preparation-check.py').read_text(),'local edits')
 
+    def test_files_a_new_contest_repo_leaves_out_are_not_exported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source, target = base / 'source', base / 'target'
+            for p in (source, target):
+                p.mkdir()
+                subprocess.run(['git', 'init', '-q', str(p)], check=True)
+                for k, v in [('user.name', 'Fixture'), ('user.email', 'fixture@example.invalid')]:
+                    subprocess.run(['git', '-C', str(p), 'config', k, v], check=True)
+            (source / 'scripts').mkdir()
+            (source / 'config').mkdir()
+            (source / 'tests').mkdir()
+            for name in ['sync-scaffold.py', 'preparation-check.py']:
+                shutil.copyfile(ROOT / 'scripts' / name, source / 'scripts' / name)
+            (source / 'tests/test_x.py').write_text('pass\n')
+            shutil.copyfile(ROOT / 'config/new-repo.json', source / 'config/new-repo.json')
+            (source / 'config/scaffold-export.json').write_text(json.dumps(
+                {'files': ['scripts/preparation-check.py', 'tests/test_x.py']}))
+            subprocess.run(['git', '-C', str(source), 'add', '.'], check=True)
+            subprocess.run(['git', '-C', str(source), 'commit', '-qm', 'fixture'], check=True)
+            result = subprocess.run(['python3', str(source / 'scripts/sync-scaffold.py'), str(target), '--apply'],
+                                    capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('leaves this out of contest repos: tests/test_x.py', result.stderr)
+            self.assertFalse((target / 'tests').exists())
+
+    def test_the_real_export_sends_no_tests_or_ci(self):
+        files = json.loads((ROOT / 'config/scaffold-export.json').read_text())['files']
+        self.assertFalse([name for name in files if name.startswith(('tests/', '.github/'))])
+
     def test_a_removed_file_that_comes_back_as_a_directory(self):
         # A file the scaffold removed whose path is now a directory it ships.
         with tempfile.TemporaryDirectory() as tmp:

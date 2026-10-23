@@ -1,19 +1,19 @@
 {
-  "description": "scripts/new-contest-repo.py が scaffold から大会用repoを作るときに除くもの。scaffold自身の開発で溜まった履歴・実験・別件の資料と、この複製の仕組み自身。ここに無いcommit済みのfileはすべて新しいrepoへ入る。keepは除外patternに当たっても残すfile。",
+  "description": "scripts/new-contest-repo.py が scaffold から大会用repoを作るときに除くもの。scaffold自身の開発で溜まった履歴・実験・別件の資料、scaffold自身のtestとCI（大会用repoのAIが読む量を減らす。testはscaffoldで回す）、この複製の仕組み自身。ここに無いcommit済みのfileはすべて新しいrepoへ入る。keepは除外patternに当たっても残すfile。scripts/sync-scaffold.pyも、ここで除くfileを既存の大会用repoへ送らない。",
   "exclude": [
     "docs/agent-history/*",
     "isuscope-data/*",
+    "tests/*",
+    ".github/*",
     "docs/ai-compare/*",
     "scripts/ai-compare/*",
     "config/ai-compare/*",
-    "tests/test_ai_compare.py",
     "docs/research/*",
     "docs/roles/*",
     "docs/official/lithosai-*",
     "config/new-repo.json",
     "config/preparation/*",
-    "scripts/new-contest-repo.py",
-    "tests/test_new_contest_repo.py"
+    "scripts/new-contest-repo.py"
   ],
   "keep": [
     "docs/agent-history/.gitkeep",
