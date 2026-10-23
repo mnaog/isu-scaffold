@@ -39,7 +39,10 @@
       "Bash(python3 scripts/state-log-compare.py:*)",
       "Bash(cp:*)",
       "Bash(mkdir:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(make codemap:*)",
+      "Bash(make local-race:*)",
+      "Bash(LOCAL_RACE=1 make local-up:*)"
     ],
     "timeout_minutes": 60
   },
@@ -75,7 +78,7 @@
       "timeout_minutes": 45
     },
     "state-log": {
-      "purpose": "状態を持つ対象の状態の変化をisuscopeの状態ログへ書く呼び出しと、外への呼び出し・lockの待ちを数えるアプリ計測を入れる（baselineまでdeployしない）",
+      "purpose": "状態を持つ対象の状態の変化をisuscopeの状態ログへ書く呼び出しと、外への呼び出し・lockの待ちとGoのruntimeを数えるアプリ計測、負荷の区間のGoのprofileの窓口を入れる（baselineまでdeployしない）",
       "prompt": "config/lanes/state-log.md",
       "timeout_minutes": 45
     },
