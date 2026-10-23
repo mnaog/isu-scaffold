@@ -13,7 +13,8 @@
 - `config/state-log/state_log.go`をアプリの`main` packageのdirectoryへそのまま写す（`cp config/state-log/state_log.go webapp/go/state_log.go`。`main.go`の場所が違えばそこへ）。中身は変えない。標準libraryだけで書いてあり、追加のmoduleは要らない。
 - 使い方はfile冒頭のコメントのとおり。`stateLogCreated`（作られた）、`stateLogChanged`（前の状態から変わった）、`stateLogEntered`（前の状態を知らずに変えた）、transactionの中なら`var log stateLogPending`へ`log.created`などでためてcommitの後に`log.emit()`。
 - 書き手はリクエストを待たせない（queueへ入れるだけで、あふれたら捨てて数える）。書き先は`ISUSCOPE_STATE_LOG`（無ければ`/var/tmp/isuscope-state.jsonl`、空なら書かない）。
-- アプリ計測の書き手`config/app-metrics/app_metrics.go`も同じように写す（`cp config/app-metrics/app_metrics.go webapp/go/app_metrics.go`）。中身は変えない。外への呼び出し（決済などの外部API、別のサービス）の1試行ごとの結果と時間と、lockの待ちと保持の時間を1秒ごとに集計して書く（書き先は`ISUSCOPE_APP_METRICS`、無ければ`/var/tmp/isuscope-app-metrics.jsonl`、空なら書かない）。HTTPとSQLの記録には、外への呼び出しの失敗・再試行も、アプリの中のlock待ちも出ないので入れる（practice-14では、決済の約70%の失敗と再試行、グローバルlockの待ちが、毎回journalctlと手で足したlogでしか見えなかった）。
+- アプリ計測の書き手`config/app-metrics/app_metrics.go`も同じように写す（`cp config/app-metrics/app_metrics.go webapp/go/app_metrics.go`）。中身は変えない。外への呼び出し（決済などの外部API、別のサービス）の1試行ごとの結果と時間と、lockの待ちと保持の時間を1秒ごとに集計して書く（書き先は`ISUSCOPE_APP_METRICS`、無ければ`/var/tmp/isuscope-app-metrics.jsonl`、空なら書かない）。HTTPとSQLの記録には、外への呼び出しの失敗・再試行も、アプリの中のlock待ちも出ないので入れる（practice-14では、決済の約70%の失敗と再試行、グローバルlockの待ちが、毎回journalctlと手で足したlogでしか見えなかった）。この書き手は起動時に始まり、Goのruntimeの値（GCのCPU、全mutexの待ち、goroutineが実行を待った時間、割り当て、goroutineの数）も1秒ごとに書く。そのための呼び出しは要らない。
+- Goのprofileの窓口`config/profile/`の`profile*.go`（3つ）も同じように写す（`cp config/profile/profile*.go webapp/go/`）。中身は変えない。`ISUCON_PROFILE_ADDR`（無ければ`127.0.0.1:6060`、空なら何もしない）だけで聞き、isuscopeがベンチの前後に呼んで、負荷の区間のCPU（関数ごと、アプリの関数ごと、APIごと）、mutexの取り合い、割り当てを運ぶ。APIごとのCPUを出すため、routerの前に`profileMiddleware`を通す。
 
 ## 手順
 
@@ -28,12 +29,13 @@
    - 外への呼び出し: アプリが外へ出すHTTP（`net/http`のclientなど）やgRPCの呼び出し箇所をすべて探し、1試行ごとに`appMetricsCall("<呼び先の名前>", outcome, time.Since(started))`を足す。outcomeはstatus code（`res.StatusCode`）、通信の失敗なら`"timeout"`か`"error"`。再試行の輪の中なら試行ごとに書く。呼び先の名前は決まった短い語（`payment`など）にし、IDやURLを入れない。DB（`database/sql`・sqlx）への呼び出しは対象にしない（SQLはisuscopeが測る）。
    - lock: アプリのコードにある`sync.Mutex`・`sync.RWMutex`で、requestの経路で取るものを、package変数`var <名前>Lock = appMetricsNewLock("<名前>")`と`release := <名前>Lock.acquire(mu.Lock, mu.Unlock)`・`release()`で包む（`RLock`・`RUnlock`も同じ）。`defer mu.Unlock()`なら`defer release()`に替える。`sync.Cond`に渡すlockのように、Lock・Unlockを別の場所が呼ぶものは包まずに残して理由を書く。採番だけのような、requestの経路に無いlockは包まない。
    - 応答・SQLの回数・lockの範囲を変えない。包むためにlockを取る順番やguardを持つ範囲を変えない。
-5. **確かめる。** `webapp/go`で`go build ./...`と`go vet ./...`、既存のtest（`go test ./...`）を通す。`config/local/compose.yaml`があれば`make local-up`で動かし、`ISUSCOPE_STATE_LOG`と`ISUSCOPE_APP_METRICS`を確認できる場所へ向けて、代表的な操作で状態ログが1行以上出ることと形、外への呼び出しのある操作で`app.call.*`、lockを取る操作で`app.lock.*`の行が出ることを確かめ（どちらも1秒ごとに書かれる）、`make local-down`する。確かめられなかったことは`docs/state-log.md`とcommit本文に書く。
-6. **`docs/state-log.md`を書く。** 対象の種類ごとに、状態の一覧、遷移と書いている箇所（関数と`file:line`、`changed`・`entered`・`created`のどれか）、`attrs`のkey。書かなかった状態の変化と理由（前の状態が分からず`entered`にした箇所も）。mainと、後で状態の処理を書き換える人が、呼び出しを残すための表にする。
+5. **profileの窓口をつなぐ。** routerを作った直後（他の`Use`と並べて、routeを足す前）に`r.Use(profileMiddleware)`を足す（chiの場合。echoなら`e.Use(echo.WrapMiddleware(profileMiddleware))`、net/httpだけならserverへ渡すhandlerを`profileMiddleware(mux)`で包む）。窓口のserverは`profile.go`の`init`が自分で立てるので、`main`には何も足さない。
+6. **確かめる。** `webapp/go`で`go build ./...`と`go vet ./...`、既存のtest（`go test ./...`）を通す。`config/local/compose.yaml`があれば`make local-up`で動かし、`ISUSCOPE_STATE_LOG`と`ISUSCOPE_APP_METRICS`を確認できる場所へ向けて、代表的な操作で状態ログが1行以上出ることと形、外への呼び出しのある操作で`app.call.*`、lockを取る操作で`app.lock.*`の行が出ることを確かめ（どちらも1秒ごとに書かれる）、`make local-down`する。`app.go.goroutines`などruntimeの行も出ること、container内で`curl -s -X POST '127.0.0.1:6060/debug/isuscope/start?run=check'`の後に要求を送り、`.../stop?run=check`が`isuscope-go-profile 1`で始まる行を返すことも確かめる。確かめられなかったことは`docs/state-log.md`とcommit本文に書く。
+7. **`docs/state-log.md`を書く。** 対象の種類ごとに、状態の一覧、遷移と書いている箇所（関数と`file:line`、`changed`・`entered`・`created`のどれか）、`attrs`のkey。書かなかった状態の変化と理由（前の状態が分からず`entered`にした箇所も）。mainと、後で状態の処理を書き換える人が、呼び出しを残すための表にする。
 
 ## commit
 
-1. 書き手のmoduleの追加（`state_log.go`・`app_metrics.go`）。
+1. 書き手のmoduleの追加（`state_log.go`・`app_metrics.go`・`profile*.go`）と、`profileMiddleware`の差し込み。
 2. 状態ログの呼び出しの追加と`docs/state-log.md`。
 3. 外への呼び出しとlockの計測（`app_metrics`）と、`docs/state-log.md`の「アプリ計測」の節（呼び先の名前と箇所、包んだlockの名前と箇所、包まなかったlockと理由）。
 
@@ -45,6 +47,6 @@ commit messageは英語で、1行目に変更、本文に対象の種類と状�
 
 1. commitごとに: hash、変えたfile、確かめたこと
 2. 対象の種類ごとの状態と遷移の一覧（`entered`にした箇所はそう書く）
-3. 外への呼び出しの呼び先と箇所、包んだlockと包まなかったlock（理由）
+3. 外への呼び出しの呼び先と箇所、包んだlockと包まなかったlock（理由）、`profileMiddleware`を差し込んだ箇所
 4. 書かなかった状態の変化と理由、mainが取り込み時に気をつけること（lockの中に残した呼び出し、他のlaneと触る関数が重なりそうな箇所）
 
