@@ -2,8 +2,8 @@
 
 isuscope groups runs by configuration (`config_key`: what was deployed, the node fingerprints, the
 measurement settings) and `isuscope variance` gives every run the standard deviation, relative to
-each configuration's mean, pooled over the configurations measured again by the time it started:
-the swing to expect from that run's score alone.
+each configuration's mean, pooled over the configurations measured again by the time it started
+(older configurations weigh less): the swing to expect from that run's score alone.
 """
 import importlib.util
 import json
@@ -15,16 +15,17 @@ SCRIPTS = Path(__file__).resolve().parent.parent
 
 
 def spread(repo):
-    """Per short run ID: whether it was a --repeat, and the swing known when it started."""
+    """Per short run ID: its configuration, whether it was a --repeat, and the swing known when it started."""
     output = subprocess.run(['isuscope', 'variance', '--json'], cwd=repo, capture_output=True, text=True,
                             timeout=30, check=True, env={**os.environ, 'ISUSCOPE_OUTPUT_BYTES': '0'}).stdout
     result = {}
     table = json.loads(output).get('runs') or {}
     for row in (dict(zip(table['columns'], values)) for values in table.get('rows') or []):
         known = row.get('spread')
-        result[row['run']] = {'repeat': bool(row.get('repeat')),
+        result[row['run']] = {'config': row.get('config_key'), 'repeat': bool(row.get('repeat')),
                               'spread': None if known is None else
-                              {'sigma': known, 'groups': row.get('spread_configs'), 'runs': row.get('spread_runs')}}
+                              {'sigma': known, 'groups': row.get('spread_configs'), 'runs': row.get('spread_runs'),
+                                       'effective': row.get('spread_effective_configs')}}
     return result
 
 

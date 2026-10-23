@@ -88,7 +88,7 @@ def metrics(repo, cfg, stop=None):
         result['error'] = '直近100件に完了runがありません'
         return result
     fields = ('id', 'short_id', 'started_at', 'score', 'passed', 'state', 'commit_hash', 'dirty', 'hypothesis',
-              'analysis_status', 'wait')
+              'analysis_status', 'wait', 'repeat_reason')
     result['score_history'] = [{key: run.get(key) for key in fields} for run in reversed(completed)]
     try:
         known = spread(repo)

@@ -147,7 +147,10 @@ def badge(root, session, cwd=None):
     declared = load(root)
     here = toplevel(cwd)
     branch = git('symbolic-ref', '--quiet', '--short', 'HEAD', cwd=cwd) or git('rev-parse', '--short', 'HEAD', cwd=cwd)
-    result = {'branch': branch, 'worktree': str(here or ''), 'is_root': here == Path(root).resolve(),
+    is_root = here == Path(root).resolve()
+    # Worktrees sit beside the root as <root>-<name> (make worktree, the role worktrees, lanes).
+    name = 'root' if is_root else (here.name.removeprefix(Path(root).resolve().name + '-') if here else '')
+    result = {'branch': branch, 'worktree': str(here or ''), 'name': name, 'is_root': is_root,
               'main': declared}
     if not declared:
         result['role'] = 'unclaimed'

@@ -17,11 +17,11 @@ class SpreadTests(unittest.TestCase):
     def test_each_run_carries_the_swing_isuscope_knew_when_it_started(self):
         rows = [
             {'run': 'aaaa0001', 'config_key': 'a', 'score': 700000, 'passed': True, 'repeat': False,
-             'spread': None, 'spread_configs': 0, 'spread_runs': 0},
+             'spread': None, 'spread_configs': 0, 'spread_runs': 0, 'spread_effective_configs': None},
             {'run': 'aaaa0002', 'config_key': 'a', 'score': 720000, 'passed': True, 'repeat': True,
-             'spread': None, 'spread_configs': 0, 'spread_runs': 0},
+             'spread': None, 'spread_configs': 0, 'spread_runs': 0, 'spread_effective_configs': None},
             {'run': 'bbbb0001', 'config_key': 'b', 'score': 800000, 'passed': True, 'repeat': False,
-             'spread': 0.0199, 'spread_configs': 1, 'spread_runs': 2},
+             'spread': 0.0199, 'spread_configs': 1, 'spread_runs': 2, 'spread_effective_configs': 1.0},
         ]
         with tempfile.TemporaryDirectory() as directory:
             bin_dir = Path(directory)
@@ -36,7 +36,8 @@ class SpreadTests(unittest.TestCase):
                 known = variance.spread(directory)
         self.assertIsNone(known['aaaa0001']['spread'])
         self.assertTrue(known['aaaa0002']['repeat'])
-        self.assertEqual(known['bbbb0001'], {'repeat': False, 'spread': {'sigma': 0.0199, 'groups': 1, 'runs': 2}})
+        self.assertEqual(known['aaaa0002']['config'], known['aaaa0001']['config'])
+        self.assertEqual(known['bbbb0001'], {'config': 'b', 'repeat': False, 'spread': {'sigma': 0.0199, 'groups': 1, 'runs': 2, 'effective': 1.0}})
 
 
 if __name__ == '__main__':

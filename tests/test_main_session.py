@@ -178,8 +178,10 @@ class MainSessionTest(unittest.TestCase):
         self.assertNotIn('idea/cache', self.deliver('S-main'))  # once per commit
         badge = json.loads(self.script('main-session.py', 'badge', '--session', 'S-worker', cwd=self.worktree).stdout)
         self.assertEqual((badge['role'], badge['proposal']['status']), ('other', 'delivered'))  # found after submit left the branch
+        self.assertEqual(badge['name'], 'idea')  # repo-idea beside repo
         badge = json.loads(self.script('main-session.py', 'badge', '--session', 'S-main').stdout)
         self.assertEqual((badge['role'], badge['waiting']), ('main', 1))
+        self.assertEqual(badge['name'], 'root')
         self.commit_in_worktree('more.txt', 'x\n', 'Add more')
         self.assertEqual(self.submit().returncode, 0)
         self.assertIn('### idea/cache', self.deliver('S-main'))  # a new commit is handed over again
