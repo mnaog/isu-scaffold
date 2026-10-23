@@ -77,7 +77,7 @@ Goのruntimeが自分で数えた値があるので、次の手は計測を根�
 
    終了コード3（キューが埋まっている）なら、上の「キュー」のとおり`wait`をbackgroundで起動する。
 6. **次へ**: `submit`がこのworktreeを投稿したbranchから外す（HEADは同じcommit）。次のbranchを切り、採否を待たずに次の候補を進めてよい。調整の続きのように直前の結果を見ないと作れない変更は、結果を待つか、その間に別の制約を調べる。
-7. **返事を読む**: `rejected`・`deferred`は、mainの分析とrunで理由を確かめて次の案に活かす。ベンチ側の動きの変化は`--view transitions`で比較元と比べられる（`docs/reference/isuscope.md`）。採用された変更の上で、最大の制約がどこへ動いたかを見て次を選ぶ。
+7. **返事を読む**: mainは、runの直後に採否と制約だけの短い分析を書き、次のベンチの間に詳しい分析を同じrunへ追記する。`main analyzed`は両方で届くので、短い方で次を選び始め、詳しい方で前提を確かめ直す。`rejected`・`deferred`は、mainの分析とrunで理由を確かめて次の案に活かす。ベンチ側の動きの変化は`--view transitions`で比較元と比べられる（`docs/reference/isuscope.md`）。採用された変更の上で、最大の制約がどこへ動いたかを見て次を選ぶ。
 
 ### kickoffの間
 
