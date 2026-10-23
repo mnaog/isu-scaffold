@@ -256,6 +256,10 @@ Goは`local_builds`を既定とし、配布サーバーではコンパイルし�
 
 入力はcommit済みのitem全体と`go.mod`・`go.sum`です。moduleのrootがitemの外（親directory）にある場合は、`local_builds`（と`config/kickoff-build.json`）へ`source_root`（`webapp/`配下でitemを含むdirectory）と`manifest_dir`（itemから見たgo.modの位置）を指定します。`vendor/modules.txt`があれば`-mod=vendor`でbuildします。ソースが未commitなら停止します。deploy時はmanifestと`scripts/local-build.py`もcommit済みであることが必要です。成果物は`.local/go-build/`、直近の索引は`.local/local-build.json`に置き、Gitには追加しません。
 
+buildは、moduleに`_test.go`があれば、手元のmachineで`go test -vet=off ./...`も回し、結果を成果物と一緒に残します（`tests`: `passed`・`none`・`skipped`）。testが落ちればbuildも失敗し、次のbuildで回し直します。同じsourceのtreeは、`make build`・`make deploy`・下の先buildのどれでbuildしても、2回目からはbuildもtestもしません（約0.5秒）。testがDBなど手元に無いものを要るときは`BUILD_TESTS=0`でtestを飛ばしてbuildします（`skipped`と残り、次にtestを回すbuildで回します）。
+
+ベンチを起動すると、hookが`proposal.py sync`の後に`scripts/prebuild.py`をbackgroundで動かします（先build）。`.local/prebuild`のworktree（detached）で、mainがベンチの後に作りそうなtreeを作ってbuildとtestまで済ませ、共有のcacheへ入れます。treeは、測っている投稿をそのまま残したもの（`keep`）と全部revertしたもの（`drop`）の2つを土台に、それぞれ単独と、待っている投稿を1つ`--no-ff`でmergeしたもの（古い順）で、最大6つです。mainがベンチの後に同じrevertとmergeをすれば、同じtreeになるので、`make deploy`はbuildもtestもしません。ほかの組み合わせは、そのときに普通にbuildします。mainの作業ツリー・branch・投稿の状態は変えません。待っている投稿がmainのbranchの上で衝突する、buildやtestに落ちるときは、`prebuild failed`の行でmainへ知らせます（mergeする前に分かる）。結果は`.local/prebuild.json`、logは`.local/prebuild.log`です。`PROPOSAL_AUTO_PREBUILD=0`で止めます。
+
 worktreeからもルートリポジトリのcache（`GOCACHE`・`GOMODCACHE`も`.local/go-build/`の中）を共用します。専用build lockで同時書込みを直列化し、通常のkickoffsetupは止めません。ソースtree・build設定・Goの版・builder scriptが同じならSHA-256検証後に完成済みbinaryを再利用します。壊れたartifactは自動配布せず停止するため、該当input IDの成果物ディレクトリを除いて再buildしてください。
 
 既存の`build_commands`契約は他用途向けに残します。同じitemへ`local_builds`とremote buildを同時指定することは禁止します。
@@ -328,7 +332,7 @@ python3 scripts/isuxportal-bench.py targets --portal https://portal.example   # 
 python3 scripts/isuxportal-bench.py probe --portal https://portal.example --target-id 123   # ログインと競技中かだけを確かめる
 ```
 
-- `config/benchmark.env`は`BENCHMARK_COMMAND='python3 scripts/isuxportal-bench.py run --portal URL --target-id ID'`、`BENCHMARK_PROBE_COMMAND`は同じ引数の`probe`にします。`run`はベンチを依頼し、終わるまで待ち、選手向けの出力の後に`ISUXPORTAL job=<id> status=<s> passed=<true|false> score=<n>`の1行を出します。regexはこの行だけに合わせます（`config/benchmark.env`のコメント）。ベンチ自身の出力にある`score`や`failed`を拾わないためです。
+- `config/benchmark.env`は`BENCHMARK_COMMAND='python3 scripts/isuxportal-bench.py run --portal URL --target-id ID'`、`BENCHMARK_PROBE_COMMAND`は同じ引数の`probe`にします。`run`はベンチを依頼し、終わるまで待ち、選手向けの出力の後に`ISUXPORTAL job=<id> status=<s> passed=<true|false> score=<n>`の1行を出します。regexはこの行だけに合わせます（`config/benchmark.env`のコメント）。ベンチ自身の出力にある`score`や`failed`を拾わないためです。結果は3秒おきに問い合わせ、前回のベンチにかかった時間（`.local/portal-job-seconds`）の10秒前からは1秒おきにします（`--poll-seconds`・`--fast-poll-seconds`・`--fast-before`）。終わってから気づくまでが約1秒で済み、ポータルへの問い合わせはベンチの間ずっと1秒おきにするより少なく済みます。
 - contractは`invocation.executable`を`scripts/isuxportal-bench.py`、`required_flags`を`{"--portal": "URL", "--target-id": "ID"}`にします。cookieは`PORTAL_COOKIE`（秘密設定）なので、取り直してもsealし直す必要はありません。
 - 書き込みにはRailsのCSRF tokenが要るので、scriptはポータルのページの`<meta name="csrf-token">`を読み、そのときに更新されたcookieで依頼します。cookieが切れると、`run`は結果の行を出さずに終了コード2で止まり、cookieの取り直しを促します。
 - 選手はジョブを取り消せません。`scripts/benchmark-stop.sh`やadapterの期限で止めても、ポータル上のベンチは最後まで動きます。
