@@ -207,8 +207,13 @@ expand_command_plan() {
   done 3< <(python3 "${script_dir}/deploy-plan.py" commands --manifest "${sync_manifest}" \
     --key "${command_key}" --changed "${changed_file}")
 }
-expand_command_plan post_deploy_commands "${post_plan_file}"
-expand_command_plan rollback_commands "${rollback_plan_file}"
+# The two plans are independent: read them side by side (one Python start each).
+expand_command_plan post_deploy_commands "${post_plan_file}" &
+post_plan_pid=$!
+expand_command_plan rollback_commands "${rollback_plan_file}" &
+rollback_plan_pid=$!
+wait "${post_plan_pid}"
+wait "${rollback_plan_pid}"
 # Nodes that receive an item, and nodes that only run a selected command (a reload elsewhere).
 { awk -F '\t' '{print $3}' "${plan_file}"; cut -f1 "${post_plan_file}"; } | sed '/^$/d' | sort -u >"${nodes_file}"
 
