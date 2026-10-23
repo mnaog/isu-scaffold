@@ -198,6 +198,34 @@ def build_one(build, item, cache, strict):
         shutil.rmtree(workspace, ignore_errors=True)
 
 
+KEEP_ARTIFACTS = int(os.environ.get("LOCAL_BUILD_KEEP", "40"))
+STALE_SECONDS = 3600
+
+
+def prune(cache, keep=None):
+    """Keep the artifacts used most recently and drop the rest. The prebuild makes several trees per
+    benchmark that main may never deploy; at about 13 MB each the cache would otherwise fill the disk
+    over a contest. A build or a cache hit marks its artifact as used. Leftovers of interrupted builds
+    (staging and work directories older than an hour) go too."""
+    keep = KEEP_ARTIFACTS if keep is None else keep
+    artifacts = []
+    for path in cache.iterdir():
+        if re.fullmatch(r"[0-9a-f]{64}", path.name) and (path / "artifact.json").is_file():
+            artifacts.append(((path / "artifact.json").stat().st_mtime, path))
+    for _, path in sorted(artifacts, reverse=True)[keep:]:
+        shutil.rmtree(path, ignore_errors=True)
+    now = time.time()
+    leftovers = [path for path in cache.iterdir() if path.name.startswith(".") and path.is_dir()]
+    if (cache / "work").is_dir():
+        leftovers += list((cache / "work").iterdir())
+    for path in leftovers:
+        try:
+            if now - path.stat().st_mtime > STALE_SECONDS:
+                shutil.rmtree(path, ignore_errors=True)
+        except OSError:
+            pass
+
+
 def publish(staging, output):
     """Move a finished artifact directory into place; a build of the same tree that got there first wins."""
     try:
@@ -226,6 +254,7 @@ def build_in(build, item, cache, tree, module, go, toolchain, input_id, output, 
             temporary_meta = metadata.with_name(f".artifact.{os.getpid()}.tmp")
             temporary_meta.write_text(json.dumps(record, indent=2) + "\n")
             temporary_meta.replace(metadata)
+        os.utime(metadata)  # used now: the last to be pruned
         print(f"local build: cached {build['binary']} ({input_id[:12]}, tests {record.get('tests', {}).get('status', 'skipped')})",
               file=sys.stderr)
         return record
@@ -320,6 +349,7 @@ def main():
         return
     records = [build_one(b, next(i for i in manifest["items"] if i["name"] == b["item"]), cache, args.strict)
                for b in builds]
+    prune(cache)
     index = Path(args.index) if args.index else REPO / ".local/local-build.json"
     index.parent.mkdir(parents=True, exist_ok=True)
     temp = index.with_name(f".{index.name}.{os.getpid()}.tmp")

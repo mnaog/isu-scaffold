@@ -163,6 +163,31 @@ class LocalBuildTests(unittest.TestCase):
         self.assertIsNone(slow.poll(), "the slow build is still running")
         self.assertEqual(len(self.go_builds()), 2)
 
+    def test_only_the_most_recently_used_artifacts_are_kept(self):
+        cache = self.repo / ".local/go-build"
+        cache.mkdir(parents=True, exist_ok=True)
+        old = time.time() - 7200
+        for index in range(5):
+            path = cache / f"{index:064x}"
+            path.mkdir()
+            (path / "artifact.json").write_text("{}")
+            os.utime(path / "artifact.json", (old + index, old + index))
+        (cache / ".interrupted-staging").mkdir()
+        os.utime(cache / ".interrupted-staging", (old, old))
+        (cache / ".building-now").mkdir()
+        builder.prune(cache, keep=3)
+        kept = sorted(path.name for path in cache.iterdir() if not path.name.startswith("."))
+        self.assertEqual(kept, [f"{index:064x}" for index in (2, 3, 4)])
+        self.assertFalse((cache / ".interrupted-staging").exists())
+        self.assertTrue((cache / ".building-now").exists(), "a staging directory in use is left alone")
+
+    def test_a_cache_hit_keeps_its_artifact_from_being_pruned(self):
+        self.build()
+        artifact = Path(self.record()["artifact"]).parent / "artifact.json"
+        os.utime(artifact, (1, 1))
+        self.build()
+        self.assertGreater(artifact.stat().st_mtime, time.time() - 60)
+
     def test_the_first_build_of_a_tree_to_finish_is_kept(self):
         cache = self.repo / ".local/go-build"
         output, staging = cache / "input", cache / ".staging"
