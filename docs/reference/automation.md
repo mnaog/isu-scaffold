@@ -187,7 +187,6 @@ slpのreleaseとFlameGraphのscriptは、準備のうちに`./scripts/fetch-obse
 | 時刻同期 | chronyを有効化 | `observability_time_sync` |
 | journal | 永続化し、512MiBで上限 | `observability_persistent_journal` |
 | 自動更新 | `apt-daily`、`apt-daily-upgrade`、`unattended-upgrades`を停止 | `observability_stop_auto_updates` |
-| Rust build cache | `/home/isucon/.cache/isucon-cargo-target`を作成し、cargoとrustcの有無を表示 | — |
 
 nginx.confがhttpの中で`/etc/nginx/conf.d/*.conf`をincludeしていない場合、LTSV logは追加されず、draft検査がFAILにします。レギュレーションで禁止された項目だけ変数をfalseにします。終了前（`docs/guides/finish.md`）に計測を外すときは`observability_nginx_ltsv`と`observability_mysql_slow_log`をfalseにして`./scripts/run-ansible-playbook.sh bootstrap.yml --tags observability_nginx_log,observability_mysql_slow_log`を実行すると、設定を撤去してreload・再起動します。LTSVを外した後のnginx.confにhttpの`access_log`が1つも無いと、nginxは組み込みの既定のaccess logを書くので（`make tare`が既定のaccess_logを外している）、同じ変更で`access_log off;`を書きます。性能のためのNginx設定は[config/nginx/tare](../../config/nginx/tare/README.md)にあり、初回baselineの後にdeployで入れます。これら以外に事前に取得したtoolは`.local/tools/`へ置き、`observability_local_tools`で配布できます。
 
