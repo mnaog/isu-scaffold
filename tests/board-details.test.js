@@ -41,7 +41,9 @@ test('stale run and deploy records never claim liveness; actual operation is sep
 
 function scoreChart(runs){
  const make=(tag,text,cls)=>({tag,text,cls,attrs:{},style:{},children:[],events:{},append(...xs){this.children.push(...xs)},replaceChildren(...xs){this.children=xs},setAttribute(k,v){this.attrs[k]=v},addEventListener(k,fn){this.events[k]=fn}});
- const root=make('div'),context=vm.createContext({document:{querySelector:selector=>selector==='#run-select'?{value:''}:root},el:make,svgEl:(tag,attrs,text)=>Object.assign(make(tag,text),{attrs}),num:v=>String(v),short:v=>v?.slice(0,8),selectedRun:null,chooseRun:id=>context.chosen=id});
+ const root=make('div'),context=vm.createContext({document:{querySelector:selector=>selector==='#run-select'?{value:''}:root},el:make,svgEl:(tag,attrs,text)=>Object.assign(make(tag,text),{attrs}),num:v=>String(v),short:v=>v?.slice(0,8),selectedRun:null,chooseRun:id=>context.chosen=id,
+  // The chart scrolls to the newest run once the browser has laid it out; here that is at once.
+  requestAnimationFrame:callback=>callback()});
  const html=fs.readFileSync(__dirname+'/../scripts/board/board.html','utf8');
  vm.runInContext(html.slice(html.indexOf('function resultBadge'),html.indexOf('function overviewSelection')),context);
  vm.runInContext(html.slice(html.indexOf('function renderScoreHistory'),html.indexOf('function table(parent,head')),context);
@@ -109,4 +111,16 @@ test('benchmark breakdown pairs metrics by name and labels, ignoring the parser 
 test('warning lines name each category once with its first sample',()=>{
  assert.deepEqual([...ctx.benchmarkWarningLines({warnings:[{category:'CODE=30',samples:['a','b']},{samples:['c']}]})],['警告 CODE=30: a','警告 分類なし: c']);
  assert.equal(ctx.benchmarkWarningLines(undefined).length,0);
+});
+test('a variance band is shaded darker the thinner it is drawn, up to 60%',()=>{
+ const html=fs.readFileSync(__dirname+'/../scripts/board/board.html','utf8');
+ const colors={'--paper':'#33363a','--band':'#a9bccf'};
+ const context=vm.createContext({document:{documentElement:{}},getComputedStyle:()=>({getPropertyValue:name=>colors[name]})});
+ vm.runInContext(html.slice(html.indexOf('function bandOpacity'),html.indexOf('function table(parent,head')),context);
+ const [thin,six,wide]=[2,6,24].map(height=>context.bandOpacity(height));
+ assert.ok(thin>six&&six>wide,`${thin} ${six} ${wide}`);
+ // A 6px band reaches a 2:1 contrast and a 24px one 1.25:1; a band too thin for any shade stops at 60%.
+ assert.ok(six>0.25&&six<0.45,String(six));
+ assert.ok(wide>0.05&&wide<0.15,String(wide));
+ assert.equal(context.bandOpacity(0.3),0.6);
 });

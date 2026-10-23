@@ -125,8 +125,9 @@ function renderBenchmarkBreakdown(root,q){
  const rows=benchmarkBreakdownRows(q.benchmark,q.base?q.benchmark_base:null),warnings=benchmarkWarningLines(q.brief?.benchmark_messages);
  if(!rows.length&&!warnings.length&&!q.benchmark?.error)return;
  const panel=el('div',null,'panel metrics-section');panel.id='benchmark-breakdown';root.append(panel);
- const head=el('div',null,'metric-heading');head.append(el('h3','ベンチの内訳'),el('span',q.base?'比較元 → 対象':'対象のみ（比較元なし）','section-note'));panel.append(head);
- if(q.benchmark?.error)panel.append(el('p','ベンチの内訳を取得できません。 '+q.benchmark.error,'panel-note'));
+ const head=el('div',null,'metric-heading');head.append(el('h3','ベンチ特有の出力'),el('span',q.base?'比較元 → 対象':'対象のみ（比較元なし）','section-note'));panel.append(head);
+ panel.append(el('p','ベンチマーカーが出力に書いたものを、.isuscope/parse-benchmark.shが数字にしたもの（警告・エラーの種類ごとの件数、initializeの時間など）。出るのは、その大会のベンチが書く項目だけ。','panel-note'));
+ if(q.benchmark?.error)panel.append(el('p','ベンチ特有の出力を取得できません。 '+q.benchmark.error,'panel-note'));
  if(rows.length){const scroll=el('div',null,'table-scroll');panel.append(scroll);comparisonTable(scroll,rows);}
  for(const line of warnings)panel.append(el('p',line,'panel-note'));
  if(q.benchmark?.truncated)panel.append(el('p','内訳は一部のみ表示されています。','panel-note'));

@@ -7,10 +7,11 @@
 - スコアの推移と、選んだrunのスコア・仮説・分析・採否
 - 比較元とのHTTP・SQLの比較、ホスト別の負荷、負荷走行の時系列、MySQL、APIの流れ
 - 共有操作（ベンチ・deploy）の実行状況
-- 作業中（main以外のimprove・human・worktreeが、いま作っているもの）と、ベンチ待ち（mainのベンチを待つ投稿のキュー）。ページの一番上
+- ベンチ待ち（mainのベンチを待つ投稿のキュー）と、作業中（main以外のimprove・human・worktreeと、走っているlaneが、いま作っているもの）
+- APIごとに、わざと待たせる時間（`ISUCON_WAITS`）
 - 必ず残す記録（`config/records.json`の一覧と中身）
 
-実装は`scripts/board/`、テストは`tests/test_board.py`と`tests/board-*.test.js`です。isuscopeはPATHの`isuscope`を使います。
+実装は`scripts/board/`、テストは`tests/test_board.py`と`tests/board-*.test.js`です（どちらも`make test`が回す）。isuscopeはPATHの`isuscope`を使います。
 
 ## 記録
 
@@ -22,11 +23,11 @@
 
 画面は5秒、計測は30秒ごとに更新する。終了前のrunも実行状況用に保持するが、スコア推移と比較には終了runだけを使う。スコア推移はベンチスコアの直下に置き、表示runの選択とは独立した履歴として表示する。直近100件のrunのうち終了したrunを開始時刻順に等間隔で並べる。横軸は表示範囲内の実行順（FAIL・中断を含む）の等間隔とし、回数の数字は出さず日時だけを間引いて添える。件数が多い場合は横スクロールで点の間隔を確保する。PASSは折れ線、FAIL・中断は×印、スコア欠落は未取得欄に表示し、各点のツールチップで日時とスコアを確認できる。クリックまたは結果選択欄で選んだ結果のスコア・状態・日時・仮説は上部のベンチスコア欄にまとめ、run IDとcommitは右側の計測取得状況の下に常時表示する。スコア数値・状態・グラフはPASSを緑、FAIL・中断を赤、判定なしを中立色にそろえる。グラフ下に詳細を重複表示しない。ホバーだけでは選択結果を変えない。上部のスコア欄に差分は置かない。
 
-各runには、そのrunを始めた時点までに同じ構成を2回以上測った組（`isuscope run --repeat`）から求めた誤差（得点の平均に対する標準偏差を、組をまとめて求めたもの）が付く。最新・選んだrunのスコアの横に1σを出し、推移の図にはPASSの線に沿って±1σ（濃）と±2σ（薄）の帯を描く。構成はisuscopeの`config_key`（配ったファイル、nodeのfingerprint、計測設定、waitの表など）で分け、誤差は`isuscope variance`の値をそのまま使う。測り直しのrunは■、waitを試したrun（tag `wait`）は◆で描く。
+各runには、そのrunを始めた時点までに同じ構成を2回以上測った組（`isuscope run --repeat`）から求めた誤差（得点の平均に対する標準偏差を、組をまとめて求めたもの）が付く。最新・選んだrunのスコアの横に1σを出し、スコアの推移の見出しの右に、振れ幅が分かっている最新のrunの1σを「現在の想定振れ幅」として割合と点数で出し、推移の図にはPASSの線に沿って±1σと±2σの帯を、線と別の色で描く。帯はrunとrunの間ごとに、画面上の太さから濃さを決める。細い区間ほど濃くし（背景とのコントラスト比をc、太さをh pxとして、(c−1)×h=6になる濃さ。上限60%）、細くても太くても同じくらい目に入るようにする。1pxに満たない区間は、細いまま描く。構成はisuscopeの`config_key`（配ったファイル、nodeのfingerprint、計測設定、waitの表など）で分け、誤差は`isuscope variance`の値をそのまま使う。測り直しのrunは■、waitを試したrun（tag `wait`）は◆で描く。
 
-## 待ちの表
+## ISUCON_WAITS
 
-APIごとの待ち（`ISUCON_WAITS`、`scripts/waits.py`）の、いまの表と、試した値の採否（IDが`wait-`で始まるisuscopeのchange）を並べる。
+APIごとに、わざと待たせる時間（`ISUCON_WAITS`、`scripts/waits.py`）の、いまの表と、試した値の採否（IDが`wait-`で始まるisuscopeのchange）を並べる。
 
 ## 比較と詳細
 
@@ -34,7 +35,7 @@ APIごとの待ち（`ISUCON_WAITS`、`scripts/waits.py`）の、いまの表と
 
 スコア・HTTP・SQLを比較元／対象／差分／変化率で表示し、仮説・分析・変更の採否・計測commitも確認できる。試したこと（仮説）と分析状態を常時表示し、分析本文と採否は折り畳む。手動の比較元が保存済み分析の比較元と違う場合は、折り畳みの外で違いを明示する。採否は関連する変更の現在の判断で、当時の判断やdeploy済みを意味しない。HTTP・SQLの回数と平均時間は「比較元 → 対象」を同じ行に表示し、列見出しで対象の値をソートできる。片方だけにある行、欠測、比較元が0で変化率を算出できない値は0で補わない。
 
-「ベンチの内訳」は、`.isuscope/parse-benchmark.sh`が出した`benchmark.`で始まるmetric（警告・エラーのcategoryごとの件数、シナリオごとの成功数など問題固有の内訳）を、比較元と対象の両方の`isuscope query <run> --metric-prefix benchmark.`（最大200行）から読み、metricとlabel（parser名のlabelを除く）で組にして、比較元・対象・差分・変化率で並べる。片方にしかない行は空欄にし、0で補わない。下に、briefの`benchmark_messages.warnings`から警告のcategoryごとに最初の1件を出す。警告の件数で打ち切るベンチがあるので、スコアの直下に置く。
+「ベンチ特有の出力」は、`.isuscope/parse-benchmark.sh`が出した`benchmark.`で始まるmetric（警告・エラーのcategoryごとの件数、シナリオごとの成功数など問題固有の内訳）を、比較元と対象の両方の`isuscope query <run> --metric-prefix benchmark.`（最大200行）から読み、metricとlabel（parser名のlabelを除く）で組にして、比較元・対象・差分・変化率で並べる。片方にしかない行は空欄にし、0で補わない。見出しの下に、ベンチマーカーの出力を数字にしたものであることと、出るのはその大会のベンチが書く項目だけであることを1行で添える。表の下に、briefの`benchmark_messages.warnings`から警告のcategoryごとに最初の1件を出す。警告の件数で打ち切るベンチがあるので、スコアの直下に置く。
 
 HTTPはrun全体、SQLは`--window load`のdigest単位。25／50／100件を取得し、列見出しのクリックで回数・合計・平均・p95・合計時間差分を並べ替える。ソートは取得済み行の範囲に限り、切り詰めは件数表示で知らせる。行を開くとHTTP status、SQLのロック時間・走査行数などを表示する。長いSQLはisuscope側の出力上限で省略される場合があり、digest IDとともに明示する。
 
@@ -50,7 +51,9 @@ HTTPはrun全体、SQLは`--window load`のdigest単位。25／50／100件を取
 
 ## 画面の構成
 
-スコア推移、run・分析、シナリオ、ホスト、時間軸、HTTP、SQL、MySQL、upstream、CPU、計測欠落、ベンチ走行履歴を一ページに表示する。タブによる表示切り替えは行わない。ページ内リンクの見出し列も設けない。普段読むデータを主に置き、低頻度の操作は結果選択の下の「比較・表示設定」にまとめて折りたたむ。見出しは表示内容を具体的に表し、比較条件・集計範囲・欠測など解釈に必要な情報は残す。閾値による自動解釈や「次に確かめること」は表示しない。
+上から、最新のベンチスコア、スコアの推移と実行状況、ベンチ待ち、作業中、計測結果（選んだrunの比較と詳細）、`ISUCON_WAITS`、記録の順に並べる。結果を先に見せ、その下に次に測るものとまだ作っているものを、ベンチに近い順に置く。参照用の2つは最後に置く。
+
+計測結果には、スコア推移、run・分析、シナリオ、ホスト、時間軸、HTTP、SQL、MySQL、upstream、CPU、計測欠落、ベンチ走行履歴を一ページに表示する。タブによる表示切り替えは行わない。ページ内リンクの見出し列も設けない。普段読むデータを主に置き、低頻度の操作は結果選択の下の「比較・表示設定」にまとめて折りたたむ。見出しは表示内容を具体的に表し、比較条件・集計範囲・欠測など解釈に必要な情報は残す。閾値による自動解釈や「次に確かめること」は表示しない。
 取得コマンドと計測の元データは画面に表示せず、取得時にブラウザの開発者コンソールへ`console.debug`で出力する。
 
 HTTP・SQLは合計時間順の表を基本とし、重複する並べ替えボタン列を置かない。列見出しで並べ替え、API・SQL名から詳細を開く。HTTPのエラー数、SQLのロック時間・走査行数/回は常時表示する。API図は曲線と余白で流れを示し、未計測の表示例は大きく明示する。拡大率・遷移回数・保存は図の表示設定にまとめる。
@@ -63,14 +66,14 @@ HTTP・SQLの合計時間と差分を視覚的に強調する。差分の色は�
 
 ## 作業中
 
-ページの一番上に、main以外（improve・human・`make worktree`）が`python3 scripts/proposal.py working "..."`で宣言した作業を、始めた順に並べる。各行に、worktreeの名前（improveならimprove）・branch・何をしているか・始めてからの時間を出す。投稿（`submit`）か`working --done`で消え、worktreeが無くなったものは出さない。`.local/proposal-state/working/`を読むだけ（`scripts/board/proposals.py`）。
+ベンチ待ちの下に、main以外（improve・human・`make worktree`）が`python3 scripts/proposal.py working "..."`で宣言した作業と、走っているlane（`scripts/lane.py`が、Claudeを起動してから終わるまで宣言する）を、始めた順に並べる。各行に、worktreeの名前（improveならimprove、laneならlane）・branch・何をしているか・始めてからの時間を出す。投稿（`submit`）か`working --done`で消え、worktreeが無くなったものは出さない。laneは、状態（`.local/lanes/<名前>/status.json`）が準備中・実行中の間だけ出す。`.local/proposal-state/working/`を読むだけ（`scripts/board/proposals.py`）。
 
 ## ベンチ待ち
 
-ページの一番上に、mainのベンチを待つ投稿（`scripts/proposal.py`）を、測定中・次のベンチ（merge済み）・待ち・保留の順に並べる。見出しの数はキューの待ち（測定中と保留を除く）で、improveが投稿できるのはこれが1件以下のとき。各行に、branch・投稿者（improveか、それ以外のworktree）・commit・仮説・期待する観測・投稿からの時間（測定中なら測定開始からの時間）・根拠のrun・積んでいる投稿・衝突・保留の条件を出す。freeze中はそう出す。`.local/proposals/`を読むだけで、gitを呼ばず、ファイルを書かない（`scripts/board/proposals.py`）。表示はmainが最後に記録した状態なので、衝突（`needs-sync`）はmainがベンチの起動か`pending`・`sync`で確かめたときに更新される。
+スコアの推移と実行状況の下に、mainのベンチを待つ投稿（`scripts/proposal.py`）を、測定中・次のベンチ（merge済み）・待ち・保留の順に並べる。見出しの数はキューの待ち（測定中と保留を除く）で、improveが投稿できるのはこれが1件以下のとき。各行に、branch・投稿者（improveか、それ以外のworktree）・commit・仮説・期待する観測・投稿からの時間（測定中なら測定開始からの時間）・根拠のrun・積んでいる投稿・衝突・保留の条件を出す。freeze中はそう出す。`.local/proposals/`を読むだけで、gitを呼ばず、ファイルを書かない（`scripts/board/proposals.py`）。表示はmainが最後に記録した状態なので、衝突（`needs-sync`）はmainがベンチの起動か`pending`・`sync`で確かめたときに更新される。
 
 ## 実行状況
 
-画面上部には、選択runとは独立した現在の共有操作、直近の終了ベンチの分析状態、deployの最終記録と最後に成功したdeployのcommitを小さく表示する。`.local/operation.lock/lock`が実際に保持されていることを非ブロッキングで確認し、`owner`に記録された操作と開始時刻を表示する。ownerファイルだけでは実行中と判定しない。lockファイルは作成・削除しない。
+スコアの推移の直下に、選択runとは独立した現在の共有操作、直近の終了ベンチの分析状態、deployの最終記録と最後に成功したdeployのcommitを小さく表示する。`.local/operation.lock/lock`が実際に保持されていることを非ブロッキングで確認し、`owner`に記録された操作と開始時刻を表示する。ownerファイルだけでは実行中と判定しない。lockファイルは作成・削除しない。
 
 deployの段階と時刻は`.local/deploy-transactions/`、最後に成功したdeployは`.local/current-deploy-commit`から読む。記録は実環境との一致確認を意味しない。未終了runが残っていても、対応するベンチの共有操作を確認できないときは実行継続未確認と表示する。実行記録は5秒、ベンチ情報は30秒更新で、AIの思考中・実装中・残り時間は推測しない。

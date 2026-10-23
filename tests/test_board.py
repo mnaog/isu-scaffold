@@ -466,7 +466,10 @@ class BoardTests(unittest.TestCase):
                 page=r.read().decode()
                 self.assertIn('id="run-select"',page)
                 self.assertIn('id="base-select"',page)
-                self.assertLess(page.index('id="queue-section"'),page.index('id="overview"'))
+                # The latest score and its history first, then what is measured next, what is still being built, the run's
+                # measurements, the waits table, and the records last.
+                order=[page.index(key) for key in ('id="overview"','id="score-history"','id="queue-section"','id="working-section"','class="metrics-section"','id="waits-section"','class="records-section"')]
+                self.assertEqual(order,sorted(order))
                 self.assertIn('textContent',page)
             with urllib.request.urlopen(url+'/board-workspace.js') as r:
                 self.assertIn('workspaceData', r.read().decode())
