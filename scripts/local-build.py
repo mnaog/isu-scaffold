@@ -9,7 +9,6 @@ keeps the result with the artifact: a source tree built and tested once, by `mak
 or the prebuild that runs during a benchmark (scripts/prebuild.py), is neither built nor tested again.
 A failing test fails the build. BUILD_TESTS=0 builds without them (recorded as skipped)."""
 import argparse
-import fcntl
 import hashlib
 import io
 import json
@@ -187,8 +186,33 @@ def build_one(build, item, cache, strict):
     input_id = digest(json.dumps([tree, build, toolchain, digest(Path(__file__).read_bytes())], sort_keys=True).encode())
     output = cache / input_id
     metadata = output / "artifact.json"
-    # One fixed work directory per source root keeps the module and build caches warm.
-    work = cache / "work" / digest(source_root.encode())[:12]
+    # Each build and test runs in a directory of its own, so builds of other trees (main's deploy, the
+    # prebuild of a proposal just submitted) never wait for each other. -trimpath keeps Go's own caches
+    # warm whatever the directory.
+    (cache / "work").mkdir(parents=True, exist_ok=True)
+    workspace = Path(tempfile.mkdtemp(dir=cache / "work", prefix=digest(source_root.encode())[:12] + "-"))
+    try:
+        return build_in(build, item, cache, tree, module, go, toolchain, input_id, output, metadata, workspace, source,
+                        output_path)
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+def publish(staging, output):
+    """Move a finished artifact directory into place; a build of the same tree that got there first wins."""
+    try:
+        os.rename(staging, output)
+        return True
+    except OSError:
+        if (output / "artifact.json").exists():
+            shutil.rmtree(staging, ignore_errors=True)
+            return False
+        shutil.rmtree(output, ignore_errors=True)  # left by an interrupted build before artifact.json
+        os.rename(staging, output)
+        return True
+
+
+def build_in(build, item, cache, tree, module, go, toolchain, input_id, output, metadata, work, source, output_path):
     if metadata.exists():
         record = json.loads(metadata.read_text())
         if record["input_id"] != input_id:
@@ -199,16 +223,16 @@ def build_one(build, item, cache, strict):
             # Built earlier without its tests (BUILD_TESTS=0, or before builds ran them): test it now.
             extract(tree, work)
             record["tests"] = run_tests(go, work / module, cache)
-            temporary_meta = metadata.with_suffix(".tmp")
+            temporary_meta = metadata.with_name(f".artifact.{os.getpid()}.tmp")
             temporary_meta.write_text(json.dumps(record, indent=2) + "\n")
             temporary_meta.replace(metadata)
         print(f"local build: cached {build['binary']} ({input_id[:12]}, tests {record.get('tests', {}).get('status', 'skipped')})",
               file=sys.stderr)
         return record
     started = time.monotonic()
-    output.mkdir(parents=True, exist_ok=True)
     extract(tree, work)
-    temporary = output / "binary.tmp"
+    staging = Path(tempfile.mkdtemp(dir=cache, prefix=f".{input_id[:12]}-"))
+    temporary = staging / "binary.tmp"
     environment = go_environment(cache, build["target"])
     if Path(work, module, "vendor/modules.txt").is_file():
         environment["GOFLAGS"] += " -mod=vendor"
@@ -218,16 +242,19 @@ def build_one(build, item, cache, strict):
     elf_check(data, build["target"])
     tests = run_tests(go, work / module, cache)
     temporary.chmod(0o755)
+    temporary.replace(staging / build["binary"])
     artifact = output / build["binary"]
-    temporary.replace(artifact)
     record = {"input_id": input_id, "source_tree": tree, "toolchain": toolchain,
               "target": build["target"], "item": item["name"], "local": source,
               "destination": output_path, "artifact": str(artifact),
               "sha256": digest(data), "size": len(data), "seconds": round(time.monotonic() - started, 3),
               "pgo": pgo, "tests": tests}
-    temporary_meta = metadata.with_suffix(".tmp")
-    temporary_meta.write_text(json.dumps(record, indent=2) + "\n")
-    temporary_meta.replace(metadata)
+    (staging / "artifact.json").write_text(json.dumps(record, indent=2) + "\n")
+    if not publish(staging, output):
+        record = json.loads(metadata.read_text())
+        verified(record)
+        print(f"local build: {build['binary']} was built meanwhile by another build of the same tree", file=sys.stderr)
+        return record
     print(f"local build: {build['binary']} {record['seconds']}s sha256={record['sha256']}"
           f"{' with default.pgo' if pgo else ''}", file=sys.stderr)
     return record
@@ -291,16 +318,14 @@ def main():
     if args.action == "prepare-toolchain":
         prepare_toolchain(cache)
         return
-    with (cache / "build.lock").open("w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        records = [build_one(b, next(i for i in manifest["items"] if i["name"] == b["item"]), cache, args.strict)
-                   for b in builds]
-        index = Path(args.index) if args.index else REPO / ".local/local-build.json"
-        index.parent.mkdir(parents=True, exist_ok=True)
-        temp = index.with_suffix(".tmp")
-        temp.write_text(json.dumps(records, indent=2) + "\n")
-        temp.replace(index)
-        print(f"local artifacts: {index}", file=sys.stderr)
+    records = [build_one(b, next(i for i in manifest["items"] if i["name"] == b["item"]), cache, args.strict)
+               for b in builds]
+    index = Path(args.index) if args.index else REPO / ".local/local-build.json"
+    index.parent.mkdir(parents=True, exist_ok=True)
+    temp = index.with_name(f".{index.name}.{os.getpid()}.tmp")
+    temp.write_text(json.dumps(records, indent=2) + "\n")
+    temp.replace(index)
+    print(f"local artifacts: {index}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -143,6 +143,42 @@ class LocalBuildTests(unittest.TestCase):
         self.assertFalse(self.record()["pgo"])
         self.assertEqual(self.record()["tests"], {"status": "none"}, "no _test.go, nothing to run")
 
+    def test_a_slow_build_does_not_hold_up_a_build_of_another_tree(self):
+        # The prebuild of a proposal submitted while main deploys must not make main's deploy wait.
+        other = Path(self.temp.name) / "other"
+        self.command("git", "worktree", "add", "-q", "--detach", str(other))
+        (self.repo / "webapp/go/main.go").write_text("package main\n\nfunc main() { println(1) }\n")
+        self.commit()
+        slow = subprocess.Popen(["python3", "scripts/local-build.py", "build"], cwd=other,
+                                env=dict(self.env, WAIT_BUILD="1"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(slow.wait)
+        self.addCleanup(slow.kill)
+        for _ in range(100):  # until the slow one is inside go build
+            if self.go_builds():
+                break
+            time.sleep(0.05)
+        started = time.monotonic()
+        self.build()
+        self.assertLess(time.monotonic() - started, 10, "waited for the other tree's build")
+        self.assertIsNone(slow.poll(), "the slow build is still running")
+        self.assertEqual(len(self.go_builds()), 2)
+
+    def test_the_first_build_of_a_tree_to_finish_is_kept(self):
+        cache = self.repo / ".local/go-build"
+        output, staging = cache / "input", cache / ".staging"
+        for directory, content in ((output, "first"), (staging, "second")):
+            directory.mkdir(parents=True)
+            (directory / "artifact.json").write_text(content)
+        self.assertFalse(builder.publish(staging, output))
+        self.assertEqual((output / "artifact.json").read_text(), "first")
+        self.assertFalse(staging.exists())
+        # A directory an interrupted build left without artifact.json is replaced.
+        (output / "artifact.json").unlink()
+        staging.mkdir()
+        (staging / "artifact.json").write_text("third")
+        self.assertTrue(builder.publish(staging, output))
+        self.assertEqual((output / "artifact.json").read_text(), "third")
+
     def test_a_module_with_tests_is_tested_once_with_the_build(self):
         (self.repo / "webapp/go/store_test.go").write_text("package main\n")
         self.commit()
