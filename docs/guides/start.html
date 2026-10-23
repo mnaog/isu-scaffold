@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>初動の手順</title>
+<style>
+  :root {
+    --bg: #f7f6f2;
+    --surface: #ffffff;
+    --surface-2: #f0eee8;
+    --text: #1d1d1b;
+    --muted: #6b6a64;
+    --line: #dcd9d0;
+    --human: #c2410c;
+    --human-soft: #fde8dc;
+    --ai: #1d4ed8;
+    --ai-soft: #dde7fd;
+    --practice: #7c3aed;
+    --practice-soft: #ede4fe;
+    --ok: #15803d;
+    --ok-soft: #dcf2e3;
+    --code-bg: #24231f;
+    --code-text: #f3f1ea;
+    --phase-1: #b45309;
+    --phase-2: #0f766e;
+    --phase-3: #c2410c;
+    --phase-4: #1d4ed8;
+    --phase-5: #15803d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161614;
+      --surface: #1f1e1b;
+      --surface-2: #2a2925;
+      --text: #ecebe6;
+      --muted: #a3a199;
+      --line: #3a3933;
+      --human: #fb923c;
+      --human-soft: #3b2216;
+      --ai: #7aa2ff;
+      --ai-soft: #1c2645;
+      --practice: #b794f6;
+      --practice-soft: #2c2142;
+      --ok: #4ade80;
+      --ok-soft: #173322;
+      --code-bg: #0e0e0d;
+      --code-text: #ecebe6;
+      --phase-1: #f59e0b;
+      --phase-2: #2dd4bf;
+      --phase-3: #fb923c;
+      --phase-4: #7aa2ff;
+      --phase-5: #4ade80;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161614;
+    --surface: #1f1e1b;
+    --surface-2: #2a2925;
+    --text: #ecebe6;
+    --muted: #a3a199;
+    --line: #3a3933;
+    --human: #fb923c;
+    --human-soft: #3b2216;
+    --ai: #7aa2ff;
+    --ai-soft: #1c2645;
+    --practice: #b794f6;
+    --practice-soft: #2c2142;
+    --ok: #4ade80;
+    --ok-soft: #173322;
+    --code-bg: #0e0e0d;
+    --code-text: #ecebe6;
+    --phase-1: #f59e0b;
+    --phase-2: #2dd4bf;
+    --phase-3: #fb923c;
+    --phase-4: #7aa2ff;
+    --phase-5: #4ade80;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  .page { max-width: 880px; margin: 0 auto; padding: 32px 16px 80px; }
+  header.top h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: 0.02em; }
+  header.top p { margin: 0; color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 8px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 12px; font-weight: 700; line-height: 1;
+    padding: 5px 9px; border-radius: 999px; white-space: nowrap;
+  }
+  .badge.human { background: var(--human-soft); color: var(--human); }
+  .badge.ai { background: var(--ai-soft); color: var(--ai); }
+  .badge.practice { background: var(--practice-soft); color: var(--practice); }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); }
+
+  .phase { position: relative; margin-top: 40px; }
+  .phase-head {
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    border-left: 6px solid var(--accent); padding: 4px 0 4px 14px; margin-bottom: 18px;
+  }
+  .phase-head .when {
+    font-size: 12px; font-weight: 700; color: var(--accent);
+    border: 1.5px solid var(--accent); border-radius: 6px; padding: 2px 8px;
+  }
+  .phase-head h2 { margin: 0; font-size: 21px; }
+  .phase-head p { margin: 0; color: var(--muted); width: 100%; font-size: 14px; }
+
+  .steps { list-style: none; margin: 0; padding: 0 0 0 4px; position: relative; }
+  .steps::before {
+    content: ""; position: absolute; left: 21px; top: 8px; bottom: 8px;
+    width: 2px; background: var(--line);
+  }
+  .step { position: relative; padding-left: 56px; margin-bottom: 16px; }
+  .step .num {
+    position: absolute; left: 4px; top: 10px; width: 36px; height: 36px; border-radius: 50%;
+    display: grid; place-items: center; font-weight: 800; font-size: 15px;
+    background: var(--accent); color: var(--bg);
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .card-head h3 { margin: 0; font-size: 16.5px; flex: 1 1 auto; }
+  .card p { margin: 6px 0; }
+  .card ul { margin: 6px 0; padding-left: 20px; }
+  .check {
+    margin-top: 8px; padding: 8px 12px; border-radius: 8px;
+    background: var(--ok-soft); color: var(--text); font-size: 14px;
+  }
+  .check strong { color: var(--ok); }
+  .practice-note {
+    margin-top: 8px; padding: 8px 12px; border-radius: 8px;
+    background: var(--practice-soft); font-size: 14px;
+  }
+  .practice-note strong { color: var(--practice); }
+
+  .cmd { position: relative; margin: 8px 0; }
+  .cmd pre {
+    margin: 0; background: var(--code-bg); color: var(--code-text);
+    border-radius: 8px; padding: 10px 76px 10px 12px; overflow-x: auto;
+    font-family: "SFMono-Regular", Menlo, Consolas, monospace; font-size: 13px; line-height: 1.6;
+  }
+  .cmd button {
+    position: absolute; top: 6px; right: 6px;
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; font-size: 12px; padding: 3px 9px; cursor: pointer;
+  }
+  .cmd button.done { color: var(--ok); border-color: var(--ok); }
+  code {
+    font-family: "SFMono-Regular", Menlo, Consolas, monospace; font-size: 0.92em;
+    background: var(--surface-2); border-radius: 4px; padding: 1px 5px;
+  }
+
+  .terminals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 10px 0; }
+  .terminal {
+    background: var(--code-bg); color: var(--code-text); border-radius: 10px; overflow: hidden;
+    font-family: "SFMono-Regular", Menlo, Consolas, monospace; font-size: 12.5px;
+  }
+  .terminal .bar {
+    display: flex; align-items: center; gap: 5px; padding: 6px 10px;
+    background: rgba(255,255,255,0.08); font-family: inherit; font-size: 11.5px; color: #c9c6bc;
+  }
+  .terminal .bar i { width: 8px; height: 8px; border-radius: 50%; background: #6b6a64; display: inline-block; }
+  .terminal .body { padding: 10px; }
+  .terminal .body div { white-space: pre-wrap; word-break: break-all; }
+  .terminal .auto { color: #9db7ff; }
+
+  .lanes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 6px 0 4px; }
+  .lane { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+  .lane h4 { margin: 0 0 8px; font-size: 14px; display: flex; gap: 6px; align-items: center; }
+  .flow { list-style: none; margin: 0; padding: 0; }
+  .flow li {
+    position: relative; background: var(--ai-soft); border-radius: 8px;
+    padding: 6px 9px; font-size: 13px; line-height: 1.5; margin-bottom: 18px;
+  }
+  .flow li:not(:last-child)::after {
+    content: "↓"; position: absolute; left: 50%; bottom: -17px; transform: translateX(-50%);
+    color: var(--muted); font-size: 12px;
+  }
+  .flow li.goal { background: var(--ok-soft); font-weight: 700; }
+
+  .watch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .watch .card h3 { font-size: 15px; }
+  table.calls { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 4px; }
+  table.calls th, table.calls td { text-align: left; padding: 7px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+  table.calls th { font-size: 12px; color: var(--muted); font-weight: 700; border-top: none; }
+
+  .done-box {
+    margin-top: 18px; border: 2px solid var(--phase-5); border-radius: 14px; padding: 16px 18px;
+    background: var(--ok-soft);
+  }
+  .done-box h3 { margin: 0 0 6px; color: var(--phase-5); }
+  footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
+
+  @media (max-width: 720px) {
+    .terminals, .lanes, .watch { grid-template-columns: 1fr; }
+    .step { padding-left: 48px; }
+    .steps::before { left: 17px; }
+    .step .num { width: 30px; height: 30px; font-size: 13px; left: 3px; }
+    header.top h1 { font-size: 23px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <h1>初動の手順</h1>
+    <p>準備からkickoffが終わるまでに、人間がすること。上から順に進める。</p>
+    <div class="legend">
+      <span class="badge human">人間</span>
+      <span class="badge ai">AI（自動）</span>
+      <span class="badge practice">練習のとき</span>
+      <span class="badge ok">確かめること</span>
+    </div>
+  </header>
+
+  <!-- 1 -->
+  <section class="phase" style="--accent: var(--phase-1)">
+    <div class="phase-head">
+      <span class="when">開始の前日まで</span>
+      <h2>1. 準備</h2>
+      <p>問題を使わない道具・認証・作業場所をそろえる。問題のコードや配布物は、開始まで持ち込まない。</p>
+    </div>
+    <ol class="steps">
+      <li class="step">
+        <span class="num">1</span>
+        <div class="card">
+          <div class="card-head"><h3>大会用のrepoを作る</h3><span class="badge human">人間</span></div>
+          <p>isu-scaffoldのrootで、commit済みのscaffoldから独立したrepoを作る。</p>
+          <div class="cmd"><pre>python3 scripts/new-contest-repo.py &lt;新しいdirectory&gt; --github &lt;owner&gt;/&lt;name&gt;</pre><button type="button">コピー</button></div>
+          <div class="check"><strong>確かめる:</strong> GitHubのrepoがprivateであること。</div>
+          <div class="practice-note"><strong>練習のとき:</strong> <code>--practice</code>を付ける（<code>practice.md</code>が残る）。<code>config/tool-guard.json</code>の<code>contest_keywords</code>に、練習する開催回の語を入れる。</div>
+        </div>
+      </li>
+      <li class="step">
+        <span class="num">2</span>
+        <div class="card">
+          <div class="card-head"><h3>手元の道具をそろえる</h3><span class="badge human">人間</span></div>
+          <p>新しいrepoのrootで順に流す。</p>
+          <div class="cmd"><pre>./scripts/ansible-install.sh --all
+make isuscope-node
+make builder-images
+./scripts/fetch-observability-tools.sh</pre><button type="button">コピー</button></div>
+          <div class="check"><strong>確かめる:</strong> 4つとも成功すること。isuscopeを入れ直したら<code>make isuscope-node</code>も流し直す。</div>
+        </div>
+      </li>
+      <li class="step">
+        <span class="num">3</span>
+        <div class="card">
+          <div class="card-head"><h3>AIが動くことを確かめる</h3><span class="badge human">人間</span></div>
+          <p>Claude Codeにログインし、laneが使う<code>claude -p</code>が<code>config/lanes.json</code>のmodelで応答するかを見る。問題の探索はしない。</p>
+          <div class="cmd"><pre>echo "Reply OK" | claude -p --model claude-opus-5-5 --effort high --permission-mode dontAsk</pre><button type="button">コピー</button></div>
+        </div>
+      </li>
+      <li class="step">
+        <span class="num">4</span>
+        <div class="card">
+          <div class="card-head"><h3>ポータルにログインしておく</h3><span class="badge human">人間</span></div>
+          <p>chrome-debug（<code>--remote-debugging-port=9222</code>で起動したChrome）でポータルにログインする。ベンチの依頼とportalのセッションが、このcookieを使う。</p>
+          <div class="cmd"><pre>python3 scripts/portal-cookie.py --portal &lt;ポータルのURL&gt; --check</pre><button type="button">コピー</button></div>
+          <div class="check"><strong>確かめる:</strong> cookieの名前が出ること（値は出ない）。ポータルのURLを<code>docs/preparation/readiness.md</code>に書く。</div>
+          <div class="practice-note"><strong>練習のとき:</strong> 開始の宣言の後に運営が<code>practice-portal/scripts/start.sh</code>を流すと、chrome-debugが選手としてログインする。</div>
+        </div>
+      </li>
+      <li class="step">
+        <span class="num">5</span>
+        <div class="card">
+          <div class="card-head"><h3>作業場所を作る</h3><span class="badge human">人間</span></div>
+          <p>portal・improve・humanのworktree。開始と同時に、それぞれでセッションを起動する。</p>
+          <div class="cmd"><pre>make worktree BRANCH=portal PURPOSE="ポータルの情報とベンチ接続"
+make worktree BRANCH=improve PURPOSE="継続的な改善（/improve）"
+make worktree BRANCH=human PURPOSE="人間の作業場所"</pre><button type="button">コピー</button></div>
+        </div>
+      </li>
+      <li class="step">
+        <span class="num">6</span>
+        <div class="card">
+          <div class="card-head"><h3>記録して閉じる</h3><span class="badge human">人間</span></div>
+          <ul>
+            <li>手元のdiskの空きを確かめる（kickoffはlaneとbuildを同時に走らせる）。</li>
+            <li><code>docs/preparation/readiness.md</code>を埋め、未完了の項目には理由を書く。</li>
+            <li>commitしてpushし、<code>git status</code>がcleanであること。</li>
+          </ul>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="phase" style="--accent: var(--phase-2)">
+    <div class="phase-head">
+      <span class="when">開始の直前</span>
+      <h2>2. 構える</h2>
+      <p>開始の時刻に、すぐ3つのセッションを起動できる状態にしておく。</p>
+    </div>
+    <ol class="steps">
+      <li class="step">
+        <span class="num">1</span>
+        <div class="card">
+          <div class="card-head"><h3>認証が生きているか</h3><span class="badge human">人間</span></div>
+          <ul>
+            <li>AWSの認証が通ること。切れていたら入り直す。</li>
+            <li>chrome-debugでポータルを開き、ログインが切れていないこと。</li>
+          </ul>
+          <div class="cmd"><pre>aws sts get-caller-identity</pre><button type="button">コピー</button></div>
+        </div>
+      </li>
+      <li class="step">
+        <span class="num">2</span>
+        <div class="card">
+          <div class="card-head"><h3>端末を3つ開く</h3><span class="badge human">人間</span></div>
+          <p>3つとも大会用repoのrootへ移っておく。ボードを見るブラウザも用意する。</p>
+          <div class="cmd"><pre>cd &lt;大会用repoのroot&gt;</pre><button type="button">コピー</button></div>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="phase" style="--accent: var(--phase-3)">
+    <div class="phase-head">
+      <span class="when">開始から5分</span>
+      <h2>3. 3つのセッションを起動する</h2>
+      <p>人間が手を動かすのはここまで。あとはAIが役割ごとに進める。</p>
+    </div>
+    <ol class="steps">
+      <li class="step">
+        <span class="num">1</span>
+        <div class="card">
+          <div class="card-head"><h3>3つの端末で、それぞれ1行打つ</h3><span class="badge human">人間</span></div>
+          <p>役割の名前の付いたClaude Codeが、それぞれの作業場所で起動する。最初のcommand（<code>/main</code>・<code>/portal</code>・<code>/improve</code>）は自動で入るので、打たなくてよい。</p>
+          <div class="terminals">
+            <div class="terminal"><div class="bar"><i></i><i></i><i></i>&nbsp;端末1 main</div>
+              <div class="body"><div>$ make session ROLE=main</div><div class="auto">→ /main（自動）
+→ ボードも起動</div></div></div>
+            <div class="terminal"><div class="bar"><i></i><i></i><i></i>&nbsp;端末2 portal</div>
+              <div class="body"><div>$ make session ROLE=portal</div><div class="auto">→ /portal（自動）</div></div></div>
+            <div class="terminal"><div class="bar"><i></i><i></i><i></i>&nbsp;端末3 improve</div>
+              <div class="body"><div>$ make session ROLE=improve</div><div class="auto">→ /improve（自動）</div></div></div>
+          </div>
+          <div class="check"><strong>確かめる:</strong> ボードが<code>http://127.0.0.1:8765</code>で開くこと。portが使われていたら、mainを<code>BOARD_PORT=&lt;別のport&gt; make session ROLE=main</code>で起動する。</div>
+        </div>
+      </li>
+      <li class="step">
+        <span class="num">2</span>
+        <div class="card">
+          <div class="card-head"><h3>mainに目標を渡す</h3><span class="badge human">人間</span></div>
+          <p>端末1（main）で<code>/goal</code>を打ち、目標を渡す。</p>
+          <div class="cmd"><pre>/goal 競技の終了までに、最終スコアを最大にする</pre><button type="button">コピー</button></div>
+        </div>
+      </li>
+      <li class="step">
+        <span class="num">3</span>
+        <div class="card">
+          <div class="card-head"><h3>サーバーの起動はAIに任せる</h3><span class="badge ai">AI（自動）</span></div>
+          <p>portalが当日マニュアルからサーバーの起動に要る情報を書き出し、mainがそれを見てサーバーを起動し、<code>make kickoff</code>を始める。</p>
+          <div class="practice-note"><strong>練習のとき:</strong> 運営が<code>start.sh</code>を流した後、ポータルのサーバーリストのtemplateからstackを作る（それより前に作ったstackはポータルに登録されない）。ベンチ用のnodeは運営のものなので、接続先にはapp1〜3だけを書く。</div>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="phase" style="--accent: var(--phase-4)">
+    <div class="phase-head">
+      <span class="when">5分〜初回ベンチ</span>
+      <h2>4. kickoffを見守る</h2>
+      <p>3つのセッションが並行して進む。人間は止めずに、ボードで進み具合を見る。</p>
+    </div>
+    <div class="lanes">
+      <div class="lane">
+        <h4><span class="badge ai">portal</span></h4>
+        <ul class="flow">
+          <li>サーバーの起動に要る情報を書く</li>
+          <li>ベンチの接続を作り、1回回して確かめる</li>
+          <li>当日マニュアルなどの原文を保存する</li>
+          <li>ポータルの告知と質問への回答を見張る</li>
+        </ul>
+      </div>
+      <div class="lane">
+        <h4><span class="badge ai">main</span></h4>
+        <ul class="flow">
+          <li>サーバーを起動して<code>make kickoff</code></li>
+          <li>コードとschemaを先に回収（code-ready）。laneが7本走り出す</li>
+          <li>全nodeを調べてdraftを作り、確かめて反映（完全import）</li>
+          <li><code>make first-bench</code>で初回ベンチ</li>
+          <li class="goal">初回ベンチを分析して記録（main analyzed）</li>
+        </ul>
+      </div>
+      <div class="lane">
+        <h4><span class="badge ai">improve</span></h4>
+        <ul class="flow">
+          <li>code-readyの後、コードとschemaを読む</li>
+          <li>得点の仕組みと重い処理の見当をつける</li>
+          <li class="goal">mainの分析を受けて、最初の改善を作って投稿する</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 style="margin:22px 0 8px; font-size:16px;">人間が見ること・呼ばれたらすること</h3>
+    <div class="watch">
+      <div class="card">
+        <div class="card-head"><h3>見る</h3><span class="badge human">人間</span></div>
+        <ul>
+          <li>ボード: kickoffの段階、ベンチのscore、作業中の投稿。</li>
+          <li>各端末: AIから人間への問いかけが出ていないか。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>伝える</h3><span class="badge human">人間</span></div>
+        <ul>
+          <li>mainの端末へ直接打つ。</li>
+          <li>または<code>make session ROLE=human</code>のセッションで「<code>@main</code>に…と伝えて」。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card" style="margin-top:10px">
+      <table class="calls">
+        <thead><tr><th>こうなったら</th><th>人間がすること</th></tr></thead>
+        <tbody>
+          <tr><td>ポータルのログインが切れた</td><td>chrome-debugでポータルに入り直す。</td></tr>
+          <tr><td>AWSの認証が切れた</td><td>手元で入り直す（<code>aws sts get-caller-identity</code>で通ることを確かめる）。</td></tr>
+          <tr><td>手元のdiskが足りない</td><td>不要なものを消して空ける。laneとbuildが同時に落ちる前に。</td></tr>
+          <tr><td>自分でも調べたい・直したい</td><td><code>make session ROLE=human</code>で人間の作業場所を開く。作り始めたら<code>python3 scripts/proposal.py working "&lt;狙う制約と変更&gt;"</code>、できたら<code>python3 scripts/proposal.py submit</code>でmainへ渡す。</td></tr>
+        </tbody>
+      </table>
+      <p style="color:var(--muted); font-size:13.5px; margin-top:10px;">mainの作業ツリーには触らない。deploy・ベンチ・remoteの変更はmainだけが行う（ほかから打つとhookが止める）。</p>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section class="phase" style="--accent: var(--phase-5)">
+    <div class="phase-head">
+      <span class="when">初回ベンチの後</span>
+      <h2>5. 初動の終わり</h2>
+    </div>
+    <div class="done-box">
+      <h3>ここまで来たら初動は完了</h3>
+      <ul>
+        <li>ボードに初回ベンチのscoreが出て、mainの分析（<code>main analyzed</code>）が出ている。</li>
+        <li>improveが最初の改善を作り始めている。</li>
+      </ul>
+      <p>以後は、improveが作って投稿し、mainが測って採否を決める流れが続く。人間は見守り、伝えたいことをmainへ伝える。終了前の手順は、人間がmainへ指示して始める（<code>docs/guides/finish.md</code>）。</p>
+    </div>
+  </section>
+
+  <footer>手順の詳細は<code>docs/guides/preparation.md</code>（準備）と<code>docs/guides/kickoff.md</code>（kickoff）にある。</footer>
+</div>
+<script>
+  for (const button of document.querySelectorAll('.cmd button')) {
+    button.addEventListener('click', async () => {
+      const text = button.parentElement.querySelector('pre').innerText;
+      try {
+        await navigator.clipboard.writeText(text);
+        button.textContent = 'コピーした';
+        button.classList.add('done');
+      } catch (error) {
+        button.textContent = 'コピーできない';
+      }
+      setTimeout(() => { button.textContent = 'コピー'; button.classList.remove('done'); }, 1500);
+    });
+  }
+</script>
+</body>
+</html>

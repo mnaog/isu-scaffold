@@ -13,6 +13,7 @@
     "docs/reference/automation.md",
     "docs/reference/isuscope.md",
     "docs/guides/kickoff.md",
+    "docs/guides/start.html",
     "scripts/benchmark-contract.py",
     "scripts/benchmark-sample.py",
     "scripts/check-deployment.py",
