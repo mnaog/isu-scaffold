@@ -60,7 +60,7 @@ jobs:
           FIXTURE_APP_NODES=5 ./tests/kickoff-automation.sh
 
       - name: Run local tooling tests
-        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+        run: python3 tests/run-all.py
 
       - name: Check isolated local runtime lifecycle
         run: python3 tests/local-runtime-docker.py

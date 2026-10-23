@@ -107,7 +107,7 @@ board:
 	@python3 scripts/board/main.py
 
 test:
-	@if [ -d tests ]; then python3 -m unittest discover -s tests -p 'test_*.py' -v; \
+	@if [ -d tests ]; then python3 tests/run-all.py; \
 		else echo 'tests/はisu-scaffoldにだけある（大会用repoには入れない）。testはisu-scaffoldで回す'; fi
 
 .PHONY: local-up local-check local-down local-logs local-reset local-state-log local-flow local-race
