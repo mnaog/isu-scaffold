@@ -1,10 +1,11 @@
+import contextlib
+import io
 from pathlib import Path
 import os
-import subprocess
 import sys
 import tempfile
-import time
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'scripts'))
@@ -33,22 +34,33 @@ class FollowTests(unittest.TestCase):
         self.assertIn('宛先の表', self.shown('main', 'something', 'new'))  # unknown lines reach main
         self.assertIsNone(self.shown('improve', 'something', 'new'))
 
+    def follow_improve(self, log, *steps):
+        """Follow `log` for improve. Each step runs just before one of the follower's polls, so the follower
+        has polled once between two steps however slow the machine is; it stops after the last step's poll."""
+        steps = list(steps)
+
+        def stop():
+            if not steps:
+                return True
+            steps.pop(0)()
+            return False
+
+        with mock.patch.dict(os.environ, PROGRESS_LOG=str(log)), contextlib.redirect_stdout(io.StringIO()) as out:
+            progress.follow('improve', root=ROOT, interval=0.01, stop=stop)
+        return out.getvalue()
+
     def test_follow_prints_only_what_is_appended_for_the_role(self):
         with tempfile.TemporaryDirectory() as tmp:
             log = Path(tmp) / 'progress.log'
             log.write_text('2026-10-21T10:00:00+0900\tmain\tanalyzed\told\n')
-            env = dict(os.environ, PROGRESS_LOG=str(log))
-            follower = subprocess.Popen(['python3', str(ROOT / 'scripts/progress.py'), 'follow', 'improve'], env=env,
-                                        stdout=subprocess.PIPE, text=True)
-            try:
-                time.sleep(1)
+
+            def append():
                 with log.open('a') as out:
                     out.write('2026-10-21T10:01:00+0900\tproposal\tsynced\tskip\n')
                     out.write('2026-10-21T10:02:00+0900\tmain\tanalyzed\tnew 次の最大の制約: DB\n')
-                time.sleep(1.5)
-            finally:
-                follower.terminate()
-            out = follower.communicate(timeout=5)[0]
+
+            # The first poll takes the end of the file; the lines appended after it are the ones shown.
+            out = self.follow_improve(log, lambda: None, append)
         self.assertNotIn('old', out)
         self.assertNotIn('skip', out)
         self.assertIn('10:02 main analyzed new 次の最大の制約: DB → ', out)
@@ -56,16 +68,9 @@ class FollowTests(unittest.TestCase):
     def test_a_log_that_appears_after_following_started_is_read_from_its_first_line(self):
         with tempfile.TemporaryDirectory() as tmp:
             log = Path(tmp) / 'progress.log'
-            env = dict(os.environ, PROGRESS_LOG=str(log))
-            follower = subprocess.Popen(['python3', str(ROOT / 'scripts/progress.py'), 'follow', 'improve'], env=env,
-                                        stdout=subprocess.PIPE, text=True)
-            try:
-                time.sleep(1)
-                log.write_text('2026-10-21T10:00:00+0900\tkickoff\tcode-ready\twebapp/rust\n')
-                time.sleep(1.5)
-            finally:
-                follower.terminate()
-            out = follower.communicate(timeout=5)[0]
+            # The first poll finds no file; the file that appears before the next is read from its first line.
+            out = self.follow_improve(log, lambda: None, lambda: log.write_text(
+                '2026-10-21T10:00:00+0900\tkickoff\tcode-ready\twebapp/rust\n'))
         self.assertIn('10:00 kickoff code-ready webapp/rust', out)
 
     def test_lanes_that_stop_short_and_unfreezing_reach_someone(self):
