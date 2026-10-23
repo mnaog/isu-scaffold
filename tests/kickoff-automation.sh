@@ -100,7 +100,7 @@ python3 - "${fixture_repo}/.isuscope/config.toml" <<'PY'
 import sys, tomllib
 config = tomllib.load(open(sys.argv[1], "rb"))
 roles = {collector["name"]: collector.get("roles", []) for collector in config["collectors"]}
-assert roles["offcpu"] == ["app"], roles["offcpu"]
+assert roles["go-profile-start"] == ["app"], roles["go-profile-start"]
 assert roles["nginx-log-mark"] == ["nginx", "edge"], roles["nginx-log-mark"]
 assert roles["mysql-log-mark"] == ["db", "mysql"], roles["mysql-log-mark"]
 assert roles["host-sampler"] == [], roles["host-sampler"]

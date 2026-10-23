@@ -43,7 +43,7 @@ MANIFEST_NAMES = {
     "pom.xml",
     "build.gradle",
 }
-OBSERVABILITY_TOOLS = ("sar", "slp", "offcputime-bpfcc")
+OBSERVABILITY_TOOLS = ("sar", "slp")
 
 
 def read_json(path: Path):

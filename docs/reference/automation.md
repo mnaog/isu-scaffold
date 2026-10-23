@@ -179,7 +179,7 @@ slpのreleaseは、準備のうちに`./scripts/fetch-observability-tools.sh --u
 
 | 項目 | 内容 | 無効化する変数 |
 | --- | --- | --- |
-| 計測tool | `sysstat`、`ethtool`（ENAの上限超過counter）、pin済みの`slp`、準備でbuildした`isuscope-node`。off-CPU用の`bpfcc-tools`は既定では入れない | `observability_install_packages`、`observability_download_tools`（取得元は`observability_tools_source`、`observability_install_offcpu`で有効化） |
+| 計測tool | `sysstat`、`ethtool`（ENAの上限超過counter）、pin済みの`slp`、準備でbuildした`isuscope-node` | `observability_install_packages`、`observability_download_tools`（取得元は`observability_tools_source`） |
 | Nginx access log | `conf.d/00-isuscope-log.conf`でLTSVを`/var/log/nginx/isuscope-access.log`へ追加出力（既存のaccess_logは変えない）。sessionは`observability_nginx_session_source`で問題に合わせる | `observability_nginx_ltsv` |
 | MySQL slow log | 既定は無効。SQLはisuscopeがperformance_schemaのstatement digestから取る（`mysql-digest`）。digestが使えないMariaDBなどでだけtrueにし、`zzz-isuscope-slow.cnf`で`long_query_time=0`を`/var/log/mysql/isuscope-slow.log`へ出力する | `observability_mysql_slow_log`（既定false） |
 | log rotation | 上記2つを512MiBで世代交代し、logrotateを1時間ごとに実行 | — |

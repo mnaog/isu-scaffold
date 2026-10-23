@@ -167,7 +167,7 @@ def node_script(config, units, http, envcheck=False, settled=False):
         '  case "$slow" in 1) say WARN "mysql slow log" "on (also check that the setting is not only SET GLOBAL)";; 0) say OK "mysql slow log" off;; *) say WARN "mysql slow log" "could not ask mysql";; esac',
         'fi',
         # このshell自身（command lineに探す語を含む）は除く。
-        'probes=$(pgrep -af "offcputime|bpftrace|isuscope-[0-9a-f]{8}|pprof" 2>/dev/null | grep -v -e pgrep -e "say()" | cut -c1-80 | paste -sd"; " -)',
+        'probes=$(pgrep -af "bpftrace|isuscope-[0-9a-f]{8}|pprof" 2>/dev/null | grep -v -e pgrep -e "say()" | cut -c1-80 | paste -sd"; " -)',
         '[ -n "$probes" ] && say WARN "measurement processes" "$probes" || say OK "measurement processes" none',
         # Goのアプリのprofileの窓口（profile.go）。ISUCON_PROFILE_ADDRを空にすると聞かない。
         'if command -v ss >/dev/null 2>&1; then listen=$(ss -Hltn "sport = :6060" 2>/dev/null | head -n 1); '

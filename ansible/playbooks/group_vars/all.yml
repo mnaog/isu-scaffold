@@ -13,8 +13,6 @@ observability_packages:
   - ethtool
   # isuscopeが毎runで持ち帰る生のaccess log・状態ログを、node上で約20分の1にしてから送る。
   - zstd
-# off-CPU解析はpackageが大きく導入に時間がかかるため、必要になってから有効化します。
-observability_install_offcpu: false
 # slpのpin済みreleaseをnodeへ入れます。bundledはrepoへ取り込んだもの
 # （ansible/roles/observability/files/vendor、scripts/fetch-observability-tools.sh）をcopyし、
 # downloadは各nodeがGitHubから取得します。
@@ -25,7 +23,6 @@ observability_tools_source: bundled
 observability_probe_commands:
   - sar
   - slp
-  - offcputime-bpfcc
   # 準備でbuildしたaccess logの集計binary。isuscopeのalp collectorはこれが無いと失敗する。
   - isuscope-node
   - zstd
