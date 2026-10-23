@@ -39,25 +39,25 @@ runはrootにしか無いので、`scripts/runs.sh`で読む（isuscopeの読み
 
 ```bash
 scripts/runs.sh list --limit 5
-scripts/runs.sh brief latest                 # latest_analysisにmainの分析
+scripts/runs.sh brief latest                 # 比較元との差。mainが分析を記録した後は、その分析も（analysisの行）
 scripts/runs.sh query latest --base BASE_RUN --view http --label route=...
 scripts/runs.sh query latest --base BASE_RUN --view transitions   # ベンチ側の動きの変化
 scripts/runs.sh states sql latest "SELECT ..."
 scripts/runs.sh change list
 ```
 
-Goのアプリなら、CPUと待ちは`go_cpu_app`（直す関数）・`go_routes`（APIごと）・`go_classes`（GC・割り当て・lock・HTTP・暗号・JSONなどの割合）・`go_waits`（mutexの取り合いを起こした関数）・`go_allocs`・`app_runtime`で関数まで絞れる（`docs/reference/isuscope.md`）。APIからSQL・tableへの対応は`make codemap`。laneは`make lanes`。
+Goのアプリなら、CPUと待ちを関数まで絞れる。briefの`go`の行に、CPUを使ったアプリの関数（`cpu`）と種類（`classes`。GC・割り当て・lock・HTTP・暗号・JSONなど）の上位が出る。続きは`query <run> --metric <名前>`で、`go.cpu.app_seconds`（直す関数）・`go.cpu.route_seconds`（APIごと）・`go.cpu.class_seconds`（種類ごと）・`go.mutex.delay_ms`（mutexの取り合いを起こした関数）・`go.alloc.bytes`（割り当てた関数）、Goのruntimeの値は`--metric-prefix app.go. --scope series --window load`で読む（`docs/reference/isuscope.md`）。APIからSQL・tableへの対応は`make codemap`。laneは`make lanes`。
 
 ### Goで足しやすい手
 
 Goのruntimeが自分で数えた値があるので、次の手は計測を根拠に選べる。どれも1つの投稿にし、根拠の値を仮説に書く。
 
-- `go_classes`の`gc`・`alloc`、`app_runtime`の`gc_cpu_percent`が大きい: `go_allocs`の上位の関数で割り当てを減らす（使い回すbuffer、`sync.Pool`、事前の容量、文字列の連結をやめる）。GCの目標（`GOGC`）を上げる、nodeのメモリに余裕があれば`GOMEMLIMIT`を足す（DBと同じnodeなら空きを残す）。
-- `go_waits`の`mutex`、`app_runtime`の`mutex_wait_ms_per_s`が大きい: その関数がlockを持つ範囲を縮める、lockを分ける、読み取りだけの値をatomicやcopy-on-writeにする。`sched_wait_p99_max_ms`が大きいならgoroutineがCPUを待っている（core不足、GOMAXPROCS、重い処理の並列数）。
-- `go_classes`の`http`・`net`・`syscall`が大きい: nginxとアプリの間をunix socketにする（Goでは`net.Listen("unix", path)`の数行とnginxの`upstream`）、upstreamのkeepaliveを増やす、要求ごとのheaderの読み書きを減らす。
-- `go_classes`の`json`が大きい: 回数の多い応答（通知、近くの一覧など）の組み立てを手で書く、変わらない部分を前もってencodeしておく。
-- アプリの外のprocess（curlの繰り返しなど）がCPUを使っている（`hosts`のservice）: アプリの中のgoroutine（`time.Ticker`）で同じことをする。
-- CPUで詰まり、上位の関数に当てる手が残っていない: PGO。最新の採用構成のrunのCPUのprofileを`make pgo RUN=<短縮ID>`で`default.pgo`にしてcommitし、投稿する（`make build`がそれを使う。仮説には、そのrunの`go_cpu`の上位とcoreの使い方を書く）。
+- `classes`の`gc`・`alloc`、`app.go.gc_cpu_ms`が大きい: `go.alloc.bytes`の上位の関数で割り当てを減らす（使い回すbuffer、`sync.Pool`、事前の容量、文字列の連結をやめる）。GCの目標（`GOGC`）を上げる、nodeのメモリに余裕があれば`GOMEMLIMIT`を足す（DBと同じnodeなら空きを残す）。
+- `go.mutex.delay_ms`、`app.go.mutex_wait_ms`が大きい: その関数がlockを持つ範囲を縮める、lockを分ける、読み取りだけの値をatomicやcopy-on-writeにする。`app.go.sched_wait`が大きいならgoroutineがCPUを待っている（core不足、GOMAXPROCS、重い処理の並列数）。
+- `classes`の`http`・`net`・`syscall`が大きい: nginxとアプリの間をunix socketにする（Goでは`net.Listen("unix", path)`の数行とnginxの`upstream`）、upstreamのkeepaliveを増やす、要求ごとのheaderの読み書きを減らす。
+- `classes`の`json`が大きい: 回数の多い応答（通知、近くの一覧など）の組み立てを手で書く、変わらない部分を前もってencodeしておく。
+- アプリの外のprocess（curlの繰り返しなど）がCPUを使っている（briefの`nodes`のservice）: アプリの中のgoroutine（`time.Ticker`）で同じことをする。
+- CPUで詰まり、上位の関数に当てる手が残っていない: PGO。最新の採用構成のrunのCPUのprofileを`make pgo RUN=<短縮ID>`で`default.pgo`にしてcommitし、投稿する（`make build`がそれを使う。仮説には、そのrunのbriefの`go`の`cpu`の上位とcoreの使い方を書く）。
 
 ### 1つの変更の流れ
 

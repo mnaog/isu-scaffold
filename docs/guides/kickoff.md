@@ -54,7 +54,7 @@ make first-bench（人間の確認を待たずにすぐ実行する。失敗し�
     --apply --score N --pass true|false（自分で読んだ値）でsample・contract・--check・rescoreまで済ませる
 初回runを分析し（スコア・エラー・HTTP・SQL・ホスト負荷。最大の制約と根拠をisuscope analyzeに書く）。hookがその冒頭を`main analyzed`でimproveへ知らせる。improveが観測に基づいて改善を実装・検証して投稿する
   → baselineの後の最初のdeployで、lane state-log、続けてlane n-plus-oneを`git merge --no-ff`で取り込む
-    （次のrunからbriefのstates欄が埋まり、状態についての問いに計測を足さずに答えられる）
+    （次のrunからbriefに得点につながる行動の件数（`counts`）が出て、状態についての問いに計測を足さずに答えられる）
   → lane indexes・runtime・static-edgeのcommitをbaselineの観測と照合して選んで取り込む（laneの途中でもcommit単位で取り込める）
   → 全メモリ化の間もimproveは全メモリ化が書き換えない所の改善を止めない。lane full-memoryが終わったら（mainを1度だけ取り込み済み）、
     mainへmergeし、laneが取り込んだ後にmainへ入ったwebapp/の変更をベンチを待つ間に全メモリ化の形へ移し、
@@ -199,7 +199,7 @@ APIの一覧には、各APIのhandler（`file:line`）と主なSQL・外部処�
 
 ## baselineの後に次の変更を選ぶ
 
-mainは初回baselineの分析で、観測された最大の制約を特定し、根拠とともに初回runの`isuscope analyze`に書く。improveはこの分析から最初の変更を選ぶ。node別のCPU・iowait・disk・network、`database_io`、`logs`など、読める欄は[isuscopeの使い方](../reference/isuscope.md)にある。
+mainは初回baselineの分析で、観測された最大の制約を特定し、根拠とともに初回runの`isuscope analyze`に書く。improveはこの分析から最初の変更を選ぶ。briefの各行が答えることと、node別のCPU・iowait・disk・network、DBのI/O、logのエラーなどを`query`で読む方法は[isuscopeの使い方](../reference/isuscope.md)にある。
 
 接続・fdの上限（nginxのworker_connections・backlog・keepalive、アプリのLimitNOFILE、sysctl、MySQLのmax_connectionsとbuffer pool）は問題に依存しない既定値で、`make tare`が1つのcommitにする。baselineの後に早めにdeployして`isuscope run`で測る。`make tare`は、計測用のLTSVと二重に書くnginxの既定のaccess logも外す。
 

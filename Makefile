@@ -23,7 +23,7 @@ help:
 		'make final-reboot                     終了前: 全台を再起動し、戻った後と数分後を確かめる' \
 		'make bench-check                      ベンチ前の全node・isuscope検査を行う' \
 		'make first-bench                      import commit後にbench-check・初回ベンチ・deployを続けて行う' \
-		'make bench                            mergeした投稿をdeployしてベンチを回し、結果とbriefを出す（mainがbackgroundで）' \
+		'make bench [BASE=<run>]               mergeした投稿をdeployしてベンチを回し、結果と比較元BASEとの差のbriefを出す（mainがbackgroundで）' \
 		'make tare                             baseline後に接続・fdの上限を上げる1 commitを作る' \
 		'make durability                       DBの書き込み待ちが見えたらMySQLの耐久性を緩める1 commitを作る' \
 		'make pgo RUN=<run> [NODE=<node>]      runで取ったGoのCPU profileをPGOのprofile（default.pgo）にする' \

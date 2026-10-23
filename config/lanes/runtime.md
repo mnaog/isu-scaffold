@@ -14,7 +14,7 @@
 2. **DB接続。** `database/sql`の接続poolの上限（`SetMaxOpenConns`）が無いか、同時に来るrequestの数より明らかに小さいなら設定し、`SetMaxIdleConns`を同じ値にして、使い終えた接続を閉じて開き直さないようにする。上限はMySQLの`max_connections`（`make tare`で1000）とアプリのprocess数の積が超えない値にし、値と理由をcommit本文に書く。go-sql-driver/mysqlのDSNに`interpolateParams=true`が無ければ足す（placeholderつきのqueryごとのprepareとcloseの往復が無くなる）。DSNの`tls`が有効なら、同じVPCの中なので外す。
 3. **GC。** 起動時に`debug.SetGCPercent`を既定（100）より大きくする（400程度）。環境変数`GOGC`で戻せる形にし（`GOGC`が設定されていれば何もしない）、値をcommit本文に書く。`GOMEMLIMIT`は入れない（nodeのメモリはDBと分け合う）。
 
-上の3つ以外（goroutineの数、HTTP clientの使い回し、JSONのencoderの変更、mapの事前確保など）は実装しない。このlaneはまだ計測の無い時点で動くため。計測を見て選ぶ手（割り当て、lockの範囲、unix socket、JSONの組み立て、PGO）は、improveがbriefの`go_*`欄と`app_runtime`欄を根拠に作る（`.claude/commands/improve.md`の「Goで足しやすい手」）。HTTP serverのTCP_NODELAYはGoの既定で付いているので何もしない。buildをCPUに合わせる設定（`GOAMD64=v3`など）は入れない。nodeの型が混ざる構成（c7iとc6in、同じ型でも世代の違うCPU）では、builderと違うCPUのnodeでSIGILLで落ちる（`scripts/local-build.py`は`GOAMD64`を外してbuildする）。
+上の3つ以外（goroutineの数、HTTP clientの使い回し、JSONのencoderの変更、mapの事前確保など）は実装しない。このlaneはまだ計測の無い時点で動くため。計測を見て選ぶ手（割り当て、lockの範囲、unix socket、JSONの組み立て、PGO）は、improveがbriefの`go`の行とGoのprofileのmetric（`go.*`・`app.go.*`）を根拠に作る（`.claude/commands/improve.md`の「Goで足しやすい手」）。HTTP serverのTCP_NODELAYはGoの既定で付いているので何もしない。buildをCPUに合わせる設定（`GOAMD64=v3`など）は入れない。nodeの型が混ざる構成（c7iとc6in、同じ型でも世代の違うCPU）では、builderと違うCPUのnodeでSIGILLで落ちる（`scripts/local-build.py`は`GOAMD64`を外してbuildする）。
 
 ## 守ること
 
