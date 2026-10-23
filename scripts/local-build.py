@@ -2,7 +2,12 @@
 """Build committed Go sources locally and attach verified artifacts to deploy archives.
 
 The local Go toolchain cross-compiles a static Linux binary (CGO_ENABLED=0); GOTOOLCHAIN=auto
-fetches the version go.mod asks for. No Docker and no glibc matching are needed."""
+fetches the version go.mod asks for. No Docker and no glibc matching are needed.
+
+A build also runs the module's tests (`go test -vet=off ./...` on this machine) when it has any, and
+keeps the result with the artifact: a source tree built and tested once, by `make build`, `make deploy`
+or the prebuild that runs during a benchmark (scripts/prebuild.py), is neither built nor tested again.
+A failing test fails the build. BUILD_TESTS=0 builds without them (recorded as skipped)."""
 import argparse
 import fcntl
 import hashlib
@@ -130,6 +135,38 @@ def prepare_toolchain(cache):
             print(f"toolchain ready: {capture(go, 'version')} {target} ({time.monotonic() - started:.0f}s)", file=sys.stderr)
 
 
+def extract(tree, work):
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True)
+    with tempfile.TemporaryFile() as archive:
+        run("git", "archive", tree, cwd=REPO, stdout=archive)
+        archive.seek(0)
+        with tarfile.open(fileobj=archive) as tar:
+            tar.extractall(work, filter="data")
+
+
+def run_tests(go, module, cache):
+    """`go test` of the extracted module on this machine; the status to keep with the artifact."""
+    if os.environ.get("BUILD_TESTS") == "0":
+        return {"status": "skipped"}
+    if not any(path for path in module.rglob("*_test.go") if "vendor" not in path.relative_to(module).parts):
+        return {"status": "none"}
+    environment = {key: value for key, value in os.environ.items() if key not in ("GOOS", "GOARCH", "GOAMD64")}
+    environment.update(GOFLAGS="-trimpath", GOTOOLCHAIN=os.environ.get("GOTOOLCHAIN", "auto"),
+                       GOCACHE=str(cache / "gocache"), GOMODCACHE=str(cache / "gomod"))
+    if (module / "vendor/modules.txt").is_file():
+        environment["GOFLAGS"] += " -mod=vendor"
+    started = time.monotonic()
+    result = subprocess.run([go, "test", "-vet=off", "./..."], cwd=module, env=environment,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=300)
+    seconds = round(time.monotonic() - started, 3)
+    if result.returncode != 0:
+        tail = "\n".join(result.stdout.strip().splitlines()[-30:])
+        raise ValueError(f"go test failed in {seconds}s (BUILD_TESTS=0 builds without the tests):\n{tail}")
+    print(f"local build: tests passed ({seconds}s)", file=sys.stderr)
+    return {"status": "passed", "seconds": seconds}
+
+
 def build_one(build, item, cache, strict):
     if "replace-with" in build["binary"]:
         raise ValueError("After the start: configure the Go binary from the imported app before building")
@@ -150,24 +187,27 @@ def build_one(build, item, cache, strict):
     input_id = digest(json.dumps([tree, build, toolchain, digest(Path(__file__).read_bytes())], sort_keys=True).encode())
     output = cache / input_id
     metadata = output / "artifact.json"
+    # One fixed work directory per source root keeps the module and build caches warm.
+    work = cache / "work" / digest(source_root.encode())[:12]
     if metadata.exists():
         record = json.loads(metadata.read_text())
         if record["input_id"] != input_id:
             raise ValueError("artifact input mismatch")
         verified(record)
-        print(f"local build: cached {build['binary']} ({input_id[:12]})", file=sys.stderr)
+        tests = record.get("tests", {}).get("status")
+        if tests not in ("passed", "none") and os.environ.get("BUILD_TESTS") != "0":
+            # Built earlier without its tests (BUILD_TESTS=0, or before builds ran them): test it now.
+            extract(tree, work)
+            record["tests"] = run_tests(go, work / module, cache)
+            temporary_meta = metadata.with_suffix(".tmp")
+            temporary_meta.write_text(json.dumps(record, indent=2) + "\n")
+            temporary_meta.replace(metadata)
+        print(f"local build: cached {build['binary']} ({input_id[:12]}, tests {record.get('tests', {}).get('status', 'skipped')})",
+              file=sys.stderr)
         return record
     started = time.monotonic()
     output.mkdir(parents=True, exist_ok=True)
-    # One fixed work directory per source root keeps the module and build caches warm.
-    work = cache / "work" / digest(source_root.encode())[:12]
-    shutil.rmtree(work, ignore_errors=True)
-    work.mkdir(parents=True)
-    with tempfile.TemporaryFile() as archive:
-        run("git", "archive", tree, cwd=REPO, stdout=archive)
-        archive.seek(0)
-        with tarfile.open(fileobj=archive) as tar:
-            tar.extractall(work, filter="data")
+    extract(tree, work)
     temporary = output / "binary.tmp"
     environment = go_environment(cache, build["target"])
     if Path(work, module, "vendor/modules.txt").is_file():
@@ -176,6 +216,7 @@ def build_one(build, item, cache, strict):
     run(go, "build", "-o", str(temporary), build.get("package", "."), cwd=work / module, env=environment, stdout=sys.stderr)
     data = temporary.read_bytes()
     elf_check(data, build["target"])
+    tests = run_tests(go, work / module, cache)
     temporary.chmod(0o755)
     artifact = output / build["binary"]
     temporary.replace(artifact)
@@ -183,7 +224,7 @@ def build_one(build, item, cache, strict):
               "target": build["target"], "item": item["name"], "local": source,
               "destination": output_path, "artifact": str(artifact),
               "sha256": digest(data), "size": len(data), "seconds": round(time.monotonic() - started, 3),
-              "pgo": pgo}
+              "pgo": pgo, "tests": tests}
     temporary_meta = metadata.with_suffix(".tmp")
     temporary_meta.write_text(json.dumps(record, indent=2) + "\n")
     temporary_meta.replace(metadata)

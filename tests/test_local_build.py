@@ -26,6 +26,13 @@ if a == ["version"]:
 keys = ("CGO_ENABLED", "GOOS", "GOARCH", "GOAMD64", "GOFLAGS", "GOCACHE", "GOMODCACHE", "GOTOOLCHAIN")
 with (root / "go.log").open("a") as f:
     f.write(json.dumps({"args": a, "cwd": os.getcwd(), "env": {k: os.environ.get(k) for k in keys}}) + "\\n")
+if a[0] == "test":
+    assert a[1:] == ["-vet=off", "./..."], a
+    if os.environ.get("FAIL_TEST"):
+        print("--- FAIL: TestStore (0.00s)")
+        sys.exit(1)
+    print("ok  example.com/app 0.01s")
+    sys.exit(0)
 assert a[0] == "build" and a[1] == "-o", a
 if not os.environ.get("PREPARE"):
     assert pathlib.Path("go.mod").is_file(), "go.mod missing in " + os.getcwd()
@@ -112,7 +119,10 @@ class LocalBuildTests(unittest.TestCase):
         return [json.loads(line) for line in p.read_text().splitlines()] if p.exists() else []
 
     def go_builds(self):
-        return self.calls("go")
+        return [call for call in self.calls("go") if call["args"][0] == "build"]
+
+    def go_tests(self):
+        return [call for call in self.calls("go") if call["args"][0] == "test"]
 
     def record(self):
         return json.loads((self.repo / ".local/local-build.json").read_text())[0]
@@ -131,6 +141,41 @@ class LocalBuildTests(unittest.TestCase):
         self.assertEqual(call["env"]["GOFLAGS"], "-trimpath")
         self.assertFalse(any("-ldflags" in arg or arg in ("-s", "-w") for arg in call["args"]), call["args"])
         self.assertFalse(self.record()["pgo"])
+        self.assertEqual(self.record()["tests"], {"status": "none"}, "no _test.go, nothing to run")
+
+    def test_a_module_with_tests_is_tested_once_with_the_build(self):
+        (self.repo / "webapp/go/store_test.go").write_text("package main\n")
+        self.commit()
+        self.build()
+        tests = self.go_tests()
+        self.assertEqual(len(tests), 1)
+        # The tests run on this machine, not for the Linux target.
+        self.assertIsNone(tests[0]["env"]["GOOS"])
+        self.assertIn("/.local/go-build/work/", tests[0]["cwd"])
+        self.assertEqual(self.record()["tests"]["status"], "passed")
+        # A later build or deploy of the same tree reuses the artifact and its test result.
+        self.build()
+        self.assertEqual((len(self.go_builds()), len(self.go_tests())), (1, 1))
+        self.assertEqual(self.record()["tests"]["status"], "passed")
+
+    def test_a_failing_test_fails_the_build_until_it_passes(self):
+        (self.repo / "webapp/go/store_test.go").write_text("package main\n")
+        self.commit()
+        failed = self.command("python3", "scripts/local-build.py", "build", ok=False, FAIL_TEST="1")
+        self.assertIn("go test failed", failed.stderr.decode())
+        self.assertIn("--- FAIL: TestStore", failed.stderr.decode())
+        self.build()
+        self.assertEqual(len(self.go_tests()), 2, "a failed test is run again, not cached")
+
+    def test_tests_can_be_skipped_and_are_run_when_wanted_again(self):
+        (self.repo / "webapp/go/store_test.go").write_text("package main\n")
+        self.commit()
+        self.build(BUILD_TESTS="0")
+        self.assertEqual(self.record()["tests"]["status"], "skipped")
+        self.assertEqual(self.go_tests(), [])
+        self.build()
+        self.assertEqual((len(self.go_builds()), len(self.go_tests())), (1, 1), "tested without building again")
+        self.assertEqual(self.record()["tests"]["status"], "passed")
 
     def test_a_committed_pgo_profile_rebuilds_and_is_recorded(self):
         self.build()
