@@ -71,6 +71,23 @@ def infer_roles(report: dict) -> list[str]:
     return sorted(roles, key=lambda role: (role != "app", role))
 
 
+def service_group(service: str) -> str:
+    """The node group of a service's deploy check: its role's group, or the app's."""
+    lowered = service.lower()
+    return next((f"role_{roles[0]}" for needle, roles in ROLE_RULES.items() if needle in lowered), "role_app")
+
+
+def wait_active(command: str) -> str:
+    """An app's is-active check that waits up to 20s: deploy restarts every node at once, so the app
+    may restart before the database it connects to on another node is back."""
+    return f"for i in $(seq 20); do {command} && exit 0; sleep 1; done; exit 1"
+
+
+def active_check(service: str) -> str:
+    command = f"sudo systemctl is-active --quiet {service}"
+    return command if service_group(service) != "role_app" else wait_active(command)
+
+
 def relevant_services(report: dict) -> set[str]:
     result = set()
     for service in report.get("running_services", []):
@@ -415,7 +432,8 @@ def main() -> int:
         if service:
             language_commands = [{"node_group": "role_app", "command": adapt(command["command"])}
                                  for command in example["post_deploy_commands"]]
-            language_status = [adapt(command) for command in example["status_commands"]]
+            language_status = [{"node_group": "role_app", "command": adapt(command)}
+                               for command in example["status_commands"]]
         if service:
             items.append({
                 "name": "rust-service",
@@ -523,11 +541,17 @@ def main() -> int:
             command["when"] = ["rust-service"]
         elif "systemctl restart" in text:
             command["when"] = ["rust-app", "rust-service", "app-env*"]
+        if "is-active" in text:
+            command["command"] = wait_active(text)
     post_commands += language_commands
-    post_commands += [f"sudo systemctl is-active --quiet {service}" for service in common_services]
+    # Each check only on the nodes holding its role: once MySQL moves to one node and the app is
+    # disabled there (node-overrides), a check on every node fails the deploy (eleventh's DB split).
+    post_commands += [{"node_group": service_group(service), "command": active_check(service)}
+                      for service in common_services]
     status_commands = language_status + [
-        f"systemctl is-active {service}" for service in common_services
-        if f"systemctl is-active {service}" not in language_status
+        {"node_group": service_group(service), "command": f"systemctl is-active {service}"}
+        for service in common_services
+        if f"systemctl is-active {service}" not in [command["command"] for command in language_status]
     ]
     sync = {
         "source_node": default_source,

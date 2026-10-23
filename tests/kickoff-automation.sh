@@ -714,6 +714,12 @@ jq -e '.post_deploy_commands | any(.node_group == "role_nginx" and .command == "
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
 jq -e '.rollback_commands | any(.node_group == "role_nginx" and .command == "sudo systemctl reload nginx")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
+# 起動の検査は役割のnodeだけで行い（DBを移した後も全nodeを見ない）、アプリの検査は起動を待ちます。
+jq -e '[.post_deploy_commands[], .status_commands[]] | all(type == "object")' "${fixture_repo}/.local/draft/sync.json" >/dev/null
+jq -e '.post_deploy_commands | any(.node_group == "role_nginx" and .command == "sudo systemctl is-active --quiet nginx")' \
+  "${fixture_repo}/.local/draft/sync.json" >/dev/null
+jq -e '.post_deploy_commands | any(.node_group == "role_app" and (.command | test("^for i in .*is-active --quiet isu-rust")))' \
+  "${fixture_repo}/.local/draft/sync.json" >/dev/null
 jq -e '.ISUSCOPE_SERVICE_UNITS == "mysql.service nginx.service"' \
   "${fixture_repo}/.local/draft/isuscope.json" >/dev/null
 (cd "${fixture_repo}" && CONFIRM_DRAFT=true ./scripts/configure-apply.sh)

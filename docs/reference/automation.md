@@ -232,7 +232,16 @@ Git commitが存在する場合、`sync-check`はmanifest検証に加えて、Gi
 - `rollback_commands`: 旧ファイル復元後に行うconfig test、daemon-reload、restart、health check
 - `status_commands`: 通常確認に使うcommand
 
-commandは単なる文字列なら全application node、`{"node_group":"role_nginx","command":"..."}`なら指定groupだけで実行します。異なる役割のnodeへ無関係なreloadを送らないよう、分担構成ではgroupを明示します。
+commandは単なる文字列なら全application node、`{"node_group":"role_nginx","command":"..."}`なら指定groupだけで実行します。異なる役割のnodeへ無関係なreloadを送らないよう、分担構成ではgroupを明示します。draftは、serviceの起動の検査（`is-active`）を、そのserviceの役割のgroup（mysqlは`role_mysql`、nginxは`role_nginx`、それ以外は`role_app`）に置きます。アプリの検査は、起動まで最大20秒待ちます。
+
+### 役割を別のnodeへ移すとき
+
+DBを別のnodeへ移すなど、nodeの役割を変えるときは、次をまとめて直してから1回でdeployします（eleventhでは、1つずつ気付いてdeployが3回止まった）。
+
+1. `.local/node-overrides.json`で各nodeの`roles`を書き換え、`make discover`をやり直す。groupの所属（`role_mysql`など）はここから決まる。
+2. `config/sync.json`で、移した役割のitemの`source_node`を、新しくその役割を持つnodeにする。古いnodeのままだと、deployの検証が`source_node ... is not in sync item group`で止まる。
+3. `post_deploy_commands`・`rollback_commands`・`status_commands`の文字列のcommand（全application nodeで動く）を、役割のgroupを持つobjectにする。役割を外したnodeでは、そのserviceを`systemctl disable --now`しておく。止めたserviceの検査が全nodeに残っていると、deployが失敗してrollbackする。
+4. 別のnodeのDBへつなぐアプリは、DBより先に起動し得る。deployは全nodeの検査を同時に流し、再起動の順序も保証されない。そのため、アプリが起動時にDBを待つか、再接続するようにする。起動の検査も、`is-active`を数秒待つ形にする。終了前の再起動試験（`make final-db-late`）でも同じことを確かめる。
 
 commandのobjectには`"when": ["nginx-*"]`のように、そのcommandが扱うitemの名前（fnmatchのpattern）を書けます。deployはそのitemが変わったときだけ実行します（`scripts/deploy-plan.py`）。`when`のないcommandは毎回実行します。draftはnginxの検査とreloadに`nginx-*`、Rustの再起動に`rust-app`・`rust-service`・`app-env*`、daemon-reloadに`rust-service`を付け、`make tare`と`make durability`はMySQLの再起動に`mysql-*`、`99-tare.conf`の読み込み（`sysctl -q -p`。OS既定のfileは読み直さないので、存在しないkeyの警告が出ない）に`tare-sysctl`を付けます。Rustのコードだけを変えたdeployでMySQLを再起動しないので、毎回のベンチがbuffer poolの冷えた状態から始まることもありません。
 
