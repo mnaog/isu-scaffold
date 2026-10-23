@@ -3,6 +3,7 @@
   "rules": [
     {"lines": ["benchmark slow"], "to": {"main": "ベンチが遅い。アプリ・nginxのerror logとnodeの負荷を確かめ、止まっていれば`scripts/benchmark-stop.sh`で止める"}},
     {"lines": ["final settled"], "to": {"main": "再起動の後、時間を置いた確認も通った"}},
+    {"lines": ["prebuild failed"], "to": {"main": "ベンチの間に先にbuildした次の候補が、mainのbranchの上で衝突・buildの失敗・testの失敗になった。その投稿は、mergeする前に直すか棄却する（詳細は`.local/prebuild.json`）"}},
     {"lines": ["* failed", "* draft-failed"], "to": {"main": "段階が失敗した。本文とログで原因を見て直す"}},
     {"lines": ["kickoff code-ready"], "to": {
       "main": "コードとschemaが入った。laneが動き出す",

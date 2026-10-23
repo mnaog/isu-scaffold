@@ -147,18 +147,23 @@ def waiting_context(root, session='', now=None):
 
 
 def start_sync(repo):
-    """Bring the waiting proposals up to main's branch while the benchmark runs, in the background.
-    It stops at the first conflict and leaves it in .local/proposal-sync; the output says which."""
+    """Bring the waiting proposals up to main's branch while the benchmark runs, in the background, then
+    build and test what main may deploy next (scripts/prebuild.py). The sync stops at the first conflict
+    and leaves it in .local/proposal-sync; the output says which."""
     if os.environ.get('PROPOSAL_AUTO_SYNC') == '0':  # tests that drive sync step by step
         return
-    log = repo / '.local/proposal-sync.log'
+    local = repo / '.local'
+    here = Path(__file__).resolve().parent
     try:
-        log.parent.mkdir(parents=True, exist_ok=True)
-        with log.open('w') as out:
-            subprocess.Popen([sys.executable, str(Path(__file__).with_name('proposal.py')), 'sync'], cwd=repo,
-                             stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+        local.mkdir(parents=True, exist_ok=True)
+        # One background shell: the prebuild needs the synced branches, so it starts when the sync ends.
+        subprocess.Popen(['sh', '-c', '"$0" "$1" sync >"$2" 2>&1; "$0" "$3" >"$4" 2>&1',
+                          sys.executable, str(here / 'proposal.py'), str(local / 'proposal-sync.log'),
+                          str(here / 'prebuild.py'), str(local / 'prebuild.log')],
+                         cwd=repo, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
     except OSError:
-        pass  # main can still run it by hand
+        pass  # main can still run them by hand
 
 
 def started(root, session):
