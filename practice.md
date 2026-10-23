@@ -14,8 +14,10 @@
 ## 練習のポータル
 
 - ポータルは手元の`practice-portal`が動かすisuxportalで、URLは`http://localhost:3000`（選手の画面は`/contestant`）。本番の`portal.isucon.net`や、公式の環境確認で配られたtemplateは練習で使わない。
-- chrome-debugは`localhost:3000`でログインしてある。cookieはホスト名ごとなので、`127.0.0.1:3000`では開かない。ポータルの「ログイン」（GitHubのOAuth）は練習では通らないので押さない。ログインしていなければ人間に頼む。
+- 開始宣言の後、運営が`practice-portal`の`scripts/start.sh`を流す。これでポータルの競技時刻が今になり、chrome-debugが`localhost:3000`の選手としてログインする。cookieはホスト名ごとなので、`127.0.0.1:3000`では開かない。ポータルの「ログイン」（GitHubのOAuth）は練習では通らないので押さない。
+- `/contestant`が404（競技時間の外）になる、またはログインしていないときは、`start.sh`がまだ流れていない。運営へ`SendMessage(to: "operator")`で「`scripts/start.sh`を流してほしい（ログインだけなら`scripts/browser-login.py`）」と頼む。`operator`が見えなければ（`/list-agents`）人間に頼む。
 - サーバーは、ポータルのサーバーリストで配られるCloudFormationのtemplateから、AWSの`default` profile・`ap-northeast-1`でstackを作って起動する。stackができると、運営がapp1〜3をポータルに登録し、ベンチを依頼できるようにする。
+- 準備中に作ったstackや前の練習のstackは使わない。運営は`start.sh`の後に作られたstackしか登録しない（eleventhでは準備中のstackを使い、開始後に作り直して約14分ベンチを待った）。stackを作ったら、`aws cloudformation describe-stacks`のDescriptionにポータルのtemplateの印（`isucon14-practice-portal`）が入っていることを確かめる。
 - stackにはベンチnodeも入るが、運営のものなので接続しない。`practice-portal`の内部とベンチマーカーのコードは読まない。
 
 ## 閲覧・変更の制限
@@ -49,6 +51,17 @@
 現在の本番想定に合わせ、サーバー作成・起動の待ち時間も開始後の時間に含める。別の練習で「起動済み環境からの開始」を選ぶ場合は、その差を記録し、AMI公開から始めた本番相当の所要時間と混同しない。
 
 各段階の時刻は`.local/progress.log`とisuscopeのrunに残るので、所要時間はそこから読む。並行区間は単純加算せず、どの処理の完了を待ったかを見る。
+
+## 練習の終わり方
+
+人間が練習の終了をmainへ伝えたら（humanのセッションから`@main`へ伝えてもよい）、mainが次の順で片付ける。本番の[終了前](docs/guides/finish.md)（競技の後はAWSを止めない）とは別の手順。eleventhでは、mainがベンチを回している間に別のセッションがEC2を消し、pushも`main`のbranchだけで終わった。
+
+1. 新しいベンチとdeployを始めない。走っているベンチは終わるのを待ち、分析と採否を記録する。improveとhumanへ`SendMessage`で、止まって作業中の変更をcommitするよう伝える。
+2. 記録をcommitする。rootでは`isuscope-data/`（runとchanges。生ログは`.gitignore`のまま）と`docs/agent-history/`。各worktree（improve・portal・human）の`docs/agent-history/`も、そのworktreeのbranchでcommitする。commitの前に、AWSの鍵や秘密鍵が入っていないかを確かめる。
+3. 全branchをpushする（`git push origin --all`）。大きいpushが途中で切れたら`git -c http.postBuffer=524288000 push origin --all`。
+4. AWSを片付ける。今回の練習で作ったstackを全部消し（`aws cloudformation delete-stack`の後に`wait stack-delete-complete`）、自分で作ったkey pairを消す（`aws ec2 delete-key-pair`。運営の`practice-portal-operator`は消さない）。消す前に、`describe-stacks`で名前と作成時刻を見て、今回の練習のstackか確かめる。ほかの練習のstackがあれば、消すかを人間に聞く。
+5. 運営（`operator`。いなければ人間）へ、`practice-portal`の`scripts/start.sh`を止めるよう伝える。
+6. 人間へ報告する。最高点とそのrun・commit、push先、消したものと残したものを書く。
 
 ## 本番への切り替え
 
