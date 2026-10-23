@@ -127,6 +127,18 @@ class LocalBuildTests(unittest.TestCase):
         self.assertEqual(call["env"]["GOTOOLCHAIN"], "auto")
         self.assertEqual(call["args"][-1], ".")
         self.assertIn("/.local/go-build/work/", call["cwd"])
+        # perf・Goのprofile・PGOは関数名で読むので、symbolを外すflagを付けない。
+        self.assertEqual(call["env"]["GOFLAGS"], "-trimpath")
+        self.assertFalse(any("-ldflags" in arg or arg in ("-s", "-w") for arg in call["args"]), call["args"])
+        self.assertFalse(self.record()["pgo"])
+
+    def test_a_committed_pgo_profile_rebuilds_and_is_recorded(self):
+        self.build()
+        (self.repo / "webapp/go/default.pgo").write_bytes(b"profile")
+        self.commit()
+        self.build()
+        self.assertEqual(len(self.go_builds()), 2, "the profile is part of the source tree")
+        self.assertTrue(self.record()["pgo"])
 
     def test_stopping_build_group_stops_the_compiler(self):
         child = subprocess.Popen(['python3', 'scripts/local-build.py', 'build'], cwd=self.repo,

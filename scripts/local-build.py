@@ -106,6 +106,8 @@ def go_command():
 
 
 def go_environment(cache, target):
+    # 関数名のsymbolは外さない（`-ldflags=-s -w`を付けない）。perfとGoのprofileは名前で集計し、PGOも
+    # 名前で関数を探す。`default.pgo`が`main` packageにあれば、`go build`の既定（`-pgo=auto`）がそれを使う。
     goos, goarch = target.split("/")
     environment = dict(os.environ, CGO_ENABLED="0", GOOS=goos, GOARCH=goarch, GOFLAGS="-trimpath",
                        GOTOOLCHAIN=os.environ.get("GOTOOLCHAIN", "auto"),
@@ -170,6 +172,7 @@ def build_one(build, item, cache, strict):
     environment = go_environment(cache, build["target"])
     if Path(work, module, "vendor/modules.txt").is_file():
         environment["GOFLAGS"] += " -mod=vendor"
+    pgo = (work / module / build.get("package", ".") / "default.pgo").is_file()
     run(go, "build", "-o", str(temporary), build.get("package", "."), cwd=work / module, env=environment, stdout=sys.stderr)
     data = temporary.read_bytes()
     elf_check(data, build["target"])
@@ -179,11 +182,13 @@ def build_one(build, item, cache, strict):
     record = {"input_id": input_id, "source_tree": tree, "toolchain": toolchain,
               "target": build["target"], "item": item["name"], "local": source,
               "destination": output_path, "artifact": str(artifact),
-              "sha256": digest(data), "size": len(data), "seconds": round(time.monotonic() - started, 3)}
+              "sha256": digest(data), "size": len(data), "seconds": round(time.monotonic() - started, 3),
+              "pgo": pgo}
     temporary_meta = metadata.with_suffix(".tmp")
     temporary_meta.write_text(json.dumps(record, indent=2) + "\n")
     temporary_meta.replace(metadata)
-    print(f"local build: {build['binary']} {record['seconds']}s sha256={record['sha256']}", file=sys.stderr)
+    print(f"local build: {build['binary']} {record['seconds']}s sha256={record['sha256']}"
+          f"{' with default.pgo' if pgo else ''}", file=sys.stderr)
     return record
 
 
