@@ -177,6 +177,41 @@ class ProposalDecisionTest(unittest.TestCase):
         self.assertIn('0000aaaa score 720000: 次の最大の制約: POST /coordinate', analyzed[0])
         self.assertEqual(self.analyze(), '')  # the same analysis again: nothing new to copy or tell
 
+    def test_the_detailed_analysis_written_during_the_next_benchmark_reaches_improve(self):
+        # main records a short analysis with the decision, starts the next benchmark, and appends the
+        # detailed analysis of the first run while the next one is measured.
+        self.commit_and_submit('insert.txt', '座標をまとめてINSERTする')
+        self.git('merge', '-q', '--no-ff', '-m', 'Take human', 'human')
+        self.deliver()  # human is measured in run aaaa
+        run_id = '01a15900-0000-7000-8000-00000000aaaa'
+        db, bin_dir = isuscope_stub.install(self.tmp.name)
+        db.execute("INSERT INTO runs (id, score, passed, finished_at) VALUES (?, 720000, 1, '2999-01-01T00:00:00Z')",
+                   (run_id,))
+        db.execute("INSERT INTO run_analyses VALUES ('an-1', ?, '2999-01-01T00:01:00Z', 'supported', ?)",
+                   (run_id, '次の最大の制約: POST /coordinate。採用: INSERTが1/5、score +12%。'))
+        db.execute("INSERT INTO changes (id, created_at) VALUES ('human', '2999-01-01T00:01:00Z')")
+        db.execute("INSERT INTO change_decisions VALUES ('d1', 'human', '2999-01-01T00:01:00Z', 'accepted', 'x', NULL)")
+        db.execute("INSERT INTO change_decision_runs VALUES ('d1', ?)", (run_id,))
+        db.commit()
+        self.env['PATH'] = f'{bin_dir}:{self.env["PATH"]}'
+        self.assertIn('main analyzed', self.analyze())
+
+        # The next proposal is measured in the next benchmark, which started after run aaaa ended...
+        self.commit_and_submit('batch.txt', '通知をまとめて送る')
+        self.git('merge', '-q', '--no-ff', '-m', 'Take human again', 'human')
+        self.deliver()
+        db.execute("UPDATE runs SET finished_at = '2000-01-01T00:00:00Z' WHERE id = ?", (run_id,))
+        # ...and the detailed analysis of run aaaa is appended meanwhile.
+        db.execute("INSERT INTO run_analyses VALUES ('an-2', ?, '2999-01-01T00:02:00Z', 'supported', ?)",
+                   (run_id, '次の最大の制約: POST /coordinate のロック。詳しく: 待ちが1.2ms、transitionsは変わらず。'))
+        db.commit()
+        told = self.analyze()
+        self.assertNotIn('まだ採否の無い', told)
+        lines = (self.repo / '.local/progress.log').read_text().splitlines()
+        analyzed = [line for line in lines if '\tmain\tanalyzed\t' in line]
+        self.assertEqual(len(analyzed), 2, analyzed)
+        self.assertIn('詳しく: 待ちが1.2ms', analyzed[1])
+
     def test_a_benchmark_start_brings_waiting_proposals_up_to_main_in_the_background(self):
         self.commit_and_submit('insert.txt', '座標をまとめてINSERTする')
         (self.repo / 'main.txt').write_text('m\n')

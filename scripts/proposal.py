@@ -470,7 +470,7 @@ def adopt_decisions(root):
 def latest_analysis(root):
     """The analysis recorded last, with its run's ID and score, from isuscope's index."""
     rows = isuscope_sql.rows(root, """
-        SELECT a.id, a.body, r.id AS run_id, r.score FROM run_analyses a JOIN runs r ON r.id = a.run_id
+        SELECT a.id, a.body, r.id AS run_id, r.score, r.finished_at FROM run_analyses a JOIN runs r ON r.id = a.run_id
         ORDER BY a.created_at DESC, a.id DESC LIMIT 1""")
     return rows[0] if rows else None
 
@@ -489,11 +489,16 @@ def after_analysis(root):
 def after_analysis_reading(root, lines):
     if adopted := adopt_decisions(root):
         lines.append('isuscopeの採否を投稿へ写した: ' + ', '.join(adopted))
-    if waiting := [data['branch'] for data in load_all(root) if data.get('status') == 'measuring']:
-        lines.append(f'まだ採否の無い測定中の投稿: {", ".join(waiting)}（`isuscope analyze RUN ... --change '
-                     f'{change_id(waiting[0])} --decision ...`で記録する）。')
-        return '\n'.join(lines)
     analysis = latest_analysis(root)
+    # main appends the detailed analysis of a run while the next benchmark runs: the proposals that
+    # benchmark measures started after the analyzed run ended and do not hold this analysis back.
+    ended = instant(analysis.get('finished_at') or '') if analysis else None
+    owed = [data['branch'] for data in load_all(root) if data.get('status') == 'measuring'
+            and (ended is None or (since := instant(data.get('measuring_since'))) is None or since <= ended)]
+    if owed:
+        lines.append(f'まだ採否の無い測定中の投稿: {", ".join(owed)}（`isuscope analyze RUN ... --change '
+                     f'{change_id(owed[0])} --decision ...`で記録する）。')
+        return '\n'.join(lines)
     if not analysis:
         return '\n'.join(lines)
     state = state_dir(root) / 'analyzed.json'

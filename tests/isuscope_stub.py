@@ -7,7 +7,8 @@ from pathlib import Path
 import sqlite3
 
 SCHEMA = """
-CREATE TABLE runs (id TEXT PRIMARY KEY, started_at TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'complete',
+CREATE TABLE runs (id TEXT PRIMARY KEY, started_at TEXT NOT NULL DEFAULT '', finished_at TEXT,
+                   state TEXT NOT NULL DEFAULT 'complete',
                    score INTEGER, passed INTEGER, hypothesis TEXT NOT NULL DEFAULT '', config_key TEXT,
                    benchmark_started INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE run_tags (run_id TEXT NOT NULL, tag TEXT NOT NULL);
