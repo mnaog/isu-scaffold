@@ -194,14 +194,13 @@ isuscopeは、全nodeへのSSH、ベンチ起動、ログとcollector、動的UR
 - initialize後に期待される状態
 - 整合性チェックと、それが前提にする状態の順序、失格条件
 - 得点へ直接つながる処理
+- 得点行動の入口: 利用者が得点する行動の前にどの応答の何を見るか、その中身や見えている時間が変わると行動の回数がどう変わるか
 
 APIの一覧には、各APIのhandler（`file:line`）と主なSQL・外部処理を付ける。シナリオ → API → handler → SQL → 得点・失敗のつながりは、この見取り図だけに置く（コードの地図は別に作らない）。
 
 ## baselineの後に次の変更を選ぶ
 
 mainは初回baselineの分析で、観測された最大の制約を特定し、根拠とともに初回runの`isuscope analyze`に書く。improveはこの分析から最初の変更を選ぶ。node別のCPU・iowait・disk・network、`database_io`、`logs`など、読める欄は[isuscopeの使い方](../reference/isuscope.md)にある。
-
-接続・fdの上限（nginxのworker_connections・backlog・keepalive、アプリのLimitNOFILE、sysctl、MySQLのmax_connectionsとbuffer pool）は問題に依存しない既定値で、`make tare`が1つのcommitにする。baselineの後に早めにdeployして`isuscope run`で測る。
 
 接続・fdの上限（nginxのworker_connections・backlog・keepalive、アプリのLimitNOFILE、sysctl、MySQLのmax_connectionsとbuffer pool）は問題に依存しない既定値で、`make tare`が1つのcommitにする。baselineの後に早めにdeployして`isuscope run`で測る。`make tare`は、計測用のLTSVと二重に書くnginxの既定のaccess logも外す。
 

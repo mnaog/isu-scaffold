@@ -62,6 +62,7 @@ improveは、キューの待ちが1件以下のときだけ投稿できる（`pr
 - Monitorで`python3 scripts/progress.py follow main`を追う。`.local/progress.log`のうちmain宛ての行（投稿、laneの結果、段階の失敗、`benchmark slow`など）だけが、何をするかの一言と一緒に出る（宛先と一言は`config/progress.json`）。
 - nodeの異常（deploy後にアプリが立ち上がらない、nodeが応答しない、ベンチが止まる）は、まず`make status`で全nodeを見る（応答しないnode、メモリ・load・失敗したunit・待ち受けport・直近のOOMとerror・MySQLの実行中のSQLを1回で返す）。手でsshするときも`scripts/ssh-node.sh <node> '<command>'`を使い、待つloopには回数の上限を付ける。
 - 見取り図（`docs/benchmark-scenario.md`）は、ベンチの仕様について観測と食い違う記述だけを直す。runの結果や改善の効果は`isuscope analyze`へ書く。
+- 処理は速くなったのに得点行動（作成・購入・予約など）の回数が減ったら、まず見取り図の「得点行動の入口」を疑い、入口の応答が変わったかを`transitions`で比べる。確かめた反応はその節へ事実として書く。
 
 ### 振れ幅を測る
 
