@@ -277,9 +277,14 @@ def working_now(root):
 
 
 def run_hypothesis(root):
-    """The hypothesis for `isuscope run`, from the proposals main merged for the next benchmark."""
+    """The hypothesis for `isuscope run`, from the proposals main merged for the next benchmark.
+
+    Measuring ones count too: started in the background in the same call as the merge, the benchmark
+    hook marks them measuring before this runs (eleventh lost two benchmarks to an empty hypothesis),
+    and one left measuring by a run without a decision is measured again on the next one."""
     base = main_session.main_branch(root)
-    merged = [data for data in (refresh(root, data, base) for data in load_all(root)) if data.get('status') == 'merged']
+    merged = [data for data in (refresh(root, data, base) for data in load_all(root))
+              if data.get('status') in ('merged', 'measuring')]
     if not merged:
         raise Refused('次のベンチへ取り込んだ投稿が無い（`git merge --no-ff <branch>`の後に使う）。')
     merged.sort(key=lambda data: data.get('first_submitted_at') or '')

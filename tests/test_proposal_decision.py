@@ -118,6 +118,18 @@ class ProposalDecisionTest(unittest.TestCase):
         explicit = self.decide('deferred', '--commit', commit[:8]).stdout
         self.assertIn('deferred', explicit)
 
+    def test_the_hypothesis_holds_proposals_the_hook_already_marked_measuring(self):
+        # eleventh: `git merge ... && make deploy && isuscope run --hypothesis "$(proposal.py hypothesis)"`
+        # in one background call let the hook mark the merge measuring first, and the run refused an
+        # empty hypothesis.
+        self.commit_and_submit('insert.txt', '座標をまとめてINSERTする')
+        self.git('merge', '-q', '--no-ff', '-m', 'Take human', 'human')
+        self.assertIn('座標をまとめてINSERTする', self.script('proposal.py', 'hypothesis').stdout)
+        self.assertIn('このベンチで測る投稿: human', self.deliver())
+        self.assertIn('human: 座標をまとめてINSERTする', self.script('proposal.py', 'hypothesis').stdout)
+        self.decide('accepted', '--run', 'aaaa1111')
+        self.assertNotEqual(self.script('proposal.py', 'hypothesis', check=False).returncode, 0)
+
     def test_a_decision_on_a_later_commit_covers_the_earlier_ones_it_holds(self):
         self.commit_and_submit('insert.txt', '座標をまとめてINSERTする')
         self.deliver()
