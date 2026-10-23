@@ -36,7 +36,7 @@
 <main>
 
 <div id="connection-error" role="status"></div>
-<section class="queue-section" id="working-section"><div class="section-title"><div><h2>作業中</h2><span class="count" id="working-count">—</span></div><span class="section-note">main以外（improve・human・worktree）が、いま作っているもの（scripts/proposal.py working）。投稿するとベンチ待ちへ移る</span></div><div id="working" class="queue"></div></section><section class="queue-section" id="queue-section"><div class="section-title"><div><h2>ベンチ待ち</h2><span class="count" id="queue-count">—</span></div><span class="section-note" id="queue-note">mainのベンチを待っている投稿（scripts/proposal.py）</span></div><div id="queue" class="queue"></div></section>
+<section class="queue-section" id="working-section"><div class="section-title"><div><h2>作業中</h2><span class="count" id="working-count">—</span></div><span class="section-note">main以外（improve・human・worktree・lane）が、いま作っているもの（scripts/proposal.py working。laneは走っている間）。投稿するとベンチ待ちへ移る</span></div><div id="working" class="queue"></div></section><section class="queue-section" id="queue-section"><div class="section-title"><div><h2>ベンチ待ち</h2><span class="count" id="queue-count">—</span></div><span class="section-note" id="queue-note">mainのベンチを待っている投稿（scripts/proposal.py）</span></div><div id="queue" class="queue"></div></section>
 <div class="overview" id="overview"></div>
 <section class="score-section"><div class="panel score-panel" id="score-history"></div></section>
 <div id="operation-status" class="operation-status" aria-live="polite"></div>
@@ -146,7 +146,7 @@ function renderWorking(q){
  if(!items.length){root.append(el('p','いま作業中を宣言しているworktreeはありません。','queue-empty'));return;}
  for(const w of items){
   const item=el('div',null,'queue-item'),body=el('div'),head=el('div');
-  item.append(el('div',w.role==='improve'?'improve':w.name,'queue-group working'));
+  item.append(el('div',w.role==='improve'||w.role==='lane'?w.role:w.name,'queue-group working'));
   head.append(el('span',w.branch||'(branchなし)','queue-branch'),el('span',`${w.name}${w.agent?' · '+w.agent:''}`,'queue-who'));
   body.append(head,el('div',w.what||'','queue-text'));
   const meta=el('div',null,'queue-meta');meta.append(el('span',`開始 ${ago(w.started_at)}`));body.append(meta);

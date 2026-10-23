@@ -58,6 +58,21 @@ def state_dir(name):
     return root_repo() / '.local/lanes' / name
 
 
+def board_working(name, worktree=None, branch=None, purpose=None):
+    """Show the lane under 作業中 on the board while it runs, or clear it (scripts/proposal.py). Only the
+    board reads it, so a failure here never stops the lane."""
+    try:
+        spec = importlib.util.spec_from_file_location('proposal', Path(__file__).resolve().parent / 'proposal.py')
+        proposal = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(proposal)
+        if worktree:
+            proposal.lane_working(root_repo(), name, worktree, branch, purpose)
+        else:
+            proposal.lane_idle(root_repo(), name)
+    except Exception:
+        pass
+
+
 def load_config():
     return json.loads(CONFIG.read_text())
 
@@ -285,6 +300,7 @@ def run(name, prompt_file, purpose):
             save(name, 'running', worktree=str(worktree), branch=branch, base=base, base_commit=base_commit,
                  timeout_minutes=claude['timeout_minutes'])
             progress.emit(source, 'running', f'{branch} at {worktree}', root=ROOT)
+            board_working(name, worktree, branch, purpose)
             stream = directory / 'stream.jsonl'
             with stream.open('w') as out, (directory / 'claude.stderr').open('w') as err:
                 child = subprocess.Popen(command, cwd=worktree, env=environment, stdin=subprocess.PIPE,
@@ -332,6 +348,7 @@ def run(name, prompt_file, purpose):
         except Exception as error:  # the lane must always end in a recorded state
             save(name, 'failed', error=str(error), seconds=round(time.time() - started, 1))
             progress.emit(source, 'failed', str(error), root=ROOT)
+        board_working(name)
         record_timing(name, started, code)
     return code
 
@@ -383,6 +400,7 @@ def stop(name):
             continue
         os.killpg(pid, signal.SIGTERM)
     save(name, 'stopped')
+    board_working(name)
     progress.emit(f'lane:{name}', 'stopped', '', root=ROOT)
 
 

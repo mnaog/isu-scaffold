@@ -4,6 +4,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -117,6 +118,30 @@ class LaneTests(unittest.TestCase):
         # The commit line comes before the lane completes, and only once.
         self.assertLess(states.index('commit'), states.index('complete'))
         self.assertEqual(len([row for row in rows if row[2] == 'commit' and 'Map the code' in row[3]]), 1)
+
+    def test_a_running_lane_shows_under_working_on_the_board_until_it_ends(self):
+        for name in ('proposal.py', 'main-session.py', 'isuscope_sql.py'):
+            shutil.copy(ROOT / 'scripts' / name, self.repo / 'scripts' / name)
+        read = ("import importlib.util, json; spec = importlib.util.spec_from_file_location('p', 'scripts/proposal.py'); "
+                "p = importlib.util.module_from_spec(spec); spec.loader.exec_module(p); print(json.dumps(p.working_now('.')))")
+
+        def working():
+            done = subprocess.run(['python3', '-c', read], cwd=self.repo, capture_output=True, text=True, check=True)
+            return [(e['name'], e['role'], e['branch'], e['what']) for e in json.loads(done.stdout)]
+
+        lane = subprocess.Popen(['python3', 'scripts/lane.py', 'run', 'code-map'], cwd=self.repo,
+                                env=dict(self.env, FAKE_SLEEP='3'), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and not working():
+            time.sleep(0.2)
+        self.assertEqual(working(), [('code-map', 'lane', 'lane/code-map', '地図を書く')])
+        self.assertEqual(lane.wait(timeout=60), 0)
+        self.assertEqual(working(), [])
+        # A declaration left by a runner that died shows only while the lane's state says it runs.
+        declared = self.repo / '.local/proposal-state/working/lane-code-map.json'
+        declared.write_text(json.dumps({'name': 'code-map', 'role': 'lane', 'worktree': self.status()['worktree'],
+                                        'branch': 'lane/code-map', 'what': '地図を書く'}))
+        self.assertEqual(working(), [])
 
     def test_timeout_stops_claude_and_is_recorded(self):
         config = json.loads((self.repo / 'config/lanes.json').read_text())

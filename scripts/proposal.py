@@ -267,13 +267,33 @@ def working(root, what=None, done=False, cwd=None):
     return f'{name}の作業中にした（ボードの上部に出る。投稿すると消える）: {what}'
 
 
+def lane_working(root, name, worktree, branch, what):
+    """A lane (scripts/lane.py) builds `what` in its own worktree; lane.py clears it when the lane ends."""
+    write_json(working_dir(root) / f'lane-{name}.json',
+               {'name': name, 'role': 'lane', 'agent': 'claude -p', 'session': None, 'worktree': str(worktree),
+                'branch': branch, 'what': what, 'started_at': now()})
+
+
+def lane_idle(root, name):
+    (working_dir(root) / f'lane-{name}.json').unlink(missing_ok=True)
+
+
+def lane_running(root, name):
+    state = (read_json(Path(root) / '.local/lanes' / str(name) / 'status.json') or {}).get('state')
+    return state in ('preparing', 'running')
+
+
 def working_now(root):
-    """Who builds what now, oldest first; a worktree that is gone no longer works on anything."""
+    """Who builds what now, oldest first; a worktree that is gone no longer works on anything, and a lane
+    only while it runs (its runner may have died without clearing it)."""
     entries = []
     for path in sorted(working_dir(root).glob('*.json')) if working_dir(root).is_dir() else []:
         data = read_json(path)
-        if data and Path(data.get('worktree') or '').is_dir():
-            entries.append({key: data.get(key) for key in ('name', 'role', 'agent', 'branch', 'what', 'started_at')})
+        if not data or not Path(data.get('worktree') or '').is_dir():
+            continue
+        if data.get('role') == 'lane' and not lane_running(root, data.get('name')):
+            continue
+        entries.append({key: data.get(key) for key in ('name', 'role', 'agent', 'branch', 'what', 'started_at')})
     return sorted(entries, key=lambda entry: entry.get('started_at') or '')
 
 
