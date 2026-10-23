@@ -48,9 +48,10 @@ def exclude_from_backups(root):
         return False
     data.mkdir(parents=True, exist_ok=True)
     marker.touch()
-    # A sticky exclusion follows the directory and needs no administrator rights.
-    subprocess.run(['tmutil', 'addexclusion', str(data)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                   check=False)
+    # A sticky exclusion follows the directory and needs no administrator rights. tmutil takes about
+    # ten seconds, and the benchmark hook that calls this should not wait for it.
+    subprocess.Popen(['tmutil', 'addexclusion', str(data)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
     return True
 
 
