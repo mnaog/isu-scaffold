@@ -8,6 +8,7 @@
 ## 目的と制約
 - 競技時間内に、最終的なスコアを最大にする。時間が最大の制約である。
 - 言語はRustを採用する。
+- ユーザーは日本人のため、日本語で応答する。
 - 公式のレギュレーション・当日マニュアル・整合性条件・失格条件を常に守る。当日マニュアルは事前の資料より優先する。
 
 ## 役割
@@ -24,7 +25,7 @@
 - improveと人間（手で動かすセッションを含む）は、作り始めたら`python3 scripts/proposal.py working "<狙う制約と変更>"`でボードの「作業中」に出し、変更は`python3 scripts/proposal.py submit`で投稿する。投稿はmainのベンチを待つキューに入る（扱いは[自動化の仕様](docs/reference/automation.md)）。
 - remote変更・deploy・ベンチ・isuscopeの記録・laneの起動と停止・`.local/operation.lock`はmainだけが行う。mainの宣言（`.local/main-session.json`）がある間は、ほかのセッションからの同じ操作を`scripts/tool-guard.py`が止める。別のセッションで`/main`を打ち直すとmainが移る。
 - isuscopeは各ベンチを、このrepoの`docs/agent-history/`にある会話へ結び付ける。別のdirectoryで起動したセッションでは`make kickoff`が止まる。
-- 各セッションは役割の名前で起動する（`claude --name main`など。[準備](docs/guides/preparation.md)）。ほかのセッションに伝えることがあるときは、相手の名前を宛先にして`SendMessage`で送る。
+- 各セッションは役割の名前で起動する（`make session ROLE=main`など。[準備](docs/guides/preparation.md)）。ほかのセッションに伝えることがあるときは、相手の名前を宛先にして`SendMessage`で送る。
 - 作業中の他worktreeを変更・削除しない。実行中のlockは手で消さず、別の操作の終了を待つ。status・checkなどの読み取りは並行してよい。
 
 ## 判断の原則
@@ -40,7 +41,7 @@
 | 段階 | すること | 手順書 |
 | --- | --- | --- |
 | 準備（開始前） | 問題に依存しない道具・認証・検証を済ませる。chrome-debugでのポータルのログインと、worktree `portal`・`improve`・`human`も作っておく | [準備](docs/guides/preparation.md) |
-| kickoff | 開始と同時に、人間が`/main`・`/portal`・`/improve`を起動する。mainは`make kickoff`をbackgroundで始め、完全importをcommitしたら人間の確認を待たずに`make first-bench`で初回baselineを取る。lane `full-memory`も先行回収と同時に全メモリ化を始める | [kickoff](docs/guides/kickoff.md) |
+| kickoff | 開始と同時に、人間が`make session ROLE=main`・`ROLE=portal`・`ROLE=improve`で各セッションを起動する。mainは`make kickoff`をbackgroundで始め、完全importをcommitしたら人間の確認を待たずに`make first-bench`で初回baselineを取る。lane `full-memory`も先行回収と同時に全メモリ化を始める | [kickoff](docs/guides/kickoff.md) |
 | 改善 | 観測された最大の制約から順に、継続的に構成を含めて変える。improveが作って投稿し、mainが測って分析し、採否を決める | このファイルの「判断の原則」、各役割の手順書 |
 | 終了前 | 人間がmainへ指示して始める。新しい変更を止め、最終構成を固定し、確認のベンチを3回行う | [終了前](docs/guides/finish.md) |
 

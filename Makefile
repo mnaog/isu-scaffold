@@ -1,7 +1,8 @@
-.PHONY: help discover kickoff kickoff-apply build deploy rollback status bench-check first-bench tare durability lanes proposals builder-images isuscope-node final-check final-reboot final-db-late
+.PHONY: help session discover kickoff kickoff-apply build deploy rollback status bench-check first-bench tare durability lanes proposals builder-images isuscope-node final-check final-reboot final-db-late
 
 help:
 	@printf '%s\n' \
+		'make session ROLE=<main|improve|portal|human>  役割の名前を付けたClaude Codeを、その作業場所で起動する（mainはボードも）' \
 		'make discover                         providerからnodeと全設定を再生成する' \
 		'make kickoff                          コード先行回収・kickoff buildからdraft生成と検査まで進める' \
 		'make lanes                            claude -pのAI lane（indexes、local-env、scenarioなど）の状態を見る' \
@@ -26,6 +27,9 @@ help:
 		'make durability                       DBの書き込み待ちが見えたらMySQLの耐久性を緩める1 commitを作る' \
 		'make board                            人間向けボードを開く (127.0.0.1:8765)' \
 		'make test                             問題と実サーバーを使わないテストを実行する'
+
+session:
+	@./scripts/session.sh "$(ROLE)" $(if $(PROMPT),"$(PROMPT)")
 
 discover:
 	@./scripts/discover.sh

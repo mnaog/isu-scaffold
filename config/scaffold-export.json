@@ -35,6 +35,7 @@
     "scripts/sync-lib.sh",
     "scripts/sync-scaffold.py",
     "scripts/worktree.sh",
+    "scripts/session.sh",
     "tests/benchmark-contract-fixture.py",
     "tests/kickoff-automation.sh",
     "tests/test_benchmark_contract.py",

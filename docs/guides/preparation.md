@@ -64,7 +64,7 @@
 
 ## セッションの名前と、セッション同士の話
 
-- main・improve・portal・humanのセッションは、役割の名前を付けて起動する。各worktreeで`claude --name <main|improve|portal|human> --settings config/claude/session.json`。Claude Code v2.1.224以降が要る（`claude --version`）。起動したら`/list-agents`で、互いの名前が見えることを確かめる。
+- main・improve・portal・humanのセッションは、役割の名前を付けて起動する。端末を役割ごとに1つ開き、`make session ROLE=<main|improve|portal|human>`を打つ（`scripts/session.sh`）。その役割の作業場所（mainはroot、ほかはworktree `<repo>-<役割>`）で`claude --name <役割> --settings config/claude/session.json`を始め、`/<役割>`を最初に打つ（humanは打たない）。`ROLE=main`はボードも裏で起動する（`BOARD_PORT`、既定8765、ログは`.local/board.log`）。`claude`を手で打つと名前が付かない。eleventhでは名前の無いセッション同士の伝言を人間が運んだ。Claude Code v2.1.224以降が要る（`claude --version`）。起動したら`/list-agents`で、互いの名前が見えることを確かめる。
 - `config/claude/session.json`は、ほかのセッションからのメッセージをそのまま受け取る設定（`crossSessionInbound: accept`）。確認なしで動かすセッションでも、人間の承認を待たずに届く。project settings（`.claude/settings.json`）の`accept`は使われないので、`--settings`で渡す。
 - 名前があると、`@main`のように宛先を指してメッセージを送れる（Claudeが`SendMessage`で送り、相手は作業の合間に読む）。人間の意見や止めてほしいことは、humanのセッションで「`@main`に…と伝えて」と打つか、mainのセッションへ直接打つ。
 - 投稿・採否・kickoffとlaneの進み具合は、これまでどおりキュー（`scripts/proposal.py`）と`.local/progress.log`で知らせ合う。メッセージは、それに載らない話（質問、頼みごと、人間の意見）に使う。

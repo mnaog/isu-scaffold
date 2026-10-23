@@ -12,7 +12,7 @@ merge・次に測るものの判断・deploy・ベンチ・分析・採否の責
 
 ## 流れ
 
-chrome-debugでのポータルのログインと、worktree `portal`・`improve`は準備で済ませてある（[準備](preparation.md)の「ポータル」「improveの作業場所」）。開始と同時に、人間が3つのセッションを名前を付けて起動する（`claude --name <名前> --settings config/claude/session.json`。[準備](preparation.md)の「セッションの名前と、セッション同士の話」）。rootでmain（`/main`の後に`/goal`）、worktree `portal`でportal（`/portal`）、worktree `improve`でimprove（`/improve`）。improveは`code-ready`の後にコードとschemaを読み始め、mainがbaselineの分析を`main analyzed`の行で知らせたら最初の変更を作る。ログインが切れていたら、そのときに人間が入り直す。portalは結果を`.local/progress.log`へ`portal <official|environment|bench|notice>`の行で書き、mainはkickoffの他の行と一緒に追う。
+chrome-debugでのポータルのログインと、worktree `portal`・`improve`は準備で済ませてある（[準備](preparation.md)の「ポータル」「improveの作業場所」）。開始と同時に、人間が3つの端末で`make session ROLE=main`・`ROLE=portal`・`ROLE=improve`を打ち、名前の付いたセッションを起動する（[準備](preparation.md)の「セッションの名前と、セッション同士の話」）。mainはrootで`/main`から始まり（続けて`/goal`）、portalとimproveは各worktreeで`/portal`・`/improve`から始まる。ボードはmainの起動と一緒に立つ。improveは`code-ready`の後にコードとschemaを読み始め、mainがbaselineの分析を`main analyzed`の行で知らせたら最初の変更を作る。ログインが切れていたら、そのときに人間が入り直す。portalは結果を`.local/progress.log`へ`portal <official|environment|bench|notice>`の行で書き、mainはkickoffの他の行と一緒に追う。
 
 ```text
 portal（mainと並行。手順は.claude/commands/portal.md）
