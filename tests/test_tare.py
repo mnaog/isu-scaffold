@@ -61,7 +61,7 @@ Description=app
 
 [Service]
 User=isucon
-ExecStart=/home/isucon/webapp/rust/target/release/app
+ExecStart=/home/isucon/webapp/go/app
 
 [Install]
 WantedBy=multi-user.target
@@ -79,7 +79,7 @@ class TareTest(unittest.TestCase):
         files = {
             'config/nginx/nginx.conf': NGINX_CONF,
             'config/nginx/sites-available/app.conf': SITE,
-            'config/systemd/app-rust.service': UNIT,
+            'config/systemd/app-go.service': UNIT,
             'config/mysql/mysql.conf.d/mysqld.cnf': '[mysqld]\nbind-address = 127.0.0.1\n',
         }
         for name, text in files.items():
@@ -89,8 +89,8 @@ class TareTest(unittest.TestCase):
         self.sync = {
             'source_node': 'app1',
             'items': [
-                {'name': 'rust-service', 'type': 'file', 'node_group': 'role_app', 'local': 'config/systemd/app-rust.service',
-                 'remote': '/etc/systemd/system/app-rust.service', 'owner': 'root', 'owner_group': 'root'},
+                {'name': 'go-service', 'type': 'file', 'node_group': 'role_app', 'local': 'config/systemd/app-go.service',
+                 'remote': '/etc/systemd/system/app-go.service', 'owner': 'root', 'owner_group': 'root'},
                 {'name': 'nginx-conf', 'type': 'file', 'node_group': 'role_nginx', 'local': 'config/nginx/nginx.conf',
                  'remote': '/etc/nginx/nginx.conf', 'owner': 'root', 'owner_group': 'root'},
                 {'name': 'nginx-site-app', 'type': 'file', 'node_group': 'role_nginx',
@@ -102,7 +102,7 @@ class TareTest(unittest.TestCase):
             'post_deploy_commands': [
                 {'node_group': 'role_nginx', 'command': 'sudo nginx -t'},
                 {'node_group': 'role_app', 'command': 'sudo systemctl daemon-reload'},
-                {'node_group': 'role_app', 'command': 'sudo systemctl restart app-rust'},
+                {'node_group': 'role_app', 'command': 'sudo systemctl restart app-go'},
                 'sudo systemctl is-active --quiet mysql',
             ],
             'rollback_commands': [],
@@ -110,7 +110,7 @@ class TareTest(unittest.TestCase):
         (self.root / 'config/sync.json').write_text(json.dumps(self.sync, indent=2) + '\n')
         (self.root / '.local/inspection').mkdir(parents=True)
         (self.root / '.local/inspection/app1.json').write_text(json.dumps(
-            {'memory_mb': 3800, 'running_services': ['nginx.service', 'mysql.service', 'app-rust.service']}))
+            {'memory_mb': 3800, 'running_services': ['nginx.service', 'mysql.service', 'app-go.service']}))
         git(self.root, 'init', '-q')
         git(self.root, 'config', 'user.name', 'Fixture')
         git(self.root, 'config', 'user.email', 'fixture@example.invalid')
@@ -163,7 +163,7 @@ class TareTest(unittest.TestCase):
         self.assertIn('proxy_pass http://tare_localhost_8080/internal/;', internal)
         self.assertIn('proxy_pass http://$backend;', site)
 
-        self.assertIn('LimitNOFILE=1048576', self.read('config/systemd/app-rust.service').split('[Install]')[0])
+        self.assertIn('LimitNOFILE=1048576', self.read('config/systemd/app-go.service').split('[Install]')[0])
         self.assertIn('net.core.somaxconn = 65535', self.read('config/sysctl/99-tare.conf'))
         mysql = self.read('config/mysql/mysql.conf.d/zz-tare.cnf')
         self.assertIn('max_connections = 1000', mysql)

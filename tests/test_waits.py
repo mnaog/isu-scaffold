@@ -1,4 +1,4 @@
-"""APIごとの待ち: mainが値を変えるscripts/waits.py、runに残すidentity、アプリへ写すconfig/waits/waits.rs。"""
+"""APIごとの待ち: mainが値を変えるscripts/waits.py、runに残すidentity、アプリへ写すconfig/waits/waits.go。"""
 import json
 import os
 from pathlib import Path
@@ -12,9 +12,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'tests'))
 import isuscope_stub  # noqa: E402
 
-UNIT = '[Service]\nEnvironmentFile=/home/isucon/env.sh\nExecStart=/home/isucon/webapp/rust/target/release/app\n'
+UNIT = '[Service]\nEnvironmentFile=/home/isucon/env.sh\nExecStart=/home/isucon/webapp/go/app\n'
 SYNC = {'items': [
-    {'name': 'rust-service', 'local': 'config/systemd/app.service', 'remote': '/etc/systemd/system/app.service', 'type': 'file'},
+    {'name': 'go-service', 'local': 'config/systemd/app.service', 'remote': '/etc/systemd/system/app.service', 'type': 'file'},
     {'name': 'app-env', 'local': 'config/app/env.sh', 'remote': '/home/isucon/env.sh', 'type': 'file'},
 ]}
 
@@ -119,38 +119,170 @@ class WaitsScriptTests(unittest.TestCase):
         self.assertIn('空振りのpollingが減り', out)
 
 MAIN = r'''
-mod waits;
+package main
 
-fn main() {
-    let (table, errors) = waits::Waits::parse(
-        "GET /api/app/nearby-chairs after 100; POST /api/app/rides/:ride_id/evaluation before 9999;\
-         PUT /x sideways 1; GET /api/chair/notification after 20 status=200");
-    println!("errors {}", errors.len());
-    println!("describe {}", table.describe());
-    let ms = |d: Option<std::time::Duration>| d.map(|d| d.as_millis() as i64).unwrap_or(-1);
-    println!("after {}", ms(table.after("GET", "/api/app/nearby-chairs")));
-    println!("other-phase {}", ms(table.before("GET", "/api/app/nearby-chairs")));
-    println!("placeholder {}", ms(table.before("post", "/api/app/rides/01ABC/evaluation")));
-    println!("deeper {}", ms(table.before("POST", "/api/app/rides/01ABC/evaluation/x")));
-    println!("unknown-word {}", ms(table.after("GET", "/api/chair/notification")));
-    std::env::set_var(waits::VARIABLE, "");
-    println!("global-empty {}", waits::global().is_empty());
+import (
+	"fmt"
+	"os"
+	"time"
+)
+
+func main() {
+	table, errors := waitsParse(
+		"GET /api/app/nearby-chairs after 100; POST /api/app/rides/:ride_id/evaluation before 9999;" +
+			" PUT /x sideways 1; GET /api/chair/notification after 20 status=200")
+	fmt.Println("errors", len(errors))
+	fmt.Println("describe", table.describe())
+	ms := func(wait time.Duration, ok bool) int64 {
+		if !ok {
+			return -1
+		}
+		return wait.Milliseconds()
+	}
+	fmt.Println("after", ms(table.after("GET", "/api/app/nearby-chairs")))
+	fmt.Println("other-phase", ms(table.before("GET", "/api/app/nearby-chairs")))
+	fmt.Println("placeholder", ms(table.before("post", "/api/app/rides/01ABC/evaluation")))
+	fmt.Println("deeper", ms(table.before("POST", "/api/app/rides/01ABC/evaluation/x")))
+	fmt.Println("unknown-word", ms(table.after("GET", "/api/chair/notification")))
+	os.Setenv(waitsVariable, "")
+	fmt.Println("global-empty", waitsGlobal().isEmpty())
+}
+'''
+
+# 表はprocessで1度だけ読むので、middlewareのtestは表を環境変数で渡して別のprocessで動かす。
+MIDDLEWARE_TABLE = 'GET /slow/{id} before 200;GET /late after 200;GET /stream after 200'
+
+MIDDLEWARE_TESTS = r'''
+package main
+
+import (
+	"bufio"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
+
+func serve(t *testing.T, handler http.HandlerFunc) *httptest.Server {
+	server := httptest.NewServer(waitsMiddleware(handler))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func get(t *testing.T, url string) (string, time.Duration) {
+	started := time.Now()
+	response, err := http.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(body), time.Since(started)
+}
+
+func TestBeforeWaitsAheadOfTheHandler(t *testing.T) {
+	requested := make(chan time.Time, 1)
+	var started time.Time
+	server := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		started = time.Now()
+		w.Write([]byte("ok"))
+	})
+	requested <- time.Now()
+	body, took := get(t, server.URL+"/slow/42?x=1")
+	if body != "ok" || took < 200*time.Millisecond || started.Sub(<-requested) < 200*time.Millisecond {
+		t.Fatalf("body %q took %v", body, took)
+	}
+}
+
+func TestAfterRunsTheHandlerFirstAndDelaysTheResponse(t *testing.T) {
+	var finished time.Time
+	server := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		finished = time.Now()
+		w.Header().Set("X-Check", "kept")
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte("done"))
+	})
+	started := time.Now()
+	response, err := http.Get(server.URL + "/late")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	took := time.Since(started)
+	if string(body) != "done" || response.StatusCode != http.StatusAccepted || response.Header.Get("X-Check") != "kept" {
+		t.Fatalf("%d %q %v", response.StatusCode, body, response.Header)
+	}
+	if finished.Sub(started) > 150*time.Millisecond || took < 200*time.Millisecond {
+		t.Fatalf("handler at %v, response at %v", finished.Sub(started), took)
+	}
+}
+
+func TestAHandlerThatWritesNothingIsStillDelayed(t *testing.T) {
+	server := serve(t, func(w http.ResponseWriter, r *http.Request) {})
+	if _, took := get(t, server.URL+"/late"); took < 200*time.Millisecond {
+		t.Fatal(took)
+	}
+}
+
+func TestOtherRoutesAndMethodsPassStraightThrough(t *testing.T) {
+	server := serve(t, func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) })
+	for _, path := range []string{"/fast", "/slow/1/x", "/slow"} {
+		if body, took := get(t, server.URL+path); body != "ok" || took > 150*time.Millisecond {
+			t.Fatalf("%s: %q %v", path, body, took)
+		}
+	}
+	response, err := http.Post(server.URL+"/late", "text/plain", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+}
+
+func TestAStreamingResponseIsNotBuffered(t *testing.T) {
+	server := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("first\n"))
+		w.(http.Flusher).Flush()
+		time.Sleep(500 * time.Millisecond)
+		w.Write([]byte("second\n"))
+	})
+	started := time.Now()
+	response, err := http.Get(server.URL + "/stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	line, err := bufio.NewReader(response.Body).ReadString('\n')
+	took := time.Since(started)
+	if err != nil || line != "first\n" || took < 200*time.Millisecond || took > 600*time.Millisecond {
+		t.Fatalf("%q %v %v", line, err, took)
+	}
 }
 '''
 
 
-@unittest.skipUnless(shutil.which('cargo'), 'cargo is not installed')
+@unittest.skipUnless(shutil.which('go'), 'go is not installed')
 class WaitsModuleTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.module = Path(self.tmp.name) / 'module'
+        self.module.mkdir()
+        (self.module / 'go.mod').write_text('module waits_check\n\ngo 1.22\n')
+        shutil.copyfile(ROOT / 'config/waits/waits.go', self.module / 'waits.go')
+        (self.module / 'main.go').write_text(MAIN)
+        # 標準libraryだけなので、moduleの取得もtoolchainの切り替えも要らない。
+        self.env = {**os.environ, 'GOTOOLCHAIN': 'local', 'GOFLAGS': '', 'GO111MODULE': 'on'}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
     def test_the_module_parses_and_matches(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            crate = Path(tmp) / 'crate'
-            (crate / 'src').mkdir(parents=True)
-            (crate / 'Cargo.toml').write_text('[package]\nname = "waits_check"\nversion = "0.1.0"\nedition = "2021"\n\n[workspace]\n')
-            shutil.copyfile(ROOT / 'config/waits/waits.rs', crate / 'src/waits.rs')
-            (crate / 'src/main.rs').write_text(MAIN)
-            env = {**os.environ, 'CARGO_TARGET_DIR': str(Path(tmp) / 'target')}
-            out = subprocess.run(['cargo', 'run', '--quiet', '--offline'], cwd=crate, env=env, capture_output=True,
-                                 text=True, check=True).stdout
+        out = subprocess.run(['go', 'run', '.'], cwd=self.module, env=self.env, capture_output=True,
+                             text=True, check=True).stdout
         lines = dict(line.split(' ', 1) for line in out.splitlines())
         self.assertEqual(lines['errors'], '2')  # an unknown phase and a fifth word are skipped, not fatal
         self.assertEqual(lines['describe'], 'GET /api/app/nearby-chairs after 100;POST /api/app/rides/:ride_id/evaluation before 9999')
@@ -160,6 +292,20 @@ class WaitsModuleTest(unittest.TestCase):
         self.assertEqual(lines['deeper'], '-1')
         self.assertEqual(lines['unknown-word'], '-1')
         self.assertEqual(lines['global-empty'], 'true')
+
+    def test_the_middleware_waits_before_and_after_without_buffering(self):
+        (self.module / 'waits_test.go').write_text(MIDDLEWARE_TESTS)
+        env = {**self.env, 'ISUCON_WAITS': MIDDLEWARE_TABLE}
+        result = subprocess.run(['go', 'test', '-count=1', '-v', '.'], cwd=self.module, env=env,
+                                capture_output=True, text=True, timeout=300)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.count('--- PASS'), 5, result.stdout)
+        # 起動時に読んだ表は標準エラーへ書く（go testは子processの標準エラーを標準出力へまとめる）。
+        self.assertIn('waits: ' + MIDDLEWARE_TABLE, result.stdout + result.stderr)
+
+    def test_the_module_passes_go_vet(self):
+        result = subprocess.run(['go', 'vet', '.'], cwd=self.module, env=self.env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == '__main__':

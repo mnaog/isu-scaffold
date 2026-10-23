@@ -8,7 +8,7 @@ set -euo pipefail
 # Before the first deploy the servers run the imported state as distributed. When HEAD still
 # has the imported digests (scripts/imported-state.py) and the application unit is running and
 # listening on every node, the baseline is taken on that distributed build, without waiting
-# for the local Rust build and deploy; deploy follows the benchmark, so the deploy path is
+# for the local Go build and deploy; deploy follows the benchmark, so the deploy path is
 # proven before the first improvement. Otherwise, or with FIRST_BENCH_MODE=deploy, it deploys
 # first as before. Each step takes the operation lock itself, so this script holds no lock.
 # Run it from the main session, never from a lane, so the run records that conversation.

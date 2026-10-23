@@ -9,7 +9,7 @@
 
 ## 進め方
 
-1. アプリのコード（`webapp/rust`）からSQLを集め、WHERE・JOIN・ORDER BY・GROUP BYに使う列と、schemaの主キー・既存索引を照合する。
+1. アプリのコード（`webapp/go`）からSQLを集め、WHERE・JOIN・ORDER BY・GROUP BYに使う列と、schemaの主キー・既存索引を照合する。
 2. 呼ばれ方（requestごと・ループ内・一覧API）から重そうなものを先に、索引がない条件を選ぶ。複合索引は条件の等価列を先、範囲・ORDER BY列を後にする。
 3. **1つの索引を1つのcommitにする。** mainは途中のcommitから順に取り込むので、効果が大きそうなものから順にcommitする。commit messageは英語で、1行目に索引、本文に対象SQL（`file:line`）と期待する観測値（どのSQLの行走査・時間が減るか）を書く。
 4. 索引はinitializeが流すschemaへ入れる。initializeがtableを作り直すか、データ投入の後に索引を作るかを確かめ、initializeの所要時間を大きく延ばさない形にする。

@@ -288,8 +288,8 @@ preflight_node() {
     command+="; sudo test -d '${remote_parent}'; getent passwd '${owner}' >/dev/null; getent group '${owner_group}' >/dev/null; sudo test ! -e '${staging}'; sudo test ! -e '${staging}.dir'; sudo test ! -e '${backup}'; sudo test ! -e '${backup}.absent'; available=\$(df -Pk '${remote_parent}' | awk 'NR==2 {print \$4}'); test \"\$available\" -ge '${required_kb}'"
     target=$(jq -r --arg item "${name}" '.[] | select(.item == $item) | .target' "${artifact_file}")
     case "${target}" in
-      x86_64-unknown-linux-gnu) command+="; test \"\$(uname -m)\" = x86_64" ;;
-      aarch64-unknown-linux-gnu) command+="; test \"\$(uname -m)\" = aarch64" ;;
+      linux/amd64) command+="; test \"\$(uname -m)\" = x86_64" ;;
+      linux/arm64) command+="; test \"\$(uname -m)\" = aarch64" ;;
     esac
   done 3<"${plan_file}"
   command+="; sudo test ! -e '/tmp/isucon-deploy-${release}'"
@@ -309,7 +309,7 @@ staging_node() {
     local_paths+=("${local_path}")
     command+="; sudo test -e '${bundle}/${local_path}'; sudo mv '${bundle}/${local_path}' '${staging}'; sudo chown -R '${owner}:${owner_group}' '${staging}'"
     while IFS=$'\t' read -r artifact_destination artifact_sha; do
-      command+="; printf '%s  %s\\n' '${artifact_sha}' '${staging}/${artifact_destination}' | sudo sha256sum -c -; sudo test -x '${staging}/${artifact_destination}'; dependencies=\$(sudo ldd '${staging}/${artifact_destination}'); printf '%s\\n' \"\$dependencies\"; if printf '%s\\n' \"\$dependencies\" | grep -q 'not found'; then exit 1; fi"
+      command+="; printf '%s  %s\\n' '${artifact_sha}' '${staging}/${artifact_destination}' | sudo sha256sum -c -; sudo test -x '${staging}/${artifact_destination}'; dependencies=\$(sudo ldd '${staging}/${artifact_destination}' 2>&1 || true); printf '%s\\n' \"\$dependencies\"; if printf '%s\\n' \"\$dependencies\" | grep -q 'not found'; then exit 1; fi"
     done < <(jq -r --arg item "${name}" '.[] | select(.item == $item) | [.destination, .sha256] | @tsv' "${artifact_file}")
   done 3<"${plan_file}"
   command+="; sudo rm -rf '${bundle}'"

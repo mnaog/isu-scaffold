@@ -116,6 +116,19 @@
       register: inspection_service_environment_files
       changed_when: false
 
+    # The Go binary a unit runs is where make build puts the locally built one.
+    - name: Find the command of locally defined services
+      ansible.builtin.shell: |
+        while IFS=$'\t' read -r unit fragment; do
+          case "$fragment" in /etc/systemd/system/*) ;; *) continue ;; esac
+          printf '%s\t%s\n' "$unit" "$(sed -n 's/^[[:space:]]*ExecStart=//p' "$fragment" | head -n 1)"
+        done
+      args:
+        executable: /bin/bash
+        stdin: "{{ inspection_service_fragments.stdout }}"
+      register: inspection_service_exec_starts
+      changed_when: false
+
     - name: Find Nginx access log paths
       ansible.builtin.shell: |
         command -v nginx >/dev/null 2>&1 || exit 0
@@ -247,6 +260,7 @@
             'nginx_access_logs': inspection_nginx_access_logs.stdout_lines,
             'nginx_site_files': inspection_nginx_site_files.stdout_lines,
             'service_environment_files': inspection_service_environment_files.stdout_lines,
+            'service_exec_starts': inspection_service_exec_starts.stdout_lines,
             'mysql_slow_logs': inspection_mysql_slow_logs.stdout_lines,
             'versions': (inspection_versions.stdout | from_json)
           } | to_nice_json }}

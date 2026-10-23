@@ -57,11 +57,6 @@ observability_mysql_slow_log: false
 observability_mysql_slow_log_path: /var/log/mysql/isuscope-slow.log
 observability_log_max_size: 512M
 
-# ローカルbuildが既定。明示的にremote buildを使う場合だけ有効にする。
-observability_remote_rust_build: false
-observability_rust_user: isucon
-observability_rust_cache_dir: /home/isucon/.cache/isucon-cargo-target
-
 # 当日必要なservice名を追加します。空ならservice状態では失敗しません。
 bootstrap_required_services: []
 # roleごとに必須のservice。例: {"role_app": ["nginx", "isu"], "role_db": ["mysql"]}

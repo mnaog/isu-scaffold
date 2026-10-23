@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Build committed Rust sources locally and attach verified artifacts to deploy archives."""
+"""Build committed Go sources locally and attach verified artifacts to deploy archives.
+
+The local Go toolchain cross-compiles a static Linux binary (CGO_ENABLED=0); GOTOOLCHAIN=auto
+fetches the version go.mod asks for. No Docker and no glibc matching are needed."""
 import argparse
 import fcntl
 import hashlib
@@ -8,17 +11,18 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import signal
 import subprocess
 import sys
 import tarfile
 import tempfile
 import time
-import uuid
 
 REPO = Path(__file__).resolve().parent.parent
-TARGETS = {"x86_64-unknown-linux-gnu": (62, "x86_64"),
-           "aarch64-unknown-linux-gnu": (183, "aarch64")}
+TARGETS = {"linux/amd64": (62, "amd64"),
+           "linux/arm64": (183, "arm64")}
+FIELDS = {"item", "target", "binary", "output", "package", "source_root", "manifest_dir"}
 
 
 def run(*args, **kwargs):
@@ -47,8 +51,8 @@ def definitions(manifest):
     items = {item["name"]: item for item in manifest["items"]}
     seen = set()
     for build in builds:
-        if not {"item", "dockerfile", "base_image", "target", "binary"} <= set(build) or set(build) - {"item", "dockerfile", "base_image", "target", "binary", "source_root", "manifest_dir", "toolchain", "packages"}:
-            raise ValueError("local_builds requires item, dockerfile, base_image, target, binary")
+        if not {"item", "target", "binary"} <= set(build) or set(build) - FIELDS:
+            raise ValueError("local_builds requires item, target, binary (optional: output, package, source_root, manifest_dir)")
         item = items.get(build["item"])
         if not item or item["type"] != "directory" or build["item"] in seen:
             raise ValueError("local build requires a unique directory item")
@@ -63,18 +67,14 @@ def definitions(manifest):
             raise ValueError("source_root must contain the deployed item")
         if build.get("manifest_dir", ".") != ".":
             safe_path(build["manifest_dir"])
-        if "toolchain" in build and not re.fullmatch(r"[A-Za-z0-9_.-]+", build["toolchain"]):
-            raise ValueError("invalid toolchain")
-        if not isinstance(build.get("packages", []), list) or any(not isinstance(p, str) or not re.fullmatch(r"[a-z0-9][a-z0-9+.:=-]*", p) for p in build.get("packages", [])):
-            raise ValueError("packages must be explicit apt package names")
-        if not safe_path(build["dockerfile"]).startswith("config/"):
-            raise ValueError("builder Dockerfile must be under config/")
-        if not re.fullmatch(r"[A-Za-z0-9_-]+", build["binary"]):
-            raise ValueError("invalid Rust binary name")
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", build["binary"]):
+            raise ValueError("invalid Go binary name")
+        safe_path(build.get("output", build["binary"]))
+        package = build.get("package", ".")
+        if package != "." and not (package.startswith("./") and safe_path(package[2:])):
+            raise ValueError("package must be . or ./<directory> inside the module")
         if build["target"] not in TARGETS:
-            raise ValueError("unsupported Rust target")
-        if not isinstance(build["base_image"], str) or not re.fullmatch(r"[A-Za-z0-9_./:@-]+", build["base_image"]):
-            raise ValueError("invalid builder base_image")
+            raise ValueError("unsupported Go target (linux/amd64 or linux/arm64)")
     return builds
 
 
@@ -97,89 +97,57 @@ def verified(record):
     return data
 
 
-def builder_image(build):
-    """The builder image for a base/target/toolchain; prepare-images makes the same tag in advance."""
-    recipe = (REPO / build["dockerfile"]).read_bytes()
-    platform = capture("docker", "info", "--format", "{{.OSType}}/{{.Architecture}}")
-    platform = platform.replace("/aarch64", "/arm64").replace("/x86_64", "/amd64")
-    if platform not in ("linux/arm64", "linux/amd64"):
-        raise ValueError(f"unsupported Docker host: {platform}")
-    build_args = {"BASE_IMAGE": build["base_image"], "TARGET": build["target"], "EXTRA_PACKAGES": " ".join(build.get("packages", []))}
-    if "toolchain" in build:
-        build_args["RUST_TOOLCHAIN"] = build["toolchain"]
-    recipe_id = digest(recipe + json.dumps([build_args, platform], sort_keys=True).encode())
-    tag = f"isucon-rust-builder:{recipe_id}"
-    if subprocess.run(["docker", "image", "inspect", tag], stdout=subprocess.DEVNULL,
-                      stderr=subprocess.DEVNULL).returncode:
-        run("docker", "build", "--platform", platform,
-            *[arg for k, v in build_args.items() for arg in ("--build-arg", f"{k}={v}")], "-t", tag, "-", input=recipe,
-            stdout=sys.stderr)
-    return capture("docker", "image", "inspect", "--format", "{{.Id}}", tag), platform
-
-
-def prepare_images(bases_path, dockerfile):
-    """Preparation: build every candidate builder image before any application code exists."""
-    config = json.loads(Path(bases_path).read_text())
-    failed = []
-    for base in config["bases"]:
-        for target in config.get("targets", ["x86_64-unknown-linux-gnu"]):
-            if target not in TARGETS:
-                raise ValueError(f"unsupported Rust target: {target}")
-            started = time.monotonic()
-            try:
-                image, _ = builder_image({"base_image": base["image"], "target": target, "dockerfile": dockerfile})
-                print(f"builder ready: {base['image']} {target} {image[:19]} ({time.monotonic() - started:.0f}s)", file=sys.stderr)
-            except subprocess.CalledProcessError as error:
-                failed.append(f"{base['image']} {target}")
-                print(f"builder failed: {base['image']} {target}: {error}", file=sys.stderr)
-    if failed:
-        raise ValueError("fix or remove these bases in config/rust-builder/bases.json: " + ", ".join(failed))
-
-
-# x86-64の基準の命令だけを使うlevel。nodeの型が混ざっても（c7iのSapphire Rapidsとc6inのIce Lake、
-# 同じ型でも世代の違うCPU）どのnodeでも動く。
-PORTABLE_CPUS = {"x86-64", "x86-64-v2", "x86-64-v3", "generic"}
-
-
-def cpu_specific_flags(tree, prefix):
-    """`.cargo/config.toml`がbuildをCPUに合わせるなら、そのfileと値を返す。
-
-    `target-cpu=native`はbuilderのCPUの命令を使うので、別のCPUのnodeでSIGILLで落ちる。
-    """
-    found = []
-    names = capture("git", "ls-tree", "-r", "--name-only", tree).splitlines()
-    for name in names:
-        if not re.search(r"(^|/)\.cargo/config(\.toml)?$", name):
-            continue
-        text = capture("git", "show", f"{tree}:{name}")
-        for cpu in re.findall(r"target-cpu\s*=\s*([A-Za-z0-9_.-]+)", text):
-            if cpu not in PORTABLE_CPUS:
-                found.append(f"{prefix}/{name}: target-cpu={cpu}")
+def go_command():
+    """The local go; the tarball install in ~/.local/go also serves shells that skip the profile."""
+    found = shutil.which("go") or str(Path.home() / ".local/go/bin/go")
+    if not Path(found).is_file():
+        raise ValueError("go is not installed; install the Go toolchain (docs/guides/preparation.md)")
     return found
 
 
+def go_environment(cache, target):
+    # 関数名のsymbolは外さない（`-ldflags=-s -w`を付けない）。perfとGoのprofileは名前で集計し、PGOも
+    # 名前で関数を探す。`default.pgo`が`main` packageにあれば、`go build`の既定（`-pgo=auto`）がそれを使う。
+    goos, goarch = target.split("/")
+    environment = dict(os.environ, CGO_ENABLED="0", GOOS=goos, GOARCH=goarch, GOFLAGS="-trimpath",
+                       GOTOOLCHAIN=os.environ.get("GOTOOLCHAIN", "auto"),
+                       GOCACHE=str(cache / "gocache"), GOMODCACHE=str(cache / "gomod"))
+    # x86-64-v1 runs on every node CPU; a mixed stack (c7i and c6in) must not die with SIGILL.
+    environment.pop("GOAMD64", None)
+    return environment
+
+
+def prepare_toolchain(cache):
+    """Preparation: compile the standard library for both targets before any application code exists."""
+    go = go_command()
+    with tempfile.TemporaryDirectory() as work:
+        Path(work, "go.mod").write_text("module prepare\n")
+        Path(work, "main.go").write_text('package main\n\nimport (\n\t"database/sql"\n\t"net/http"\n)\n\n'
+                                         'func main() { _ = sql.Drivers(); _ = http.ListenAndServe }\n')
+        for target in TARGETS:
+            started = time.monotonic()
+            run(go, "build", "-o", os.devnull, ".", cwd=work, env=go_environment(cache, target), stdout=sys.stderr)
+            print(f"toolchain ready: {capture(go, 'version')} {target} ({time.monotonic() - started:.0f}s)", file=sys.stderr)
+
+
 def build_one(build, item, cache, strict):
-    if "replace-with" in build["base_image"] or "replace-with" in build["binary"]:
-        raise ValueError("After the start: configure the Rust image and binary from the imported app before building")
+    if "replace-with" in build["binary"]:
+        raise ValueError("After the start: configure the Go binary from the imported app before building")
     source = item["local"]
     source_root = build.get("source_root", source)
     clean(source_root)
     if strict:
-        clean(build["dockerfile"])
         clean("scripts/local-build.py")
     tree = capture("git", "rev-parse", f"HEAD:{source_root}")
-    flags = cpu_specific_flags(tree, source_root)
-    if flags:
-        raise ValueError("the build is tied to one CPU (" + "; ".join(flags) + "); nodes may run different CPUs "
-                         "(c7i and c6in in one stack), where it dies with SIGILL. Remove it or use x86-64-v3")
-    if subprocess.run(["git", "cat-file", "-e", f"HEAD:{source_root}/Cargo.lock"], cwd=REPO,
+    manifest_dir = build.get("manifest_dir", ".")
+    module = Path(source).relative_to(source_root) / manifest_dir
+    if subprocess.run(["git", "cat-file", "-e", f"HEAD:{(Path(source_root) / module).as_posix()}/go.mod"], cwd=REPO,
                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
-        raise ValueError(f"missing {source_root}/Cargo.lock: import the workspace root and its path dependencies, then set source_root/manifest_dir; do not regenerate the distribution lockfile")
-    image, platform = builder_image(build)
-    # Tree/lock changes invalidate the final artifact, but retain dependency caches.
-    environment = digest(json.dumps([image, build["target"], source, build["binary"]]).encode())
-    input_id = digest(json.dumps([tree, build, environment,
-                                 digest(Path(__file__).read_bytes())], sort_keys=True).encode())
+        raise ValueError(f"missing go.mod in {source}/{manifest_dir}: import the module root, then set source_root/manifest_dir")
+    go = go_command()
+    toolchain = capture(go, "version")
+    output_path = build.get("output", build["binary"])
+    input_id = digest(json.dumps([tree, build, toolchain, digest(Path(__file__).read_bytes())], sort_keys=True).encode())
     output = cache / input_id
     metadata = output / "artifact.json"
     if metadata.exists():
@@ -189,58 +157,39 @@ def build_one(build, item, cache, strict):
         verified(record)
         print(f"local build: cached {build['binary']} ({input_id[:12]})", file=sys.stderr)
         return record
-    project = digest(str(cache).encode())[:12]
-    volume = f"isucon-rust-{project}-{environment[:20]}"
-    run("docker", "volume", "create", volume, stdout=subprocess.DEVNULL)
-    container = f"isucon-build-{uuid.uuid4().hex[:16]}"
     started = time.monotonic()
     output.mkdir(parents=True, exist_ok=True)
-    # /work stays constant for Cargo fingerprints; target/registry live on Linux volumes.
-    script = '''set -eu
-mkdir -p /work /cache/cargo
-tar -C /work -xf -
-export CARGO_HOME=/cache/cargo
-cd "$1"
-if test -d /vendor; then
-  mkdir -p /cache/vendor-home
-  export CARGO_HOME=/cache/vendor-home
-  printf '[source.crates-io]\nreplace-with = "vendor"\n[source.vendor]\ndirectory = "/vendor"\n' > "$CARGO_HOME/config.toml"
-fi
-cargo build --locked --release --target "$2" --bin "$3"
-'''
-    command = ["docker", "run", "--name", container, "-i", "--platform", platform,
-               "--mount", f"type=volume,src={volume},dst=/cache"]
-    # Optional local vendor directory, e.g. for an offline rehearsal. Cargo checks checksums.
-    vendor = os.environ.get("RUST_BUILD_VENDOR_DIR")
-    if vendor:
-        vendor_path = Path(vendor).resolve(strict=True)
-        if not vendor_path.is_dir() or "," in str(vendor_path):
-            raise ValueError("invalid RUST_BUILD_VENDOR_DIR")
-        command += ["--mount", f"type=bind,src={vendor_path},dst=/vendor,readonly", "--network", "none"]
-    command += [image, "sh", "-c", script, "sh", f"/work/{source}/{build.get("manifest_dir", ".")}", build["target"], build["binary"]]
-    try:
-        with tempfile.TemporaryFile() as archive:
-            run("git", "archive", f"--prefix={source_root}/", tree, cwd=REPO, stdout=archive)
-            archive.seek(0)
-            run(*command, stdin=archive, stdout=sys.stderr)
-        temporary = output / "binary.tmp"
-        run("docker", "cp", f"{container}:/cache/target/{build['target']}/release/{build['binary']}", str(temporary))
-        data = temporary.read_bytes()
-        elf_check(data, build["target"])
-        temporary.chmod(0o755)
-        artifact = output / build["binary"]
-        temporary.replace(artifact)
-        record = {"input_id": input_id, "source_tree": tree, "image": image,
-                  "target": build["target"], "item": item["name"], "local": source,
-                  "destination": f"target/release/{build['binary']}", "artifact": str(artifact),
-                  "sha256": digest(data), "size": len(data), "seconds": round(time.monotonic() - started, 3)}
-        temporary_meta = metadata.with_suffix(".tmp")
-        temporary_meta.write_text(json.dumps(record, indent=2) + "\n")
-        temporary_meta.replace(metadata)
-        print(f"local build: {build['binary']} {record['seconds']}s sha256={record['sha256']}", file=sys.stderr)
-        return record
-    finally:
-        subprocess.run(["docker", "rm", "-f", container], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # One fixed work directory per source root keeps the module and build caches warm.
+    work = cache / "work" / digest(source_root.encode())[:12]
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True)
+    with tempfile.TemporaryFile() as archive:
+        run("git", "archive", tree, cwd=REPO, stdout=archive)
+        archive.seek(0)
+        with tarfile.open(fileobj=archive) as tar:
+            tar.extractall(work, filter="data")
+    temporary = output / "binary.tmp"
+    environment = go_environment(cache, build["target"])
+    if Path(work, module, "vendor/modules.txt").is_file():
+        environment["GOFLAGS"] += " -mod=vendor"
+    pgo = (work / module / build.get("package", ".") / "default.pgo").is_file()
+    run(go, "build", "-o", str(temporary), build.get("package", "."), cwd=work / module, env=environment, stdout=sys.stderr)
+    data = temporary.read_bytes()
+    elf_check(data, build["target"])
+    temporary.chmod(0o755)
+    artifact = output / build["binary"]
+    temporary.replace(artifact)
+    record = {"input_id": input_id, "source_tree": tree, "toolchain": toolchain,
+              "target": build["target"], "item": item["name"], "local": source,
+              "destination": output_path, "artifact": str(artifact),
+              "sha256": digest(data), "size": len(data), "seconds": round(time.monotonic() - started, 3),
+              "pgo": pgo}
+    temporary_meta = metadata.with_suffix(".tmp")
+    temporary_meta.write_text(json.dumps(record, indent=2) + "\n")
+    temporary_meta.replace(metadata)
+    print(f"local build: {build['binary']} {record['seconds']}s sha256={record['sha256']}"
+          f"{' with default.pgo' if pgo else ''}", file=sys.stderr)
+    return record
 
 
 def archive_with_artifacts(index, paths, commit="HEAD"):
@@ -270,39 +219,37 @@ def archive_with_artifacts(index, paths, commit="HEAD"):
 
 
 def interrupted(signum, _frame):
-    # Run build_one's finally block so stopping the parallel lane also removes
-    # its Docker container instead of leaving the compiler running detached.
+    # Exit through Python so stopping the parallel lane also stops the go child it waits for.
     raise SystemExit(128 + signum)
 
 
 def main():
     signal.signal(signal.SIGTERM, interrupted)
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["build", "validate", "archive", "prepare-images"])
+    parser.add_argument("action", choices=["build", "validate", "archive", "prepare-toolchain"])
     parser.add_argument("--manifest", default=str(REPO / "config/sync.json"))
     parser.add_argument("--index")
     parser.add_argument("--commit", default="HEAD")
     parser.add_argument("--strict", action="store_true")
-    parser.add_argument("--bases", default=str(REPO / "config/rust-builder/bases.json"))
-    parser.add_argument("--dockerfile", default="config/rust-builder/Dockerfile")
     parser.add_argument("paths", nargs="*")
     # Python 3.12's parse_args rejects trailing paths after options when nargs='*'.
     args = parser.parse_intermixed_args()
     if args.action == "archive":
         archive_with_artifacts(args.index, args.paths, args.commit)
         return
-    if args.action == "prepare-images":
-        prepare_images(args.bases, safe_path(args.dockerfile))
-        return
-    manifest = json.loads(Path(args.manifest).read_text())
-    builds = definitions(manifest)
-    if args.action == "validate":
-        return
+    if args.action != "prepare-toolchain":
+        manifest = json.loads(Path(args.manifest).read_text())
+        builds = definitions(manifest)
+        if args.action == "validate":
+            return
     # All worktrees share this cache and its own lock; no remote/operation lock needed.
     common = Path(capture("git", "rev-parse", "--git-common-dir"))
     common = (REPO / common).resolve()
-    cache = common.parent / ".local/rust-build"
+    cache = common.parent / ".local/go-build"
     cache.mkdir(parents=True, exist_ok=True)
+    if args.action == "prepare-toolchain":
+        prepare_toolchain(cache)
+        return
     with (cache / "build.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         records = [build_one(b, next(i for i in manifest["items"] if i["name"] == b["item"]), cache, args.strict)

@@ -5,12 +5,12 @@
   deploy-plan.py commands --manifest M --key post_deploy_commands --changed FILE   group<TAB>command
 
 An item changes when its committed content, its definition in sync.json, or what builds it
-(its local_builds entry, the builder Dockerfile, scripts/local-build.py) differs from the
+(its local_builds entry, scripts/local-build.py) differs from the
 last successful deploy. Without a recorded deploy, or with DEPLOY_ALL=1, every item changes:
 the first deploy after the distributed baseline must replace the distributed binary.
 
 A command object may name the items it serves in "when" (fnmatch patterns such as "nginx-*").
-It runs only when one of them changed, so a Rust-only change neither restarts MySQL nor
+It runs only when one of them changed, so a Go-only change neither restarts MySQL nor
 reloads nginx. Commands without "when" (strings, or objects without the key) always run.
 """
 import argparse
@@ -60,8 +60,7 @@ def changed_items(manifest_path, previous, head):
         same = (old_items.get(name) == item and old_builds.get(name) == build
                 and git('rev-parse', f'{previous}:{item["local"]}') == git('rev-parse', f'{head}:{item["local"]}'))
         if same and build:
-            for path in (build['dockerfile'], 'scripts/local-build.py'):
-                same = same and git('rev-parse', f'{previous}:{path}') == git('rev-parse', f'{head}:{path}')
+            same = git('rev-parse', f'{previous}:scripts/local-build.py') == git('rev-parse', f'{head}:scripts/local-build.py')
         if not same:
             changed.append(name)
     return changed

@@ -10,10 +10,10 @@
 | --- | --- |
 | `nginx.conf` | `worker_rlimit_nofile 131072`、`worker_connections 32768`、httpの`keepalive_requests 10000`、mainの`error_log ... warn`（接続の不足はwarnにしか出ない）、httpの既定の`access_log`を外す（計測用のLTSVがbuffer付きで全requestを書くので、既定のlogはbufferなしの二重の書き込みになる） |
 | siteとconf.dの設定 | address:portごとに1つのlistenへ`backlog=4096`。`proxy_pass http://host:port`をkeepalive付きのupstreamへ移す（`proxy_http_version 1.1`、`Connection ""`。継承していた`proxy_set_header`とHostは保つ） |
-| Rustのunit | `LimitNOFILE=1048576` |
+| Goのunit | `LimitNOFILE=1048576` |
 | `/etc/sysctl.d/99-tare.conf` | somaxconn、SYN backlog、netdev backlog、ephemeral port、TIME_WAITの再利用 |
 | MySQL（`mysql.conf.d/zz-tare.cnf`） | `max_connections 1000`、`innodb_buffer_pool_size`（DB nodeのメモリの40%、MySQLだけのnodeなら70%） |
-| deployのcommand | 先頭に`daemon-reload`と`sysctl -q -p /etc/sysctl.d/99-tare.conf`、MySQLの`is-active`の前に`restart mysql`。それぞれ`when`（`rust-service`、`tare-sysctl`、`mysql-*`）付きで、そのitemが変わったdeployでだけ動く |
+| deployのcommand | 先頭に`daemon-reload`と`sysctl -q -p /etc/sysctl.d/99-tare.conf`、MySQLの`is-active`の前に`restart mysql`。それぞれ`when`（`go-service`、`tare-sysctl`、`mysql-*`）付きで、そのitemが変わったdeployでだけ動く |
 
 fsync・binlogなど耐久性を変える設定は`make durability`（`scripts/durability.py`）が別の1 commitにし、DBの書き込み待ちが見えたら入れる。下のB1のsendfileなどは入れない。静的ファイルの配り方（B2の静的配信・`open_file_cache`、Cache-Control、gzip_static）はlane `static-edge`が1件1commitで作る。これらの上限が既定値のままだと、負荷が上がったときに接続やfdが足りずにFAILする。
 

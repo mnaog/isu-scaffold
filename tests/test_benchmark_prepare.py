@@ -24,8 +24,8 @@ class BenchmarkPrepareTest(unittest.TestCase):
         self.root = Path(self.tmp.name)
         shutil.copy(ROOT / 'scripts/benchmark-prepare.sh', self.root / 'prepare.sh')
         write(self.root / 'config/sync.json', json.dumps({'items': [
-            {'name': 'rust-service', 'type': 'file', 'node_group': 'role_app', 'local': 'config/systemd/app.service',
-             'remote': '/etc/systemd/system/isu-rust.service', 'owner': 'root', 'owner_group': 'root'}]}))
+            {'name': 'go-service', 'type': 'file', 'node_group': 'role_app', 'local': 'config/systemd/app.service',
+             'remote': '/etc/systemd/system/isu-go.service', 'owner': 'root', 'owner_group': 'root'}]}))
         write(self.root / 'inventory.json', json.dumps({'all': {'children': {
             'role_app': {'hosts': {'app1': {}, 'app2': {}}},
             'benchmark': {'hosts': {'bench': {}}}}}}))
@@ -37,7 +37,7 @@ class BenchmarkPrepareTest(unittest.TestCase):
 case "$1" in
   try-restart) echo "$NODE restart $2" >> {self.calls} ;;
   is-active) [ -z "$INACTIVE" ] ;;
-  show) case "$3" in ControlGroup) echo /system.slice/isu-rust.service ;; MainPID) echo 4321 ;;
+  show) case "$3" in ControlGroup) echo /system.slice/isu-go.service ;; MainPID) echo 4321 ;;
           InvocationID) cat "$INVOCATION_FILE" 2>/dev/null ;; esac ;;
 esac
 ''', 0o755)
@@ -68,8 +68,8 @@ esac
         result = self.run_prepare()
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = sorted(self.calls.read_text().splitlines())
-        self.assertEqual(calls, ['app1 restart isu-rust.service', 'app2 restart isu-rust.service'])
-        self.assertIn('app1: isu-rust.service listening', result.stdout)
+        self.assertEqual(calls, ['app1 restart isu-go.service', 'app2 restart isu-go.service'])
+        self.assertIn('app1: isu-go.service listening', result.stdout)
 
     def test_fails_when_the_application_never_listens(self):
         write(self.listening, '')
@@ -119,10 +119,10 @@ class DeployedCommitCheckTest(unittest.TestCase):
         self.git('config', 'user.email', 't@example.com')
         self.git('config', 'user.name', 't')
         write(self.repo / 'config/sync.json', json.dumps({
-            'items': [{'name': 'rust-app', 'local': 'webapp/rust'}],
-            'local_builds': [{'item': 'rust-app', 'dockerfile': 'config/rust-builder/Dockerfile'}]}))
-        write(self.repo / 'webapp/rust/src/main.rs', 'fn main() {}\n')
-        write(self.repo / 'config/rust-builder/Dockerfile', 'FROM rust\n')
+            'items': [{'name': 'go-app', 'local': 'webapp/go'}],
+            'local_builds': [{'item': 'go-app', 'target': 'linux/amd64', 'binary': 'app'}]}))
+        write(self.repo / 'webapp/go/main.go', 'package main\n')
+        write(self.repo / 'scripts/local-build.py', '# builder\n')
         write(self.repo / 'docs/notes.md', 'notes\n')
         self.commit('initial')
         write(self.repo / '.local/current-deploy-commit', self.git('rev-parse', 'HEAD') + '\n')
@@ -152,19 +152,19 @@ class DeployedCommitCheckTest(unittest.TestCase):
 
     def test_a_commit_that_was_not_deployed_stops_the_benchmark(self):
         # practice-14 eb28e94a: the deploy was refused, the run was recorded under the new commit.
-        write(self.repo / 'webapp/rust/src/main.rs', 'fn main() { println!(); }\n')
+        write(self.repo / 'webapp/go/main.go', 'package main // changed\n')
         self.commit('Change the app')
         result = self.check()
         self.assertEqual(result.returncode, 1)
-        self.assertIn('webapp/rust/src/main.rs', result.stderr)
+        self.assertIn('webapp/go/main.go', result.stderr)
 
     def test_uncommitted_changes_in_deployed_files_stop_the_benchmark(self):
-        write(self.repo / 'config/rust-builder/Dockerfile', 'FROM rust:1\n')
-        write(self.repo / 'webapp/rust/src/new.rs', '\n')
+        write(self.repo / 'scripts/local-build.py', '# changed builder\n')
+        write(self.repo / 'webapp/go/new.go', '\n')
         result = self.check()
         self.assertEqual(result.returncode, 1)
-        self.assertIn('config/rust-builder/Dockerfile', result.stderr)
-        self.assertIn('webapp/rust/src/new.rs', result.stderr)
+        self.assertIn('scripts/local-build.py', result.stderr)
+        self.assertIn('webapp/go/new.go', result.stderr)
 
     def test_no_recorded_deploy_stops_the_benchmark_unless_skipped(self):
         (self.repo / '.local/current-deploy-commit').unlink()
@@ -182,7 +182,7 @@ class DeployedCommitCheckTest(unittest.TestCase):
         result = self.check()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('imported', result.stdout)
-        write(self.repo / 'webapp/rust/src/main.rs', 'fn main() { println!(); }\n')
+        write(self.repo / 'webapp/go/main.go', 'package main // changed\n')
         self.commit('Change the app')
         result = self.check()
         self.assertEqual(result.returncode, 1)

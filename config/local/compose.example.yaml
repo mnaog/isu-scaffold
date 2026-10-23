@@ -24,14 +24,16 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        RUST_IMAGE: ${LOCAL_RUST_IMAGE:?after the start - set the Rust image after inspecting the app}
+        GO_IMAGE: ${LOCAL_GO_IMAGE:?after the start - set the golang image matching go.mod after inspecting the app}
     init: true
-    working_dir: /webapp/rust
+    working_dir: /webapp/go
     command: [sh, /local-start.sh]
     environment:
-      CARGO_TARGET_DIR: /target
-      CARGO_HOME: /cargo
-      LOCAL_USE_VENDOR: ${LOCAL_USE_VENDOR:-0}
+      GOCACHE: /cache/go-build
+      GOMODCACHE: /cache/gomod
+      GOFLAGS: -buildvcs=false
+      # LOCAL_RACE=1 make local-upでrace detector付きにbuildする（start.sh、make local-race）。
+      LOCAL_RACE: ${LOCAL_RACE:-}
       ISUCON_DB_HOST: db
       ISUCON_DB_PORT: '3306'
       ISUCON_DB_USER: isucon
@@ -39,9 +41,7 @@ services:
       ISUCON_DB_NAME: isucon
     volumes:
       - ../../webapp:/webapp:ro
-      - ${LOCAL_VENDOR_DIR}:/vendor:ro
-      - target:/target
-      - cargo:/cargo
+      - gocache:/cache
     ports:
       - '127.0.0.1::8080'
     depends_on:
@@ -49,5 +49,4 @@ services:
         condition: service_healthy
 volumes:
   db:
-  target:
-  cargo:
+  gocache:

@@ -1,7 +1,12 @@
 #!/bin/sh
 set -eu
-if [ "${LOCAL_USE_VENDOR:-0}" = 1 ]; then
-  exec cargo --config 'source.crates-io.replace-with="local-vendor"' \
-    --config 'source.local-vendor.directory="/vendor"' run --offline --release --locked
+# Build outside the read-only source; vendor/ is used when the module ships one.
+# LOCAL_RACE=1 (make local-up with it set) builds with the race detector, which needs cgo; make local-race
+# then reads the reports from the app's log.
+if [ "${LOCAL_RACE:-}" = 1 ]; then
+  CGO_ENABLED=1 go build -race -o /tmp/local-app "${LOCAL_GO_PACKAGE:-.}"
+  echo "local app built with -race" >&2
+else
+  go build -o /tmp/local-app "${LOCAL_GO_PACKAGE:-.}"
 fi
-exec cargo run --release --locked
+exec /tmp/local-app

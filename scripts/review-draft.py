@@ -54,7 +54,7 @@ def remote_script(checks: dict) -> str:
         lines.append(
             f"if sudo -n test -d {quoted}; then t=directory; elif sudo -n test -f {quoted}; then t=file; "
             f"else t=missing; fi; kb=$(sudo -n du -sk {quoted} 2>/dev/null | cut -f1); kb=${{kb:-0}}; "
-            # The item's exclude (Rust target/, .git) is neither imported nor deployed, so it does
+            # The item's exclude (the Go binary, .git) is neither imported nor deployed, so it does
             # not count toward the size warning either.
             + "".join(f"x=$(sudo -n du -sk {shlex.quote(path + '/' + excluded)} 2>/dev/null | cut -f1); kb=$((kb - ${{x:-0}})); "
                       for excluded in sorted(checks["excludes"].get(path, ())))
@@ -166,7 +166,7 @@ def main() -> int:
     if len(drafts) < 4:
         return write(draft_dir, results)
     sync, overrides, isuscope = drafts["sync.json"], drafts["node-overrides.json"], drafts["isuscope.json"]
-    # A planned switch to the Rust implementation (configure-draft.py) starts the unit at apply time.
+    # A planned switch to the Go implementation (configure-draft.py) starts the unit at apply time.
     switch_path = draft_dir / "service-switch.json"
     switch = load(switch_path) if switch_path.is_file() else None
     inventory = load(inventory_path)

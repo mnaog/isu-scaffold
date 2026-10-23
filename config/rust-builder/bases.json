@@ -1,9 +1,0 @@
-{
-  "description": "Builder base images for config/rust-builder/Dockerfile. kickoff-build.py picks the newest base whose glibc is not newer than the node's (and whose libssl major matches when the app links openssl-sys). Preparation builds every base x target in advance with `python3 scripts/local-build.py prepare-images`, so the contest-day build skips rustup, apt and the cross linker. Pin a digest (rust:1-bookworm@sha256:...) after preparing if the tag must not move.",
-  "bases": [
-    {"image": "rust:1-bullseye", "glibc": "2.31", "libssl": "1.1"},
-    {"image": "rust:1-bookworm", "glibc": "2.36", "libssl": "3"},
-    {"image": "rust:1-trixie", "glibc": "2.41", "libssl": "3"}
-  ],
-  "targets": ["x86_64-unknown-linux-gnu"]
-}

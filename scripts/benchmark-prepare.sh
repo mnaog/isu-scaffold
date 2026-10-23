@@ -26,15 +26,15 @@ wait_seconds=${PREPARE_WAIT_SECONDS:-30}
 require_active=$([[ "${REQUIRE_ACTIVE:-}" == 1 ]] && echo 1 || echo 0)
 command -v jq >/dev/null
 
-units=$(jq -r '[.items[]? | select(.name == "rust-service") | .remote | split("/") | last] | join(" ")' "${sync}")
+units=$(jq -r '[.items[]? | select(.name == "go-service") | .remote | split("/") | last] | join(" ")' "${sync}")
 if [[ -z "${units}" ]]; then
-  echo "no application unit (rust-service item) in ${sync}; nothing to restart"
+  echo "no application unit (go-service item) in ${sync}; nothing to restart"
   exit 0
 fi
 for unit in ${units}; do
   [[ "${unit}" =~ ^[A-Za-z0-9_.@-]+\.service$ ]] || { echo "invalid unit name in ${sync}: ${unit}" >&2; exit 1; }
 done
-group=$(jq -r '[.items[] | select(.name == "rust-service") | .node_group] | first' "${sync}")
+group=$(jq -r '[.items[] | select(.name == "go-service") | .node_group] | first' "${sync}")
 nodes=$(jq -r --arg group "${group}" '.all.children[$group].hosts // {} | keys | join(" ")' "${inventory}")
 case "${wait_seconds}" in ''|*[!0-9]*) echo "PREPARE_WAIT_SECONDS must be an integer" >&2; exit 1 ;; esac
 

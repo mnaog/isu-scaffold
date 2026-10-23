@@ -11,7 +11,7 @@ mkdir -p .local
 cp config/environment.example.env .local/environment.env
 ```
 
-kickoffは次の2コマンドで進めます。採用言語はRustに固定しており、`config/application.env`の`APPLICATION_LANGUAGE=rust`、`APPLICATION_PATH=webapp/rust`を使います。問題にRust実装がない場合だけ、このファイルを書き換えてから始めます。
+kickoffは次の2コマンドで進めます。採用言語はGoに固定しており、`config/application.env`の`APPLICATION_LANGUAGE=go`、`APPLICATION_PATH=webapp/go`を使います。
 
 ```bash
 make kickoff   # バックグラウンドで実行し、python3 scripts/progress.py follow main --from-start を追う
@@ -25,9 +25,9 @@ CONFIRM_DRAFT=true make kickoff-apply
 make first-bench   # bench-check → 配布状態のままsurvey-run → deploy（配布状態で測れなければdeploy → survey-run）
 ```
 
-`kickoff`は最初に、実行したClaude Codeのセッションがこのrepoの`docs/agent-history/`へ会話を記録しているかを`scripts/check-agent-session.py`で確かめます。別のdirectoryで起動したセッションは、ここで止まります（ベンチをこの会話へ結び付けられず、`bench-check`の`isuscope doctor`で止まるため）。Claude Codeの外の端末から実行した場合は確かめません。続いてnode発見後、回収元の1台（既定では最初のapplication node）だけSSHを確立し、`/home/isucon/webapp/rust`と`/home/isucon/webapp/sql`のDDL・初期化script（`.sql`、`.sh`、`.py`、`.rb`、`.pl`）だけを先行回収します。1ファイル1MiB・合計16MiBを超えるものやそれ以外の初期データは後回しにし、`.local/code-schema-manifest.log`へ`INCLUDED`／`DEFERRED`として記録します。上限は`CODE_SCHEMA_MAX_FILE_BYTES`、`CODE_SCHEMA_MAX_TOTAL_BYTES`で変更できます。生成物の`target`、`node_modules`、`.git`は除外します。pathが異なる場合は`CODE_SOURCE_NODE`、`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`、`CODE_SCHEMA_PATH`を環境変数で明示します。回収した`config/application.env`、`webapp/rust`、`webapp/sql`だけを自動commitし、他の未commit変更は含めません。この回収はコード読解開始用の暫定snapshotであり、全node一致の保証は後続の完全importが担当します。残りのnodeのSSH確立はこの転送と並行して行い（log は`.local/kickoff-other-ssh.log`）、同じkickoffの`bootstrap`はnodeの発見をやり直さず、全nodeへ届いていればSSHの確認も飛ばします。届かなかったnodeがあれば`bootstrap`のSSH段階が改めて確立し、失敗を報告します。
+`kickoff`は最初に、実行したClaude Codeのセッションがこのrepoの`docs/agent-history/`へ会話を記録しているかを`scripts/check-agent-session.py`で確かめます。別のdirectoryで起動したセッションは、ここで止まります（ベンチをこの会話へ結び付けられず、`bench-check`の`isuscope doctor`で止まるため）。Claude Codeの外の端末から実行した場合は確かめません。続いてnode発見後、回収元の1台（既定では最初のapplication node）だけSSHを確立し、`/home/isucon/webapp/go`と`/home/isucon/webapp/sql`のDDL・初期化script（`.sql`、`.sh`、`.py`、`.rb`、`.pl`）だけを先行回収します。1ファイル1MiB・合計16MiBを超えるものやそれ以外の初期データは後回しにし、`.local/code-schema-manifest.log`へ`INCLUDED`／`DEFERRED`として記録します。上限は`CODE_SCHEMA_MAX_FILE_BYTES`、`CODE_SCHEMA_MAX_TOTAL_BYTES`で変更できます。生成物の`target`、`node_modules`、`.git`は除外します。pathが異なる場合は`CODE_SOURCE_NODE`、`CODE_REMOTE_PATH`、`CODE_SCHEMA_REMOTE_PATH`、`CODE_SCHEMA_PATH`を環境変数で明示します。回収した`config/application.env`、`webapp/go`、`webapp/sql`だけを自動commitし、他の未commit変更は含めません。この回収はコード読解開始用の暫定snapshotであり、全node一致の保証は後続の完全importが担当します。残りのnodeのSSH確立はこの転送と並行して行い（log は`.local/kickoff-other-ssh.log`）、同じkickoffの`bootstrap`はnodeの発見をやり直さず、全nodeへ届いていればSSHの確認も飛ばします。届かなかったnodeがあれば`bootstrap`のSSH段階が改めて確立し、失敗を報告します。
 
-続いてkickoff build処理が1台目のCPU・OS・glibc・OpenSSL・Rust版を調査し、回収したCargo.toml・Cargo.lockと合わせてbuild設定を提案します。判断できれば`config/kickoff-build.json`を書いてすぐbuildを始め、判断できなければ理由を`.local/kickoff-build/proposal.json`へ残して設定を待ちます（下の「kickoff build」）。同時に`config/lanes.json`の`kickoff`にあるAI laneを起動します。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。
+続いてkickoff build処理が1台目のCPU・OSと、`/etc/systemd/system`のunitのExecStartを調査し、回収したgo.modと合わせてbuild設定を提案します。判断できれば`config/kickoff-build.json`を書いてすぐbuildを始め、判断できなければ理由を`.local/kickoff-build/proposal.json`へ残して設定を待ちます（下の「kickoff build」）。同時に`config/lanes.json`の`kickoff`にあるAI laneを起動します。その後、全nodeのSSH確立、Ansible導入、初期収束、inspection、draft生成を行い、最後に`scripts/review-draft.py`でdraftを実nodeと照合します。
 
 ### 進行の通知
 
@@ -60,9 +60,9 @@ git merge lane/scenario                      # 取り込みはmainのセッシ�
 
 `make kickoff`は先行回収・commit後、独立したkickoff build処理を開始して全台bootstrapを進める。
 
-build処理はremoteのCPU・glibc・OpenSSLと回収したCargo.toml・Cargo.lockから設定を提案し、`.local/kickoff-build/proposal.json`へ残す。判断できる場合は`config/kickoff-build.json`を書いてすぐbuildを始める（`configured`）。判断できる場合とは、単一binaryのpackageで、systemライブラリに依存する-sys crateがなく、`config/rust-builder/bases.json`にnodeのglibc以下（OpenSSLを使うならlibsslのmajorも一致）のbaseがあることを指す。自動生成された設定もcommitする。workspace、複数binary、`mysqlclient-sys`などのsystemライブラリ、合うbaseがない場合は理由を残して設定を待つ。`KICKOFF_BUILD_AUTO_CONFIG=0`なら常に待つ。
+build処理はremoteのCPUとunitのExecStart、回収したgo.modから設定を提案し、`.local/kickoff-build/proposal.json`へ残す。判断できる場合は`config/kickoff-build.json`を書いてすぐbuildを始める（`configured`）。判断できる場合とは、Goのunit（`*-go.service`など）が1つだけで、そのExecStartがアプリのdirectoryの中の実行fileを指し、`package main`のdirectoryが1つで、cgoが無ければbuildできないmodule（`go-sqlite3`など）に依存しないことを指す。自動生成された設定もcommitする。それ以外は理由を残して設定を待つ。`KICKOFF_BUILD_AUTO_CONFIG=0`なら常に待つ。
 
-全台準備を待たず、`.local/progress.log`の`kickoff-build`の行か`.local/kickoff-build/status.json`と`environment.txt`を確認する。`needs_configuration`なら`config/kickoff-build.example.json`を参考に、回収したCargo.toml・Cargo.lock・toolchain指定、remoteのCPU・OS・glibc・Rust版、追加Cライブラリを照合して`config/kickoff-build.json`を作る。対象は`base_image`・`target`・`binary`・`dockerfile`。未記入のexampleを実設定へコピーしたままにしない。完成内容を一時ファイルに書き、renameで一括配置する。操作者自身の判断でよく、人間への追加承認は不要。
+全台準備を待たず、`.local/progress.log`の`kickoff-build`の行か`.local/kickoff-build/status.json`と`environment.txt`を確認する。`needs_configuration`なら`config/kickoff-build.example.json`を参考に、回収したgo.mod・main package、remoteのCPUとunitのExecStartを照合して`config/kickoff-build.json`を作る。必須は`target`（`linux/amd64`か`linux/arm64`）と`binary`、任意は`output`（アプリのdirectoryから見た実行fileの位置。既定は`binary`）・`package`（既定は`.`）・`source_root`・`manifest_dir`。未記入のexampleを実設定へコピーしたままにしない。完成内容を一時ファイルに書き、renameで一括配置する。操作者自身の判断でよく、人間への追加承認は不要。
 
 kickoff build処理は設定を最大30分待ち、設定完了後は既存の`local-build.py`を使って共有キャッシュへbuildする。設定が既にあれば調査・CPU照合後すぐbuildする。全台準備とbaselineはbuild処理の完了待ちを入れない。deployに必要なbuild完了は従来どおりdeployが保証する。
 
@@ -107,11 +107,11 @@ python3 scripts/proposal.py withdraw [<branch>]
 - **判断**: `decide`の判断は、mainが取り込んで測ったcommitに付きます。mainが取り込んだ後に投稿者が同じbranchへ投稿し直していれば、判断は取り込んだ前のcommit（`history`）に付き、今の投稿は未判断のまま残ります。別のcommitに付けるときは`--commit`で指定します。`accepted`には測ったrun（`--run`）が要り、mainのbranchに入っていないcommitには付けられません。`merged`・`measuring`は取り込んだだけで終わりではないので、判断が返るまで`list`に残り、ベンチを起動するたびにmainへ「取り込んだが採否を返していない投稿」として示します。
 - **表示**: `.claude/skills/isucon-main/`はClaude Codeのmod（function hooks）です。信頼したworkspaceで開くと`.claude/skills/`から自動で読み込まれます（`claude plugin list`で確かめ、読み込まれていなければ`/reload-plugins`）。10秒ごとと各turnの後に`python3 scripts/main-session.py badge`を呼び、mainのセッションのプロンプトの上に`★ MAIN`の帯と待っている投稿の数を、status lineに`★ MAIN`を出します。ほかのセッションには、先頭にworktreeの名前（`⎇ improve`など。directory名からrootの名前と`-`を除いたもの、rootなら`root`）を、続けて`WORKTREE`（rootなら`NOT MAIN`）、branch、mainのセッション、自分の投稿の状態を、宣言が無ければ`/main`の案内を出します。status lineにも同じworktreeの名前が出ます。表示のテストは`claude plugin test .claude/skills/isucon-main`、検査は`claude plugin validate .claude/skills/isucon-main`です。
 
-Rustを採用しているため、draftは`webapp/`全体ではなく、`webapp/rust`（`sync.rust.example.json`のbuild設定とCargo.tomlのbinary名つき）、Rustのsystemd unit、`webapp/sql`内の1MiB以下の`.sql`・`.sh`、nginx・MySQL設定だけを同期対象に提案します。初期データはnodeに残し、配布しません。初期状態でRust用unitがない場合（他言語のunitだけが動いている場合）はrestart commandを入れずWARNにするので、unitを`config/systemd/`へ作ってitemとcommandを足してから切り替えます。
+Goを採用しているため、draftは`webapp/`全体ではなく、`webapp/go`（`sync.go.example.json`のbuild設定と、unitのExecStartから決めた実行fileの位置つき）、Goのsystemd unit、`webapp/sql`内の1MiB以下の`.sql`・`.sh`、nginx・MySQL設定だけを同期対象に提案します。実行fileはnodeでbuildされたものなので、`webapp/go`のitemの`exclude`に入れ、回収も比較もしません。初期データはnodeに残し、配布しません。初期状態でGo用unitがない場合（他言語のunitだけが動いている場合）はrestart commandを入れずWARNにするので、unitを`config/systemd/`へ作ってitemとcommandを足してから切り替えます。
 
-nginxは`nginx.conf`に加えて、`sites-enabled`のsymlinkが指す実体と`conf.d`の設定（計測用drop-inは除く）を提案し、Rust unitが読む環境変数file（`EnvironmentFile`、例: `/home/isucon/env.sh`）も`config/app/`へ回収します。秘密情報が入っていれば`.local/`へ移してからcommitします。unit fileを置き換えるので、post_deployとrollbackの最初に`sudo systemctl daemon-reload`を入れます。
+nginxは`nginx.conf`に加えて、`sites-enabled`のsymlinkが指す実体と`conf.d`の設定（計測用drop-inは除く）を提案し、Go unitが読む環境変数file（`EnvironmentFile`、例: `/home/isucon/env.sh`）も`config/app/`へ回収します。秘密情報が入っていれば`.local/`へ移してからcommitします。unit fileを置き換えるので、post_deployとrollbackの最初に`sudo systemctl daemon-reload`を入れます。
 
-Rust unitがあるのに、同じアプリの他言語のunit（例: `isuride-go.service`）が動いているnodeでは、切り替えの計画を`.local/draft/service-switch.json`へ出します。reviewはそのnodeのRust unitの停止をWARNにし、`kickoff-apply`が`scripts/switch-language-service.sh`で他言語のunitを止めてRust unitを有効化・起動します。公式マニュアルの切り替え手順と違わないかはWARNを読んで確かめます。
+Go unitがあるのに、同じアプリの他言語のunit（例: `isuride-rust.service`）が動いているnodeでは、切り替えの計画を`.local/draft/service-switch.json`へ出します。reviewはそのnodeのGo unitの停止をWARNにし、`kickoff-apply`が`scripts/switch-language-service.sh`で他言語のunitを止めてGo unitを有効化・起動します。公式マニュアルの切り替え手順と違わないかはWARNを読んで確かめます。
 
 draft reviewはnodeごとに1回のSSHで事実を集め、次をFAILにします。
 
@@ -187,11 +187,10 @@ slpのreleaseとFlameGraphのscriptは、準備のうちに`./scripts/fetch-obse
 | 時刻同期 | chronyを有効化 | `observability_time_sync` |
 | journal | 永続化し、512MiBで上限 | `observability_persistent_journal` |
 | 自動更新 | `apt-daily`、`apt-daily-upgrade`、`unattended-upgrades`を停止 | `observability_stop_auto_updates` |
-| Rust build cache | `/home/isucon/.cache/isucon-cargo-target`を作成し、cargoとrustcの有無を表示 | — |
 
 nginx.confがhttpの中で`/etc/nginx/conf.d/*.conf`をincludeしていない場合、LTSV logは追加されず、draft検査がFAILにします。レギュレーションで禁止された項目だけ変数をfalseにします。終了前（`docs/guides/finish.md`）に計測を外すときは`observability_nginx_ltsv`と`observability_mysql_slow_log`をfalseにして`./scripts/run-ansible-playbook.sh bootstrap.yml --tags observability_nginx_log,observability_mysql_slow_log`を実行すると、設定を撤去してreload・再起動します。LTSVを外した後のnginx.confにhttpの`access_log`が1つも無いと、nginxは組み込みの既定のaccess logを書くので（`make tare`が既定のaccess_logを外している）、同じ変更で`access_log off;`を書きます。性能のためのNginx設定は[config/nginx/tare](../../config/nginx/tare/README.md)にあり、初回baselineの後にdeployで入れます。これら以外に事前に取得したtoolは`.local/tools/`へ置き、`observability_local_tools`で配布できます。
 
-`isuscope_fingerprint_paths`には、全nodeで実体を比較したい絶対pathを列挙します。draftは、Rustの配った実行ファイルと、sync.jsonの`type: file`のitem（アプリのunit、env、nginx・MySQLの設定など）を書きます。directoryのitemは入れません（中身は`identity_command`がcommit済みの内容で比べるので、毎回のベンチ前に全nodeで大きなtreeを読み直さない）。kernel、OS、Nginx、MySQL、running serviceは宣言なしでも記録します。
+`isuscope_fingerprint_paths`には、全nodeで実体を比較したい絶対pathを列挙します。draftは、Goの配った実行ファイルと、sync.jsonの`type: file`のitem（アプリのunit、env、nginx・MySQLの設定など）を書きます。directoryのitemは入れません（中身は`identity_command`がcommit済みの内容で比べるので、毎回のベンチ前に全nodeで大きなtreeを読み直さない）。kernel、OS、Nginx、MySQL、running serviceは宣言なしでも記録します。
 
 ## 4. 初期構成を調査する
 
@@ -221,12 +220,12 @@ Git commitが存在する場合、`sync-check`はmanifest検証に加えて、Gi
 
 ## 5. local正本とdeployを接続する
 
-通常は`make kickoff`が生成し`make kickoff-apply`が反映したdraftから`config/sync.json`を始めます。Rustのbuild設定は`config/sync.rust.example.json`を参照します。
+通常は`make kickoff`が生成し`make kickoff-apply`が反映したdraftから`config/sync.json`を始めます。Goのbuild設定は`config/sync.go.example.json`を参照します。
 
 - `source_node`: 初期状態を回収するnode
 - `items`: local/remote path、file/directory、配布先group、owner
 - `pre_deploy_command`: 配布前に一度実行する処理（同期対象を変更してはいけない）
-- `local_builds`: ローカルDockerでRustをbuildし、対象itemの`target/release/<binary>`へ追加する設定
+- `local_builds`: 手元のGoでLinux向けにbuildし、対象itemの`output`（既定は`<binary>`）へ追加する設定
 - `build_commands`: 配布済みstaging itemをnode上でbuild・検証する、切替前の処理
 - `post_deploy_commands`: config test、daemon-reload、restart、health check
 - `rollback_commands`: 旧ファイル復元後に行うconfig test、daemon-reload、restart、health check
@@ -243,7 +242,7 @@ DBを別のnodeへ移すなど、nodeの役割を変えるときは、次をま�
 3. `post_deploy_commands`・`rollback_commands`・`status_commands`の文字列のcommand（全application nodeで動く）を、役割のgroupを持つobjectにする。役割を外したnodeでは、そのserviceを`systemctl disable --now`しておく。止めたserviceの検査が全nodeに残っていると、deployが失敗してrollbackする。
 4. 別のnodeのDBへつなぐアプリは、DBより先に起動し得る。deployは全nodeの検査を同時に流し、再起動の順序も保証されない。そのため、アプリが起動時にDBを待つか、再接続するようにする。起動の検査も、`is-active`を数秒待つ形にする。終了前の再起動試験（`make final-db-late`）でも同じことを確かめる。
 
-commandのobjectには`"when": ["nginx-*"]`のように、そのcommandが扱うitemの名前（fnmatchのpattern）を書けます。deployはそのitemが変わったときだけ実行します（`scripts/deploy-plan.py`）。`when`のないcommandは毎回実行します。draftはnginxの検査とreloadに`nginx-*`、Rustの再起動に`rust-app`・`rust-service`・`app-env*`、daemon-reloadに`rust-service`を付け、`make tare`と`make durability`はMySQLの再起動に`mysql-*`、`99-tare.conf`の読み込み（`sysctl -q -p`。OS既定のfileは読み直さないので、存在しないkeyの警告が出ない）に`tare-sysctl`を付けます。Rustのコードだけを変えたdeployでMySQLを再起動しないので、毎回のベンチがbuffer poolの冷えた状態から始まることもありません。
+commandのobjectには`"when": ["nginx-*"]`のように、そのcommandが扱うitemの名前（fnmatchのpattern）を書けます。deployはそのitemが変わったときだけ実行します（`scripts/deploy-plan.py`）。`when`のないcommandは毎回実行します。draftはnginxの検査とreloadに`nginx-*`、Goの再起動に`go-app`・`go-service`・`app-env*`、daemon-reloadに`go-service`を付け、`make tare`と`make durability`はMySQLの再起動に`mysql-*`、`99-tare.conf`の読み込み（`sysctl -q -p`。OS既定のfileは読み直さないので、存在しないkeyの警告が出ない）に`tare-sysctl`を付けます。Goのコードだけを変えたdeployでMySQLを再起動しないので、毎回のベンチがbuffer poolの冷えた状態から始まることもありません。
 
 `build_commands`は`name`、`node_group`、`item`、単一行の`command`を持つobjectです。全itemをstagingした後、live pathを切り替える前に実行されます。commandには次の環境変数が渡されます。
 
@@ -253,24 +252,13 @@ commandのobjectには`"when": ["nginx-*"]`のように、そのcommandが扱う
 
 build成果物は`ISUCON_DEPLOY_STAGING_PATH`配下へ配置し、実行ファイルなど必要なartifactを最後に検証します。失敗した場合はlive pathを切り替えず、transactionを中断してstagingを除去します。node上の永続build cacheはtransaction外に残るため、cacheには再生成可能なartifactだけを置き、秘密情報やruntime dataを保存しません。
 
-Rustは`local_builds`を既定とし、配布サーバーではコンパイルしません。`config/sync.rust.example.json`の`binary`・service名・配置先に加えて、`base_image`（Linuxディストリビューションとglibc互換性）、`target`、`dockerfile`を配布環境に合わせて確認します。標準コンパイラはRust 1.99.0です。Dockerfile内で公式rustupから取得し、`RUSTUP_TOOLCHAIN=1.99.0`で選択します。準備ではOSを推測せず、`rust:replace-with-compatible-distribution`を残します。その代わり、`config/rust-builder/bases.json`の候補base（bullseye・bookworm・trixieのRust公式イメージと、そのglibc・libssl）×targetのbuilder imageを`make builder-images`（`local-build.py prepare-images`）で事前に作っておきます。当日の初回buildではrustup、apt、cross linkerの準備が省かれ、依存crateのcompileから始まります。取得できないtagがあれば止まるので、bases.jsonを直します。開始後はkickoff build処理が配布コードと実行環境からこの候補を選ぶか、操作者が互換性のある既存のRust公式イメージを設定します。例えば既存のbullseye環境ならbaseを維持し、Rust版だけを更新します。配布サーバーのRust版は`.local/kickoff-build/environment.txt`にあり、標準版の選択とは分けます。厳密に固定する場合は`base_image`をdigest指定にします。追加のCライブラリなどが必要なら、Git管理するDockerfileへ明示します。
+Goは`local_builds`を既定とし、配布サーバーではコンパイルしません。`scripts/local-build.py`は手元のGo toolchain（`go`、無ければ`~/.local/go/bin/go`）で`CGO_ENABLED=0`・`GOOS=linux`・`GOARCH`を付けてbuildするので、Dockerも、nodeのglibcに合わせたbaseの選択も要りません。go.modの`go`・`toolchain`行が手元より新しい版を求めれば、`GOTOOLCHAIN=auto`がその版を取得します。`GOAMD64`は外し（x86-64-v1）、型の混ざるnodeのどれでも動くようにします。cgoが要るmoduleはbuildできないので、そのときは設定を待ちます。準備では`make builder-images`（`local-build.py prepare-toolchain`）で、両targetの標準libraryを事前にbuildしておきます。
 
-```bash
-make build                   # SSH/inventory不要。先行回収のcommit後から準備可能
-make deploy                  # 必要ならbuildし、同じ成果物を全対象nodeへ配る
-# draft作成後、適用前にbuildを先行させる場合:
-make build SYNC_MANIFEST=.local/draft/sync.json
-```
+入力はcommit済みのitem全体と`go.mod`・`go.sum`です。moduleのrootがitemの外（親directory）にある場合は、`local_builds`（と`config/kickoff-build.json`）へ`source_root`（`webapp/`配下でitemを含むdirectory）と`manifest_dir`（itemから見たgo.modの位置）を指定します。`vendor/modules.txt`があれば`-mod=vendor`でbuildします。ソースが未commitなら停止します。deploy時はmanifestと`scripts/local-build.py`もcommit済みであることが必要です。成果物は`.local/go-build/`、直近の索引は`.local/local-build.json`に置き、Gitには追加しません。
 
-ローカルにはPython 3と起動済みのDockerが必要です。Linux Docker hostのARM64/AMD64でネイティブにcompilerを動かし、`x86_64-unknown-linux-gnu`または`aarch64-unknown-linux-gnu`を出力します。Docker DesktopのMac共有ディレクトリにtargetを置かず、Linux named volumeへCargo targetと依存取得cacheを保存します。初回だけimage・依存の取得が必要です。既存vendorを使うオフライン検証では`RUST_BUILD_VENDOR_DIR=/absolute/vendor make build`を使えます（imageは事前準備が必要）。vendorは今回のlockfileに対応したものを使います。
+worktreeからもルートリポジトリのcache（`GOCACHE`・`GOMODCACHE`も`.local/go-build/`の中）を共用します。専用build lockで同時書込みを直列化し、通常のkickoffsetupは止めません。ソースtree・build設定・Goの版・builder scriptが同じならSHA-256検証後に完成済みbinaryを再利用します。壊れたartifactは自動配布せず停止するため、該当input IDの成果物ディレクトリを除いて再buildしてください。
 
-入力はcommit済みのitem全体と`Cargo.lock`です。配布物がworkspaceの一部で、`Cargo.lock`やpath依存がitemの外（親directory）にある場合は、`local_builds`（と`config/kickoff-build.json`）へ`source_root`（`webapp/`配下でitemを含むworkspace root）と`manifest_dir`（itemから見たbinaryのCargo.tomlの位置）を指定します。配布の`Cargo.lock`は再生成しません。標準以外のRust版が必要なら`toolchain`、target向けのCライブラリ（例: `libssl-dev:amd64`）は`packages`へ明示します。builderはtargetのarchitectureを追加し、`pkg-config`がtarget側のライブラリを参照するように設定します。ソースが未commitなら停止します。`make build`はDockerfile・manifestの調整中にも使えますが、deploy時はmanifest・Dockerfile・builder scriptもcommit済みであることが必要です。成果物は`.local/rust-build/`、直近の索引は`.local/local-build.json`に置き、Gitには追加しません。
-
-worktreeからもルートリポジトリのcacheを共用します。専用build lockで同時書込みを直列化し、通常のkickoffsetupは止めません。ソースtree・build設定・image ID・builder scriptが同じならSHA-256検証後に完成済みbinaryを再利用します。ソースやCargo.lockが変わればCargoを再実行し、image・target等が同じなら依存crateのcacheを再利用します。imageやtargetが変われば別cacheになります。Docker image/volumeと`.local/rust-build`は明示的に削除するまで残ります。壊れたartifactは自動配布せず停止するため、該当input IDの成果物ディレクトリを除いて再buildしてください。
-
-deployはローカルbuildを完了してから全nodeのpreflightに進みます。source archiveへ生成binaryだけを追加し、nodeのCPUを検査します。stagingでSHA-256・実行権限・`ldd`による共有ライブラリ解決を確認し、全台成功してからliveへ切り替えます。transactionごとの索引は`.local/deploy-transactions/<release>.artifacts.json`です。切替失敗時は従来どおりsourceとbinaryを一緒にrollbackします。`ldd`は実アプリの動作保証ではないので、当日の環境でhealth checkとベンチも必要です。
-
-既存の`build_commands`契約は他用途向けに残します。同じitemへ`local_builds`とremote buildを同時指定することは禁止します。Ansibleのremote Rust cache準備も既定では無効です。明示的に旧方式を使う場合だけ`observability_remote_rust_build: true`にします。
+既存の`build_commands`契約は他用途向けに残します。同じitemへ`local_builds`とremote buildを同時指定することは禁止します。
 ```bash
 ./scripts/sync-check.sh
 ./scripts/import.sh
@@ -284,7 +272,7 @@ make status
 
 `make status`（`scripts/status.sh`）は全nodeを並列に検査します。nodeごとに1回のSSHで、そのnodeの様子（load、メモリ、disk、失敗したunit、待ち受けport、直近30分のOOM kill、直近10分のerror、MySQLの実行中のSQL）と、`config/sync.json`の`status_commands`の結果を返します。node上の各行は5秒、node全体は`STATUS_TIMEOUT_SECONDS`（既定20秒）で打ち切り、応答しないnodeは「no answer」、接続できないnodeは「SSH failed」と出します。終了コードが失敗になるのは`status_commands`の失敗と、応答しない・接続できないnodeだけです。このSSHは使い回しの接続（ControlMaster）を使いません。固まったnodeへの古い接続に乗って待たないためです。`scripts/ssh-node.sh`はどの接続にも`ServerAliveInterval=5`・`ServerAliveCountMax=3`を付け、接続した後にnodeが応答しなくなった場合も約15秒で切ります（接続の段階は`ConnectTimeout=5`）。メモリを使い切ったnodeには、時間制限の無い手打ちのsshが長く固まり、portが開くのを待つloopでは原因に気付くのが遅れます。
 
-`import`は対象groupの全nodeでpathの内容・mode・symlinkをdigest比較し、不一致なら回収前に停止します。意図した差異だと確認した場合だけ`IMPORT_ALLOW_DIVERGENT=true ./scripts/import.sh`とし、itemごとの`source_node`から回収します。比較表は`.local/import-comparison.tsv`へ残ります。directory itemの`exclude`（itemからの相対path）は、digest比較と転送の両方から外します。draftのRust itemは`target`と`.git`を除外します。build成果物はGit管理もdeployもしないので、回収すると不要な転送が大きく増え、node間でbuild状態が違うだけで不一致として止まるためです。実行時に必要なファイルが除外pathの下にあるなら、`exclude`から外して明示的に回収します。
+`import`は対象groupの全nodeでpathの内容・mode・symlinkをdigest比較し、不一致なら回収前に停止します。意図した差異だと確認した場合だけ`IMPORT_ALLOW_DIVERGENT=true ./scripts/import.sh`とし、itemごとの`source_node`から回収します。比較表は`.local/import-comparison.tsv`へ残ります。directory itemの`exclude`（itemからの相対path）は、digest比較と転送の両方から外します。draftのGo itemはunitが動かす実行fileと`.git`を除外します。build成果物はGit管理もdeployもしないので、回収すると不要な転送が大きく増え、node間でbuild状態が違うだけで不一致として止まるためです。実行時に必要なファイルが除外pathの下にあるなら、`exclude`から外して明示的に回収します。
 
 `deploy`は未コミットの同期対象を拒否します。全nodeでsudo、owner/group、空き容量、配置先をpreflightし、全fileをstagingし、build commandを完了してから切り替えます。一台でもbuild、配置、post-deploy検証に失敗すると、そのtransactionで触れた全対象を元へ戻し、live切替後なら`rollback_commands`で稼働プロセスも旧構成へ戻します。rollback自体が失敗した場合、stateは`rollback-failed`になります。
 
@@ -364,13 +352,13 @@ make first-bench   # 次を続けて実行する（配布状態で測れない�
 # make deploy
 ```
 
-isuscopeは毎回のベンチの前（collectorより前）に、`.isuscope/policy.toml`の`prepare_command`（`scripts/benchmark-prepare.sh`）を実行します。sync.jsonのRust unitを、動いているnodeでだけ再起動し（`try-restart`）、そのunitのprocessがportをlistenするまで待ちます。再起動するのは、前回のベンチを処理したprocessがまだ動いているunitだけです（systemdの`InvocationID`を`.local/benchmark-invocations.json`へ残して比べます）。deployで前回のベンチの後に起動し直したprocessは、前回のrequestを抱えていないので再起動しません。手動のベンチが途中で切ったrequestのtransactionが接続poolに残ると、次のinitializeの`DROP TABLE`がlock待ちでtimeoutになることがあります。準備に失敗したrunは、ベンチを始めずにFAILとして残ります。
+isuscopeは毎回のベンチの前（collectorより前）に、`.isuscope/policy.toml`の`prepare_command`（`scripts/benchmark-prepare.sh`）を実行します。sync.jsonのGo unitを、動いているnodeでだけ再起動し（`try-restart`）、そのunitのprocessがportをlistenするまで待ちます。再起動するのは、前回のベンチを処理したprocessがまだ動いているunitだけです（systemdの`InvocationID`を`.local/benchmark-invocations.json`へ残して比べます）。deployで前回のベンチの後に起動し直したprocessは、前回のrequestを抱えていないので再起動しません。手動のベンチが途中で切ったrequestのtransactionが接続poolに残ると、次のinitializeの`DROP TABLE`がlock待ちでtimeoutになることがあります。準備に失敗したrunは、ベンチを始めずにFAILとして残ります。
 
 ベンチ出力の問題固有の行（scenarioごとの件数、FAILの理由、エラーの実例）は`.isuscope/parse-benchmark.sh`が読み、`.isuscope/policy.toml`の`[[benchmark.parsers]]`で最初からisuscopeへ登録してあります。既定の実装は、WARN・ERRORの行をcategory（`CODE=<n>`、無ければtimeout・connection・statusの語）ごとに`benchmark.warnings`・`benchmark.errors`で数えて実例をmessageに残し、クリティカル・`pass=false`の行をfailureとして残すので、当日に何も書かなくても警告の内訳は取れます。当日はscriptの`--- 当日に実装する ---`の範囲へ問題固有の内訳（シナリオごとの成功数、利用者の登録・離脱など）を足し、categoryの取り方が出力に合わなければ`category()`を直して、`isuscope enrich <run>`で既存のrunにも反映します。
 
-同じ構成の再測定は、isuscopeが止めます。`.isuscope/policy.toml`の`identity_command`（`scripts/benchmark-identity.py`）は、配る対象のcommit済みの内容（`deployed_files`）、`config/benchmark.env`（`benchmark_env`）、配布状態かdeploy済みか（`build`）をJSONで出します。isuscopeはこれと、nodeのfingerprint（`.isuscope/fingerprint.sh`。Rustは配った実行ファイル、配る単一file（アプリのunitやnginx・MySQLの設定）。directoryの中身はidentityの`deployed_files`だけで比べる）、自分の計測設定（`config.toml`と重ねた`.isuscope/policy.toml`、`routes.toml`、adapterのscript、isuscopeの版）を、ベンチを実際に始めた直前のrunと比べ、すべて同じなら始めず、runも残しません。何も変えなかった編集（一致しなかった`sed`など）の後に、同じ構成を1run測り直さないためです。ばらつきの確認など意図した再測定は`isuscope run --repeat "理由" --hypothesis "..."`で明示します。fingerprintの対象は`configure-draft`がsync.jsonのitemから`isuscope_fingerprint_paths`へ書き、`kickoff-apply`が各nodeへ配ります。
+同じ構成の再測定は、isuscopeが止めます。`.isuscope/policy.toml`の`identity_command`（`scripts/benchmark-identity.py`）は、配る対象のcommit済みの内容（`deployed_files`）、`config/benchmark.env`（`benchmark_env`）、配布状態かdeploy済みか（`build`）をJSONで出します。isuscopeはこれと、nodeのfingerprint（`.isuscope/fingerprint.sh`。Goは配った実行ファイル、配る単一file（アプリのunitやnginx・MySQLの設定）。directoryの中身はidentityの`deployed_files`だけで比べる）、自分の計測設定（`config.toml`と重ねた`.isuscope/policy.toml`、`routes.toml`、adapterのscript、isuscopeの版）を、ベンチを実際に始めた直前のrunと比べ、すべて同じなら始めず、runも残しません。何も変えなかった編集（一致しなかった`sed`など）の後に、同じ構成を1run測り直さないためです。ばらつきの確認など意図した再測定は`isuscope run --repeat "理由" --hypothesis "..."`で明示します。fingerprintの対象は`configure-draft`がsync.jsonのitemから`isuscope_fingerprint_paths`へ書き、`kickoff-apply`が各nodeへ配ります。
 
-振れ幅は、同じ構成（isuscopeの`config_key`が同じ）で測ったrunの得点から、`isuscope variance`が各runの開始時点で分かっていた値として出します（ボードもこれを使う）。APIごとの待ちの表（`ISUCON_WAITS`。lane `waits`がアプリへ写す`config/waits/waits.rs`が起動時に1度だけ読む）は、`scripts/waits.py set`がアプリのEnvironmentFileの行を書き（unitの`EnvironmentFile`をsync.jsonでrepoのfileへ戻して探す）、`make deploy`で配ります（buildは要らない）。`scripts/benchmark-identity.py`はcommit済みの表を`waits`としても出すので、各runの`run.json`の`identity.values.waits`に、そのrunで効いていた表が残り、変えた回は`changed identity.waits`と出ます。試した待ちは、tag `wait`・`wait:<METHOD PATH>`を付けたrunと、IDが`wait-`で始まるisuscopeのchangeに残し、`scripts/waits.py history`が両方を並べます。isuscopeだけで読むなら`isuscope sql "SELECT r.id, r.score, t.tag FROM runs r JOIN run_tags t ON t.run_id = r.id WHERE t.tag LIKE 'wait%' ORDER BY r.started_at"`と`isuscope change list`です。
+振れ幅は、同じ構成（isuscopeの`config_key`が同じ）で測ったrunの得点から、`isuscope variance`が各runの開始時点で分かっていた値として出します（ボードもこれを使う）。APIごとの待ちの表（`ISUCON_WAITS`。lane `waits`がアプリへ写す`config/waits/waits.go`が起動時に1度だけ読む）は、`scripts/waits.py set`がアプリのEnvironmentFileの行を書き（unitの`EnvironmentFile`をsync.jsonでrepoのfileへ戻して探す）、`make deploy`で配ります（buildは要らない）。`scripts/benchmark-identity.py`はcommit済みの表を`waits`としても出すので、各runの`run.json`の`identity.values.waits`に、そのrunで効いていた表が残り、変えた回は`changed identity.waits`と出ます。試した待ちは、tag `wait`・`wait:<METHOD PATH>`を付けたrunと、IDが`wait-`で始まるisuscopeのchangeに残し、`scripts/waits.py history`が両方を並べます。isuscopeだけで読むなら`isuscope sql "SELECT r.id, r.score, t.tag FROM runs r JOIN run_tags t ON t.run_id = r.id WHERE t.tag LIKE 'wait%' ORDER BY r.started_at"`と`isuscope change list`です。
 
 ベンチの期限は`config/benchmark.env`の`BENCHMARK_TIMEOUT_SECONDS`だけで、adapterが止めます（isuscopeの`[benchmark] timeout_seconds`は使わない）。出力が`idle_timeout_seconds`（`.isuscope/policy.toml`で300秒）途絶えたときはisuscopeが止めます。`BENCHMARK_TRANSPORT=ssh`では、ローカルのSSHに加えて、ベンチnode側のコマンドも`timeout -k 10 <期限>`で包みます（ローカルはその30秒後に止めます）。pty無しのSSHを止めてもremoteのベンチは走り続け、次のrunと重なり得るためです。isuscopeがベンチを止めたとき（`benchmark.stopped_by`が`timeout`／`idle`／`interrupted`）は、`cleanup_command`の`.isuscope/benchmark.sh --cleanup`が、ベンチnodeに残ったprocess group（run時に`/tmp/isuscope-benchmark.pid`へ残したもの）を止め、持ち主の消えたadapterのlockを外します。
 
@@ -397,7 +385,7 @@ SSH接続だけでは初期DB投入の完了とみなさない。bootstrapは全
 練習では`[ADMIN]`を含む行を除外する。生成済みTOMLだけを編集しない。
 
 systemdの調査は稼働中だけでなく、インストール済み・停止中のunitも対象にする。
-Rust unitのfragmentは`/etc/systemd/system`、`/lib/systemd/system`、
+Go unitのfragmentは`/etc/systemd/system`、`/lib/systemd/system`、
 `/usr/lib/systemd/system`からdraft候補にできる。unitが見つかったことと稼働確認は
 別に扱い、draft reviewとdeployの起動検査は引き続き必要とする。
 

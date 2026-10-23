@@ -18,34 +18,34 @@ def draft_module():
 
 
 class LanguageSwitchDraftTest(unittest.TestCase):
-    """practice-14 started with isuride-go running; the draft FAILed until the units were switched by hand."""
+    """practice-14 started with isuride-rust running; the draft FAILed until the units were switched by hand."""
 
     def setUp(self):
         self.draft = draft_module()
-        self.units = {'isuride-go.service', 'isuride-rust.service', 'isuride-python.service',
+        self.units = {'isuride-rust.service', 'isuride-go.service', 'isuride-python.service',
                       'isuride-matcher.service', 'isuride-payment_mock.service', 'nginx.service'}
 
     def test_switches_only_where_another_language_runs(self):
         reports = {
-            'app1': {'running_services': ['isuride-go.service', 'isuride-matcher.service', 'nginx']},
-            'app2': {'running_services': ['isuride-go.service', 'isuride-payment_mock.service']},
-            'app3': {'running_services': ['isuride-rust.service']},
+            'app1': {'running_services': ['isuride-rust.service', 'isuride-matcher.service', 'nginx']},
+            'app2': {'running_services': ['isuride-rust.service', 'isuride-payment_mock.service']},
+            'app3': {'running_services': ['isuride-go.service']},
         }
-        switch = self.draft.language_switch('isuride-rust.service', reports, self.units)
-        self.assertEqual(switch, {'start': 'isuride-rust.service', 'stop': ['isuride-go.service'],
+        switch = self.draft.language_switch('isuride-go.service', reports, self.units)
+        self.assertEqual(switch, {'start': 'isuride-go.service', 'stop': ['isuride-rust.service'],
                                   'nodes': ['app1', 'app2']})
 
-    def test_no_switch_when_rust_already_runs_alone_or_nothing_runs(self):
+    def test_no_switch_when_go_already_runs_alone_or_nothing_runs(self):
         self.assertIsNone(self.draft.language_switch(
-            'isuride-rust.service', {'app1': {'running_services': ['isuride-rust.service']}}, self.units))
+            'isuride-go.service', {'app1': {'running_services': ['isuride-go.service']}}, self.units))
         self.assertIsNone(self.draft.language_switch(
-            'isuride-rust.service', {'app1': {'running_services': ['nginx.service']}}, self.units))
+            'isuride-go.service', {'app1': {'running_services': ['nginx.service']}}, self.units))
 
     def test_dot_separated_units_and_unrelated_prefixes(self):
-        units = {'isucondition.go.service', 'isucondition.rust.service', 'other-go.service'}
-        reports = {'app1': {'running_services': ['isucondition.go.service', 'other-go.service']}}
-        switch = self.draft.language_switch('isucondition.rust.service', reports, units)
-        self.assertEqual(switch['stop'], ['isucondition.go.service'])
+        units = {'isucondition.rust.service', 'isucondition.go.service', 'other-rust.service'}
+        reports = {'app1': {'running_services': ['isucondition.rust.service', 'other-rust.service']}}
+        switch = self.draft.language_switch('isucondition.go.service', reports, units)
+        self.assertEqual(switch['stop'], ['isucondition.rust.service'])
 
     def test_nginx_site_items_use_real_paths_and_skip_the_measurement_dropin(self):
         report = {'nginx_site_files': [
@@ -84,14 +84,14 @@ class SwitchScriptTest(unittest.TestCase):
             calls = log.read_text().splitlines() if log.exists() else []
             return result, calls
 
-    def test_stops_the_other_language_and_starts_rust_on_listed_nodes(self):
-        result, calls = self.run_switch({'start': 'isuride-rust.service', 'stop': ['isuride-go.service'],
+    def test_stops_the_other_language_and_starts_go_on_listed_nodes(self):
+        result, calls = self.run_switch({'start': 'isuride-go.service', 'stop': ['isuride-rust.service'],
                                          'nodes': ['app1', 'app2']})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([call.split('\t')[0] for call in calls], ['app1', 'app2'])
-        self.assertIn('sudo systemctl disable --now isuride-go.service', calls[0])
-        self.assertIn('sudo systemctl enable --now isuride-rust.service', calls[0])
-        self.assertIn('is-active --quiet isuride-rust.service', calls[0])
+        self.assertIn('sudo systemctl disable --now isuride-rust.service', calls[0])
+        self.assertIn('sudo systemctl enable --now isuride-go.service', calls[0])
+        self.assertIn('is-active --quiet isuride-go.service', calls[0])
 
     def test_without_a_plan_nothing_runs(self):
         result, calls = self.run_switch(None)

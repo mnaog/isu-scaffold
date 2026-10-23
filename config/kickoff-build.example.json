@@ -1,6 +1,6 @@
 {
-  "base_image": "rust:replace-with-compatible-distribution",
-  "target": "x86_64-unknown-linux-gnu",
+  "target": "linux/amd64",
   "binary": "replace-with-binary-name",
-  "dockerfile": "config/rust-builder/Dockerfile"
+  "output": "replace-with-binary-name",
+  "package": "."
 }

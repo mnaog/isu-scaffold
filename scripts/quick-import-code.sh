@@ -85,6 +85,22 @@ mkdir -p "${staging_root}/application"
 "${script_dir}/ssh-node.sh" "${source_node}" \
   "sudo tar -C '${application_remote}' --exclude='./target' --exclude='./node_modules' --exclude='./.git' -cf - ." |
   tar -C "${staging_root}/application" -xpf -
+# The node builds the Go binary inside the application directory; a build output is neither
+# committed nor deployed (make build makes the deployed one), so executables stay out.
+python3 - "${staging_root}/application" >"${repo_dir}/.local/code-import-binaries.txt" <<'PY'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+for path in sorted(root.rglob('*')):
+    if path.is_file() and not path.is_symlink():
+        with path.open('rb') as source:
+            if source.read(4) == b'\x7fELF':
+                print(path.relative_to(root).as_posix())
+                path.unlink()
+PY
+if [[ -s "${repo_dir}/.local/code-import-binaries.txt" ]]; then
+  echo "left out built executables: $(tr '\n' ' ' <"${repo_dir}/.local/code-import-binaries.txt")"
+fi
 
 schema_imported=false
 if [[ -n "${schema_remote}" ]]; then

@@ -54,7 +54,8 @@ def main():
         manifest_relative = str(manifest)
     paths = {manifest_relative}
     paths |= {item['local'] for item in sync.get('items', [])}
-    paths |= {build['dockerfile'] for build in sync.get('local_builds', []) if build.get('dockerfile')}
+    if sync.get('local_builds'):
+        paths.add('scripts/local-build.py')
 
     def tree(selected):
         listing = subprocess.run(['git', 'ls-tree', '-r', 'HEAD', '--', *sorted(selected)], cwd=ROOT,

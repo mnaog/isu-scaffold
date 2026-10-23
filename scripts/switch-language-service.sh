@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Applies the reviewed switch to the Rust implementation from .local/service-switch.json
+# Applies the reviewed switch to the Go implementation from .local/service-switch.json
 # (written by configure-draft.py, installed by configure-apply.sh): on each listed node,
-# stop and disable the other language's unit, then enable and start the Rust unit.
+# stop and disable the other language's unit, then enable and start the Go unit.
 # Without a plan there is nothing to switch.
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)

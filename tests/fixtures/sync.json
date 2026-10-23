@@ -11,7 +11,7 @@
       "remote": "/home/isucon/webapp",
       "owner": "isucon",
       "owner_group": "isucon",
-      "exclude": ["rust/target"]
+      "exclude": ["go/target", "go/isu-app"]
     },
     {
       "name": "nginx-conf",

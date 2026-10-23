@@ -3,7 +3,6 @@ import json
 import os
 import re
 import sys
-import tomllib
 from collections import Counter
 from pathlib import Path
 
@@ -128,22 +127,26 @@ def read_application_env() -> dict[str, str]:
     return values
 
 
-def rust_binary_name(application_dir: Path) -> str | None:
-    manifest = application_dir / "Cargo.toml"
-    if not manifest.is_file():
-        return None
-    with manifest.open("rb") as source:
-        cargo = tomllib.load(source)
-    binaries = cargo.get("bin") or []
-    if binaries and binaries[0].get("name"):
-        return binaries[0]["name"]
-    return cargo.get("package", {}).get("name")
+def go_output(reports: dict, unit: str, remote_application: str) -> str | None:
+    """The path, inside the application directory, of the binary the Go unit runs (from ExecStart)."""
+    for report in reports.values():
+        for line in report.get("service_exec_starts", []):
+            parts = line.split("\t", 1)
+            if len(parts) != 2 or parts[0] != unit or not parts[1].strip():
+                continue
+            executable = parts[1].lstrip("-@:+!").split()[0]
+            if executable.startswith(remote_application + "/"):
+                output = executable.removeprefix(remote_application + "/")
+                if re.fullmatch(r"[A-Za-z0-9_./-]+", output) and ".." not in output.split("/"):
+                    return output
+    return None
 
 
-def rust_service(service_fragments: list[str]) -> tuple[str, str] | None:
+def go_service(service_fragments: list[str]) -> tuple[str, str] | None:
     for line in sorted(service_fragments):
         parts = line.split("\t", 1)
-        if len(parts) == 2 and "rust" in parts[0] and parts[1].startswith(("/etc/systemd/system/", "/lib/systemd/system/", "/usr/lib/systemd/system/")):
+        if (len(parts) == 2 and (match := LANGUAGE_UNIT.match(parts[0])) and match["language"] in GO_NAMES
+                and parts[1].startswith(("/etc/systemd/system/", "/lib/systemd/system/", "/usr/lib/systemd/system/"))):
             return parts[0].removesuffix(".service"), parts[1]
     return None
 
@@ -154,20 +157,21 @@ LANGUAGE_UNIT = re.compile(
     r"^(?P<prefix>.+?)[-._](?P<language>go|golang|rust|python|ruby|node|nodejs|php|perl|java|"
     r"typescript|ts|js|crystal|elixir|csharp|dotnet)\.service$"
 )
+GO_NAMES = ("go", "golang")
 
 
 def running_units(report: dict) -> set[str]:
     return {name if name.endswith(".service") else name + ".service" for name in report.get("running_services", [])}
 
 
-def language_switch(rust_unit: str, reports: dict, unit_names: set[str]) -> dict | None:
-    """Nodes where another language of the same application runs instead of (or beside) Rust."""
-    match = LANGUAGE_UNIT.match(rust_unit)
-    if not match or match["language"] != "rust":
+def language_switch(go_unit: str, reports: dict, unit_names: set[str]) -> dict | None:
+    """Nodes where another language of the same application runs instead of (or beside) Go."""
+    match = LANGUAGE_UNIT.match(go_unit)
+    if not match or match["language"] not in GO_NAMES:
         return None
     siblings = {
         unit for unit in unit_names
-        if (other := LANGUAGE_UNIT.match(unit)) and other["prefix"] == match["prefix"] and other["language"] != "rust"
+        if (other := LANGUAGE_UNIT.match(unit)) and other["prefix"] == match["prefix"] and other["language"] not in GO_NAMES
     }
     nodes, stop = [], set()
     for node, report in sorted(reports.items()):
@@ -177,7 +181,7 @@ def language_switch(rust_unit: str, reports: dict, unit_names: set[str]) -> dict
         if active:
             nodes.append(node)
             stop |= active
-    return {"start": rust_unit, "stop": sorted(stop), "nodes": nodes} if nodes else None
+    return {"start": go_unit, "stop": sorted(stop), "nodes": nodes} if nodes else None
 
 
 def nginx_site_items(report: dict, source_node: str) -> tuple[list[dict], list[str]]:
@@ -216,12 +220,12 @@ def nginx_site_items(report: dict, source_node: str) -> tuple[list[dict], list[s
 
 SESSION_HEADER = re.compile(r'get\(\s*"(x-[a-z0-9-]*session[a-z0-9-]*)"', re.IGNORECASE)
 SESSION_COOKIE_PATTERNS = (
-    re.compile(r'Cookie::(?:new|build)\(\s*"([A-Za-z0-9_]+)"'),
-    re.compile(r'\.cookie\(\s*"([A-Za-z0-9_]+)"\s*\)'),
-    re.compile(r'cookie_name\(\s*"([A-Za-z0-9_]+)"'),
-    re.compile(r'const\s+[A-Z0-9_]*(?:SESSION|COOKIE)[A-Z0-9_]*\s*:\s*&str\s*=\s*"([A-Za-z0-9_]+)"'),
+    re.compile(r'\.Cookie\(\s*"([A-Za-z0-9_]+)"\s*\)'),
+    re.compile(r'http\.Cookie\{[^}]*?\bName:\s*"([A-Za-z0-9_]+)"', re.DOTALL),
+    re.compile(r'\b[Ss]tore\.(?:Get|New)\(\s*[^,()]+(?:\(\))?\s*,\s*"([A-Za-z0-9_]+)"'),
+    re.compile(r'\b\w*(?:[Ss]ession|SESSION|[Cc]ookie|COOKIE)\w*\s+(?:string\s+)?=\s*"([A-Za-z0-9_]+)"'),
 )
-NON_MYSQL_CRATES = re.compile(r'\b(rusqlite|sqlite|postgres|tokio-postgres)\b')
+NON_MYSQL_MODULES = re.compile(r'(github\.com/mattn/go-sqlite3|modernc\.org/sqlite|github\.com/lib/pq|github\.com/jackc/pgx\S*)')
 
 
 def session_source(application_dir: Path) -> tuple[str | None, list[str]]:
@@ -229,8 +233,8 @@ def session_source(application_dir: Path) -> tuple[str | None, list[str]]:
     headers: list[str] = []
     cookies: list[str] = []
     if application_dir.is_dir():
-        for source in sorted(application_dir.rglob("*.rs")):
-            if "target" in source.parts:
+        for source in sorted(application_dir.rglob("*.go")):
+            if "vendor" in source.parts or source.name.endswith("_test.go"):
                 continue
             text = source.read_text(errors="ignore")
             for match in SESSION_HEADER.finditer(text):
@@ -248,10 +252,10 @@ def session_source(application_dir: Path) -> tuple[str | None, list[str]]:
 
 
 def application_database_warnings(application_dir: Path) -> list[str]:
-    manifest = application_dir / "Cargo.toml"
+    manifest = application_dir / "go.mod"
     if not manifest.is_file():
         return []
-    found = sorted(set(NON_MYSQL_CRATES.findall(manifest.read_text(errors="ignore"))))
+    found = sorted(set(NON_MYSQL_MODULES.findall(manifest.read_text(errors="ignore"))))
     if not found:
         return []
     return [f"the application depends on {', '.join(found)}; isuscope collects database metrics only from MySQL (the slow log and Performance Schema)"]
@@ -344,12 +348,12 @@ def main() -> int:
     application_env = read_application_env()
     application_language = application_env.get("APPLICATION_LANGUAGE", "")
     application_path = application_env.get("APPLICATION_PATH", "")
-    if application_language != "rust":
-        raise ValueError("config/application.env must select Rust; do not infer the language from running services")
+    if application_language != "go":
+        raise ValueError("config/application.env must select Go; do not infer the language from running services")
     if not application_path.startswith("webapp/") or ".." in Path(application_path).parts:
         raise ValueError("APPLICATION_PATH must be under webapp/")
-    if not (REPO_DIR / application_path / "Cargo.toml").is_file():
-        raise ValueError("adopted Rust Cargo.toml is missing; complete early import before generating a draft")
+    if not any((REPO_DIR / application_path).rglob("go.mod")):
+        raise ValueError("adopted Go go.mod is missing; complete early import before generating a draft")
 
     default_user = inventory["all"]["vars"]["ansible_user"]
     default_source = next(iter(application_hosts))
@@ -365,50 +369,55 @@ def main() -> int:
     language_status = []
     draft_warnings = []
     local_application = REPO_DIR / application_path if application_path else None
-    if root and application_language == "rust" and application_path.startswith("webapp/") and local_application.is_dir():
+    if root and application_language == "go" and application_path.startswith("webapp/") and local_application.is_dir():
         app_owner, app_group = detected_owner or (default_user, default_user)
         relative = application_path.removeprefix("webapp/")
-        # Prefer the directory whose Cargo.toml was actually found on the nodes; the common
+        # Prefer the directory whose go.mod was actually found on the nodes; the common
         # application root can be broader (for example /home/isucon) when other projects exist.
         manifests = sorted({
             str(Path(candidate).parent)
             for report in reports.values()
             for candidate in report.get("application_candidates", [])
-            if Path(candidate).name == "Cargo.toml" and Path(candidate).parent.name == Path(relative).name
+            if Path(candidate).name == "go.mod" and Path(candidate).parent.name == Path(relative).name
         }, key=lambda path: ("/webapp/" not in path, len(path)))
         remote_application = manifests[0] if manifests else f"{root}/{relative}"
         webapp_root = str(Path(remote_application).parent)
-        items.append({
-            "name": "rust-app",
+        app_item = {
+            "name": "go-app",
             "type": "directory",
             "node_group": "role_app",
             "local": application_path,
             "remote": remote_application,
             "owner": app_owner,
             "owner_group": app_group,
-            # Build output and a nested repository are neither committed nor deployed;
-            # the early import skips them, and the full import must not copy them back.
-            "exclude": ["target", ".git"],
-        })
-        example = read_json(REPO_DIR / "config/sync.rust.example.json")
+            # The binary built on the node and a nested repository are neither committed nor
+            # deployed; the early import skips them, and the full import must not copy them back.
+            "exclude": [".git"],
+        }
+        items.append(app_item)
+        example = read_json(REPO_DIR / "config/sync.go.example.json")
         early_build = REPO_DIR / "config/kickoff-build.json"
         manifest_dir = read_json(early_build).get("manifest_dir", ".") if early_build.exists() else "."
         manifest_application = (local_application / manifest_dir).resolve()
         if not manifest_application.is_relative_to(local_application.resolve()):
             raise ValueError("manifest_dir must remain inside the imported application")
-        binary = rust_binary_name(manifest_application)
-        service = rust_service(service_fragment_lines)
-        if not binary:
-            draft_warnings.append("Rust binary name was not found in Cargo.toml; replace replace-with-binary-name")
+        service = go_service(service_fragment_lines)
+        output = go_output(reports, service[0] + ".service", remote_application) if service else None
+        binary = Path(output).name if output else None
+        if service and not output:
+            draft_warnings.append(f"{service[0]}.service does not run a binary inside {remote_application}; "
+                                  "replace replace-with-binary-name and set output in local_builds")
+        if output:
+            app_item["exclude"] = [output, ".git"]
         if not service:
             running_units = sorted({
                 line.split("\t", 1)[0] for line in service_fragment_lines
                 if any(token in line for token in ("isu", "webapp", "app"))
             })
             draft_warnings.append(
-                "Rust systemd unit was not found (application units: "
+                "Go systemd unit was not found (application units: "
                 + (", ".join(running_units) or "none")
-                + "); create config/systemd/<name>.service for Rust, add it as a sync item, "
+                + "); create config/systemd/<name>.service for Go, add it as a sync item, "
                 "and add its restart/is-active commands before switching from the current implementation"
             )
         service_name = service[0] if service else "replace-with-service-name"
@@ -417,18 +426,18 @@ def main() -> int:
             return (command.replace("replace-with-binary-name", binary or "replace-with-binary-name")
                     .replace("replace-with-service-name", service_name))
 
-        local_builds = [dict(build, binary=adapt(build["binary"]))
+        local_builds = [dict(build, binary=adapt(build["binary"]), output=output or adapt(build["output"]))
                         for build in example["local_builds"]]
         early_build = REPO_DIR / "config/kickoff-build.json"
         if early_build.exists():
-            # Preserve the early compiler/target recipe so later deploy reuses its cache.
+            # Keep the early build's settings so later deploy reuses its cache.
             settings = read_json(early_build)
-            if not {'base_image', 'target', 'binary', 'dockerfile'} <= set(settings) or set(settings) - {'base_image', 'target', 'binary', 'dockerfile', 'source_root', 'manifest_dir', 'toolchain', 'packages'}:
+            if not {'target', 'binary'} <= set(settings) or set(settings) - {'target', 'binary', 'output', 'package', 'source_root', 'manifest_dir'}:
                 raise ValueError("invalid config/kickoff-build.json")
-            if binary and settings["binary"] != binary:
-                raise ValueError("early build binary differs from imported Cargo manifest")
-            local_builds = [dict(settings, item="rust-app")]
-        draft_warnings.append("Verify local Rust builder base_image, target CPU and runtime libraries before deploy")
+            if output and settings.get("output", settings["binary"]) != output:
+                raise ValueError(f"early build output {settings.get('output', settings['binary'])} differs from the unit's ExecStart ({output})")
+            local_builds = [dict(settings, item="go-app")]
+        draft_warnings.append("Verify the local Go build's target (linux/amd64 or linux/arm64) and that the unit's ExecStart runs the deployed output before deploy")
         if service:
             language_commands = [{"node_group": "role_app", "command": adapt(command["command"])}
                                  for command in example["post_deploy_commands"]]
@@ -436,7 +445,7 @@ def main() -> int:
                                for command in example["status_commands"]]
         if service:
             items.append({
-                "name": "rust-service",
+                "name": "go-service",
                 "type": "file",
                 "node_group": "role_app",
                 "local": f"config/systemd/{service[0]}.service",
@@ -538,9 +547,9 @@ def main() -> int:
     for command in language_commands:
         text = command["command"]
         if "daemon-reload" in text:
-            command["when"] = ["rust-service"]
+            command["when"] = ["go-service"]
         elif "systemctl restart" in text:
-            command["when"] = ["rust-app", "rust-service", "app-env*"]
+            command["when"] = ["go-app", "go-service", "app-env*"]
         if "is-active" in text:
             command["command"] = wait_active(text)
     post_commands += language_commands
@@ -571,9 +580,9 @@ def main() -> int:
     # committed content, and hashing a large tree (static files, a source tree with target/) on
     # every node before every run costs seconds. Other units under /etc/systemd/system (snap,
     # the other languages' implementations) are not ours to change and only add noise.
-    built = {build["item"]: build["binary"] for build in local_builds}
+    built = {build["item"]: build.get("output", build["binary"]) for build in local_builds}
     fingerprint_paths = sorted(
-        {f"{item['remote']}/target/release/{built[item['name']]}" for item in items if item["name"] in built}
+        {f"{item['remote']}/{built[item['name']]}" for item in items if item["name"] in built}
         | {item["remote"] for item in items if item.get("type") == "file"}
     )
     available_tools_by_node = {

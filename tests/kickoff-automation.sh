@@ -46,7 +46,7 @@ cp "${source_repo}/.isuscope/benchmark.sh" "${source_repo}/.isuscope/policy.toml
 cp "${source_repo}/config/environment.example.env" "${fixture_repo}/.local/environment.env"
 cp "${source_repo}/config/nodes.example.json" "${fixture_repo}/.local/nodes.json"
 cp "${source_repo}/tests/fixtures/sync.json" "${fixture_repo}/config/sync.json"
-cp "${source_repo}/config/sync.rust.example.json" "${fixture_repo}/config/sync.rust.example.json"
+cp "${source_repo}/config/sync.go.example.json" "${fixture_repo}/config/sync.go.example.json"
 cp "${source_repo}/config/ansible-vars.json" "${fixture_repo}/config/ansible-vars.json"
 cp "${source_repo}/config/application.env" "${fixture_repo}/config/application.env"
 # FIXTURE_APP_NODES=5で、5台のapplication nodeとベンチの台2台（型の違う2種類が渡る構成で、
@@ -113,7 +113,7 @@ if grep -q '^name = "bench2\{0,1\}"$' "${fixture_repo}/.isuscope/config.toml"; t
   exit 1
 fi
 (cd "${fixture_repo}" && ./scripts/sync-check.sh)
-(cd "${fixture_repo}" && SYNC_MANIFEST="${source_repo}/config/sync.rust.example.json" \
+(cd "${fixture_repo}" && SYNC_MANIFEST="${source_repo}/config/sync.go.example.json" \
   ./scripts/sync-check.sh)
 jq '.build_commands = [{"name":"invalid-build","node_group":"application","item":"missing-item","command":"true"}]' \
   "${fixture_repo}/config/sync.json" >"${fixture_repo}/.local/invalid-sync.json"
@@ -231,11 +231,11 @@ printf '{"ISUSCOPE_NGINX_ACCESS_LOG":"/var/log/nginx/access.log","ISUSCOPE_MYSQL
   >"${review_dir}/draft/isuscope.json"
 write_facts() {
   local node=$1 webapp_kind=$2 webapp_kb=$3 service_state=$4 dropin=${5:-yes}
-  printf 'path\t/home/isucon/webapp/rust\t%s\t%s\nuser\tisucon\tyes\ngroup\tisucon\tyes\nservice\tisu.service\t%s\nlog\t/var/log/nginx/access.log\tyes\nlog\t/var/log/mysql/mysql-slow.log\tno\ndropin\t/etc/nginx/conf.d/00-isuscope-log.conf\t%s\n' \
+  printf 'path\t/home/isucon/webapp/go\t%s\t%s\nuser\tisucon\tyes\ngroup\tisucon\tyes\nservice\tisu.service\t%s\nlog\t/var/log/nginx/access.log\tyes\nlog\t/var/log/mysql/mysql-slow.log\tno\ndropin\t/etc/nginx/conf.d/00-isuscope-log.conf\t%s\n' \
     "${webapp_kind}" "${webapp_kb}" "${service_state}" "${dropin}" >"${review_dir}/facts/${node}"
 }
 write_sync() {
-  jq -n --arg remote "$1" '{source_node:"app1", items:[{name:"webapp", type:"directory", node_group:"application", local:"webapp/rust", remote:$remote, owner:"isucon", owner_group:"isucon"}], post_deploy_commands:["sudo systemctl is-active --quiet isu.service"], status_commands:[]}' \
+  jq -n --arg remote "$1" '{source_node:"app1", items:[{name:"webapp", type:"directory", node_group:"application", local:"webapp/go", remote:$remote, owner:"isucon", owner_group:"isucon"}], post_deploy_commands:["sudo systemctl is-active --quiet isu.service"], status_commands:[]}' \
     >"${review_dir}/draft/sync.json"
 }
 run_review() {
@@ -243,7 +243,7 @@ run_review() {
     "${fixture_repo}/.local/ansible-inventory.json" "${review_dir}/draft" "${review_dir}/ssh-node"
 }
 
-write_sync /home/isucon/webapp/rust
+write_sync /home/isucon/webapp/go
 write_facts app1 directory 2048 active
 # serverブロックのaccess_log（offを含む）はhttpレベルの計測logを上書きするのでWARNにします。
 cat >"${review_dir}/facts/app1.nginx" <<'EOF'
@@ -286,8 +286,8 @@ grep -q 'FAIL app2: webapp remote path does not exist' "${review_dir}/draft/revi
 grep -q 'FAIL app2: service isu.service is inactive' "${review_dir}/draft/review.md"
 grep -q 'FAIL app2: measurement drop-in is missing: /etc/nginx/conf.d/00-isuscope-log.conf' "${review_dir}/draft/review.md"
 
-# 他言語の実装が動いていてRust unitへ切り替える計画があれば、停止中のRust unitはapply時に起動するのでWARNにします。
-write_sync /home/isucon/webapp/rust
+# 他言語の実装が動いていてGo unitへ切り替える計画があれば、停止中のGo unitはapply時に起動するのでWARNにします。
+write_sync /home/isucon/webapp/go
 write_facts app1 directory 2048 inactive
 write_facts app2 directory 2048 inactive
 printf '{"start":"isu.service","stop":["isu-go.service"],"nodes":["app1"]}\n' >"${review_dir}/draft/service-switch.json"
@@ -303,11 +303,13 @@ rm -f "${review_dir}/draft/service-switch.json"
 # importは全nodeのdigest一致を確認してからsource nodeを回収します。
 fake_remote=${fixture_repo}/.local/fake-remote
 for node in ${app_nodes}; do
-  mkdir -p "${fake_remote}/${node}/home/isucon/webapp/rust/target" \
+  mkdir -p "${fake_remote}/${node}/home/isucon/webapp/go/target" \
     "${fake_remote}/${node}/home/isucon/webapp/sql" "${fake_remote}/${node}/etc/nginx"
   printf 'remote application\n' >"${fake_remote}/${node}/home/isucon/webapp/main.txt"
-  printf 'fn main() {}\n' >"${fake_remote}/${node}/home/isucon/webapp/rust/main.rs"
-  printf 'generated artifact\n' >"${fake_remote}/${node}/home/isucon/webapp/rust/target/debug.bin"
+  printf 'package main\n' >"${fake_remote}/${node}/home/isucon/webapp/go/main.go"
+  printf 'generated artifact\n' >"${fake_remote}/${node}/home/isucon/webapp/go/target/debug.bin"
+  # The binary the node built for its unit; the early import leaves it out.
+  printf '\177ELF\002\001 built on the node\n' >"${fake_remote}/${node}/home/isucon/webapp/go/isu-app"
   printf 'CREATE TABLE fixture (id BIGINT);\n' >"${fake_remote}/${node}/home/isucon/webapp/sql/schema.sql"
   printf '1\tinitial\n' >"${fake_remote}/${node}/home/isucon/webapp/sql/initial-data.tsv"
   printf 'remote nginx\n' >"${fake_remote}/${node}/etc/nginx/nginx.conf"
@@ -321,11 +323,11 @@ root=${FAKE_REMOTE_ROOT:?}/${node}
 case "${command}" in
   *ISUCON_DIGEST_BATCH*)
     exec bash -c "$(sed -e "s|sudo python3 /usr/local/lib/isuscope/tree-digest.py '|python3 '${TREE_DIGEST:?}' '${root}|g" <<<"${command}")" ;;
-  "sudo test -d '/home/isucon/webapp/rust'") test -d "${root}/home/isucon/webapp/rust" ;;
+  "sudo test -d '/home/isucon/webapp/go'") test -d "${root}/home/isucon/webapp/go" ;;
   "sudo test -d '/home/isucon/webapp/sql'") test -d "${root}/home/isucon/webapp/sql" ;;
   *tree-digest.py*'/home/isucon/webapp'*) exec python3 "${TREE_DIGEST:?}" "${root}/home/isucon/webapp" ;;
   *tree-digest.py*'/etc/nginx/nginx.conf'*) exec python3 "${TREE_DIGEST:?}" "${root}/etc/nginx/nginx.conf" ;;
-  *"tar -C '/home/isucon/webapp/rust'"*) exec tar -C "${root}/home/isucon/webapp/rust" --exclude='./target' -cf - . ;;
+  *"tar -C '/home/isucon/webapp/go'"*) exec tar -C "${root}/home/isucon/webapp/go" --exclude='./target' -cf - . ;;
   *"sudo -n python3 -c"*) exec bash -c "$(sed -e 's|^sudo -n ||' -e "s| /home/isucon/webapp/sql | ${root}/home/isucon/webapp/sql |" <<<"${command}")" ;;
   *"tar -C '/home/isucon/webapp'"*)
     exec bash -c "$(sed -e "s|^sudo tar -C '/home/isucon/webapp'|tar -C '${root}/home/isucon/webapp'|" <<<"${command}")" ;;
@@ -336,14 +338,16 @@ EOF
 chmod +x "${fixture_repo}/scripts/ssh-node.sh"
 (cd "${fixture_repo}" && git init -q && git config user.name test && git config user.email test@example.com && \
   git add . && git commit -qm fixture-base)
-(cd "${fixture_repo}" && FAKE_REMOTE_ROOT="${fake_remote}" ./scripts/quick-import-code.sh rust)
-grep -q '^fn main()' "${fixture_repo}/webapp/rust/main.rs"
+(cd "${fixture_repo}" && FAKE_REMOTE_ROOT="${fake_remote}" ./scripts/quick-import-code.sh go)
+grep -q '^package main' "${fixture_repo}/webapp/go/main.go"
 grep -q '^CREATE TABLE fixture' "${fixture_repo}/webapp/sql/schema.sql"
 # 初期データはコードレーンの開始を待たせないよう後回しにします。
 test ! -e "${fixture_repo}/webapp/sql/initial-data.tsv"
 grep -q '^DEFERRED data-or-link initial-data.tsv$' "${fixture_repo}/.local/code-schema-manifest.log"
-test ! -e "${fixture_repo}/webapp/rust/target"
-grep -q '^APPLICATION_LANGUAGE=rust$' "${fixture_repo}/config/application.env"
+test ! -e "${fixture_repo}/webapp/go/target"
+test ! -e "${fixture_repo}/webapp/go/isu-app"
+grep -qx 'isu-app' "${fixture_repo}/.local/code-import-binaries.txt"
+grep -q '^APPLICATION_LANGUAGE=go$' "${fixture_repo}/config/application.env"
 # laneは目的の記載が必須です。
 set +e
 (cd "${fixture_repo}" && WORKTREE_PATH="${fixture_root}/no-purpose" \
@@ -357,14 +361,14 @@ test ! -e "${fixture_root}/no-purpose"
   ./scripts/import.sh)
 grep -q '^remote application$' "${fixture_repo}/webapp/main.txt"
 # 同期itemのexcludeはdigestと転送の両方から外し、build成果物を回収しません。
-test ! -e "${fixture_repo}/webapp/rust/target"
+test ! -e "${fixture_repo}/webapp/go/target"
 # header 1行と、同期item 2つ × node。
 test "$(wc -l <"${fixture_repo}/.local/import-comparison.tsv" | tr -d ' ')" -eq $((1 + 2 * app_count))
 # importは配布状態のdigestを残し、make first-benchはHEADがそれと一致するかで配布状態のまま測れるか決めます。
 (cd "${fixture_repo}" && python3 scripts/imported-state.py >/dev/null)
 # 内容が一致するlocal itemは再転送しません。除外したpathがlocalだけにあっても同じです。
-mkdir -p "${fixture_repo}/webapp/rust/target"
-printf 'local build output\n' >"${fixture_repo}/webapp/rust/target/local.bin"
+mkdir -p "${fixture_repo}/webapp/go/target"
+printf 'local build output\n' >"${fixture_repo}/webapp/go/target/local.bin"
 reimport_output=$(cd "${fixture_repo}" && \
   FAKE_REMOTE_ROOT="${fake_remote}" TREE_DIGEST="${fixture_repo}/scripts/tree-digest.py" \
   ./scripts/import.sh 2>/dev/null)
@@ -392,8 +396,8 @@ test ! -e "${fixture_repo}/.local/imported-state.json"
 
 # SSHがstdinを読む処理を含んでも全node・全itemを処理することをfake remoteで確認します。
 printf 'fixture\n' >"${fixture_repo}/webapp/README.txt"
-mkdir -p "${fixture_repo}/webapp/rust"
-printf 'fn main() {}\n' >"${fixture_repo}/webapp/rust/main.rs"
+mkdir -p "${fixture_repo}/webapp/go"
+printf 'package main\n' >"${fixture_repo}/webapp/go/main.go"
 printf 'events {}\n' >"${fixture_repo}/config/nginx/nginx.conf"
 cat >"${fixture_repo}/scripts/ssh-node.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -617,7 +621,7 @@ grep -q "^目的:     自明な改善を入れる$" <<<"${lane_output}"
 grep -q "optimize/other-lane" <<<"${lane_output}"
 (cd "${fixture_repo}" && WORKTREE_PATH="${fixture_root}/initial-obvious" \
   ./scripts/worktree.sh optimize/fixture-obvious "自明な改善を入れる" HEAD >/dev/null)
-test -f "${fixture_root}/initial-obvious/webapp/rust/main.rs"
+test -f "${fixture_root}/initial-obvious/webapp/go/main.go"
 test "$(git -C "${fixture_repo}" config branch.optimize/fixture-obvious.description)" = "自明な改善を入れる"
 grep -q "^- 目的: 自明な改善を入れる$" "${fixture_root}/initial-obvious/.local/lane.md"
 grep -q "optimize/other-lane" "${fixture_root}/initial-obvious/.local/lane.md"
@@ -630,9 +634,10 @@ cat >"${fixture_repo}/.local/inspection/app1.json" <<'EOF'
   "application_candidates":["/home/isucon/webapp/go.mod"],
   "application_candidate_ownership":["/home/isucon/webapp/go.mod\tisucon\tisucon"],
   "configuration_paths":["/etc/nginx/nginx.conf","/etc/mysql","/etc/mysql/mysql.cnf","/etc/mysql/conf.d","/etc/mysql/mysql.conf.d"],
-  "service_fragments":["nginx.service\t/etc/systemd/system/nginx.service","isu-rust.service\t/etc/systemd/system/isu-rust.service","ssh.service\t/lib/systemd/system/ssh.service"],
+  "service_fragments":["nginx.service\t/etc/systemd/system/nginx.service","isu-go.service\t/etc/systemd/system/isu-go.service","ssh.service\t/lib/systemd/system/ssh.service"],
   "nginx_site_files":["/etc/nginx/sites-enabled/isu.conf\t/etc/nginx/sites-available/isu.conf","/etc/nginx/conf.d/00-isuscope-log.conf\t/etc/nginx/conf.d/00-isuscope-log.conf"],
-  "service_environment_files":["isu-rust.service\t/home/isucon/env.sh\tisucon\tisucon"],
+  "service_environment_files":["isu-go.service\t/home/isucon/env.sh\tisucon\tisucon"],
+  "service_exec_starts":["isu-go.service\t/home/isucon/webapp/go/isu-app -port 8080","nginx.service\t/usr/sbin/nginx"],
   "nginx_access_logs":["/var/log/nginx/custom.log","/var/log/nginx/isuscope-access.log"],
   "mysql_slow_logs":["/var/log/mysql/slow.log"],
   "versions":{"nginx":"nginx/1","mysql":"mysql 8","perf":"perf 6","sar":"sar 12","slp":"slp 1"}
@@ -655,37 +660,36 @@ for node in ${app_nodes}; do
   case "${node}" in app1|app2) ;; *) jq --arg node "${node}" '.node = $node' "${fixture_repo}/.local/inspection/app2.json" \
     >"${fixture_repo}/.local/inspection/${node}.json" ;; esac
 done
-printf '[package]\nname = "isu-app"\nversion = "0.1.0"\n' >"${fixture_repo}/webapp/rust/Cargo.toml"
-mkdir -p "${fixture_repo}/webapp/rust/src"
-printf 'let cookie = Cookie::build("app_session", id);\nlet owner = jar.cookie("owner_session");\nconst SESSION_EXPIRES_KEY: &str = "EXPIRES";\n' >"${fixture_repo}/webapp/rust/src/session.rs"
-mv "${fixture_repo}/webapp/rust/Cargo.toml" "${fixture_repo}/.local/Cargo.toml.saved"
-if (cd "${fixture_repo}" && ./scripts/configure-draft.sh >.local/missing-rust.log 2>&1); then
-  echo "draft silently accepted missing Rust sources" >&2
+printf 'module example.com/isu-app\n\ngo 1.23\n' >"${fixture_repo}/webapp/go/go.mod"
+printf 'package main\n\nfunc session(r *http.Request) {\n\tc, _ := r.Cookie("app_session")\n\towner, _ := r.Cookie("owner_session")\n}\n\nconst sessionExpiresKey = "EXPIRES"\n' >"${fixture_repo}/webapp/go/session.go"
+mv "${fixture_repo}/webapp/go/go.mod" "${fixture_repo}/.local/go.mod.saved"
+if (cd "${fixture_repo}" && ./scripts/configure-draft.sh >.local/missing-go.log 2>&1); then
+  echo "draft silently accepted missing Go sources" >&2
   exit 1
 fi
-grep -q 'complete early import' "${fixture_repo}/.local/missing-rust.log"
-mv "${fixture_repo}/.local/Cargo.toml.saved" "${fixture_repo}/webapp/rust/Cargo.toml"
+grep -q 'complete early import' "${fixture_repo}/.local/missing-go.log"
+mv "${fixture_repo}/.local/go.mod.saved" "${fixture_repo}/webapp/go/go.mod"
 cat >"${fixture_repo}/config/kickoff-build.json" <<'JSON'
-{"base_image":"rust:1.80-bullseye","target":"x86_64-unknown-linux-gnu","binary":"isu-app","dockerfile":"config/rust-builder/Dockerfile"}
+{"target":"linux/amd64","binary":"isu-app"}
 JSON
 (cd "${fixture_repo}" && ./scripts/configure-draft.sh)
-jq -e '.local_builds[0].base_image == "rust:1.80-bullseye" and .local_builds[0].target == "x86_64-unknown-linux-gnu"' "${fixture_repo}/.local/draft/sync.json" >/dev/null
+jq -e '.local_builds[0].target == "linux/amd64" and .local_builds[0].binary == "isu-app"' "${fixture_repo}/.local/draft/sync.json" >/dev/null
 jq -e '.items | any(.node_group == "role_mysql" and .source_node == "app1")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
-# Rustを採用した場合、webapp全体ではなくRust実装・unit・小さいSQLだけを配布候補にします。
+# Goを採用した場合、webapp全体ではなくGo実装・unit・小さいSQLだけを配布候補にします。nodeでbuildされた実行fileは除外します。
 jq -e '.items | all(.name != "webapp")' "${fixture_repo}/.local/draft/sync.json" >/dev/null
-jq -e '.items | any(.name == "rust-app" and .local == "webapp/rust" and .remote == "/home/isucon/webapp/rust" and .owner == "isucon")' \
+jq -e '.items | any(.name == "go-app" and .local == "webapp/go" and .remote == "/home/isucon/webapp/go" and .owner == "isucon" and .exclude == ["isu-app", ".git"])' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
-jq -e '.items | any(.name == "rust-service" and .remote == "/etc/systemd/system/isu-rust.service")' \
+jq -e '.items | any(.name == "go-service" and .remote == "/etc/systemd/system/isu-go.service")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
 jq -e '.items | any(.name == "sql-schema.sql" and .remote == "/home/isucon/webapp/sql/schema.sql")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
-jq -e '.build_commands == [] and .local_builds[0].item == "rust-app" and .local_builds[0].binary == "isu-app"' \
+jq -e '.build_commands == [] and .local_builds[0].item == "go-app" and .local_builds[0].binary == "isu-app"' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
-jq -e '.post_deploy_commands | any(.command == "sudo systemctl restart isu-rust")' \
+jq -e '.post_deploy_commands | any(.command == "sudo systemctl restart isu-go")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
 # unit fileを置き換えるので、再起動の前にdaemon-reloadします。
-jq -e '[.post_deploy_commands[] | objects | .command] | index("sudo systemctl daemon-reload") < index("sudo systemctl restart isu-rust")' \
+jq -e '[.post_deploy_commands[] | objects | .command] | index("sudo systemctl daemon-reload") < index("sudo systemctl restart isu-go")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
 # sites-enabledのsymlinkが指す実体と、unitが読む環境変数fileも配布候補にします。計測用drop-inは含めません。
 jq -e '.items | any(.name == "nginx-site-isu" and .local == "config/nginx/sites-available/isu.conf" and .remote == "/etc/nginx/sites-available/isu.conf" and .node_group == "role_nginx")' \
@@ -699,13 +703,13 @@ test ! -e "${fixture_repo}/.local/draft/service-switch.json"
 # sessionを識別するnginx変数をコードから推定し、確認を促します。
 jq -e '.observability_nginx_session_source == "$cookie_app_session$cookie_owner_session"' \
   "${fixture_repo}/.local/draft/ansible-vars.json" >/dev/null
-# fingerprintは配った実体（Rustはbinaryと、同期する単一file）だけを比べ、
+# fingerprintは配った実体（Goはbinaryと、同期する単一file）だけを比べ、
 # directoryの中身はidentity_commandに任せます。
 jq -e '.isuscope_fingerprint_paths as $p
-  | ($p | index("/home/isucon/webapp/rust/target/release/isu-app")) != null
+  | ($p | index("/home/isucon/webapp/go/isu-app")) != null
   and ($p | index("/home/isucon/env.sh")) != null
-  and ($p | index("/home/isucon/webapp/rust")) == null
-  and ($p | index("/etc/systemd/system/isu-rust.service")) != null
+  and ($p | index("/home/isucon/webapp/go")) == null
+  and ($p | index("/etc/systemd/system/isu-go.service")) != null
   and ($p | index("/etc/systemd/system/nginx.service")) == null
   and ($p | all(startswith("/lib/systemd/") | not))' \
   "${fixture_repo}/.local/draft/ansible-vars.json" >/dev/null
@@ -718,7 +722,7 @@ jq -e '.rollback_commands | any(.node_group == "role_nginx" and .command == "sud
 jq -e '[.post_deploy_commands[], .status_commands[]] | all(type == "object")' "${fixture_repo}/.local/draft/sync.json" >/dev/null
 jq -e '.post_deploy_commands | any(.node_group == "role_nginx" and .command == "sudo systemctl is-active --quiet nginx")' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
-jq -e '.post_deploy_commands | any(.node_group == "role_app" and (.command | test("^for i in .*is-active --quiet isu-rust")))' \
+jq -e '.post_deploy_commands | any(.node_group == "role_app" and (.command | test("^for i in .*is-active --quiet isu-go")))' \
   "${fixture_repo}/.local/draft/sync.json" >/dev/null
 jq -e '.ISUSCOPE_SERVICE_UNITS == "mysql.service nginx.service"' \
   "${fixture_repo}/.local/draft/isuscope.json" >/dev/null

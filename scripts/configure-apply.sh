@@ -44,7 +44,7 @@ install -m 0644 "${draft_dir}/sync.json" "${repo_dir}/config/sync.json"
 install -m 0644 "${draft_dir}/ansible-vars.json" "${repo_dir}/config/ansible-vars.json"
 install -m 0600 "${draft_dir}/node-overrides.json" "${overrides_file}"
 install -m 0600 "${draft_dir}/isuscope.json" "${repo_dir}/.local/isuscope-overrides.json"
-# The reviewed switch to the Rust implementation, applied by switch-language-service.sh.
+# The reviewed switch to the Go implementation, applied by switch-language-service.sh.
 if [[ -f "${draft_dir}/service-switch.json" ]]; then
   jq -e '.start and (.stop | type == "array") and (.nodes | type == "array")' "${draft_dir}/service-switch.json" >/dev/null
   install -m 0600 "${draft_dir}/service-switch.json" "${repo_dir}/.local/service-switch.json"

@@ -7,7 +7,7 @@
 - 作業場所はこのworktreeとbranchだけ。`AGENTS.md`の規則に従う（練習中で`practice.md`があればそれにも従う）。remote node・deploy・ベンチ・isuscopeの記録操作・`.local/operation.lock`には触れない（hookが止める）。
 - このbranchは、先行回収したコードのcommitから分かれている。lane `state-log`（状態ログの呼び出し）と`local-env`（ローカル環境）は同時に動いていて、まだこのbranchに無い。取り込みは下の「state-logとlocal-envを取り込む」にある。終わった後に`docs/state-log.md`か`config/local/compose.yaml`が無ければ、そのlaneが失敗している。確かめられない範囲を最後の回答に書いて進める。
 - `indexes`・`n-plus-one`・`obvious-fixes`・`runtime`も同時に動いており、mainが取り込んだ分は「最新のmainを取り込む」で1度だけ受け取る。N+1や読み取りのSQLの修正は、全メモリ化で読み取りがstoreへ移れば要らなくなるので、衝突したらstoreの形を残す。
-- 読むもの: `docs/official/`（あれば。特に、更新の即時反映、整合性の検査、再起動の後に求められること）、`docs/benchmark-scenario.md`（あれば）、状態ログの書き手`config/state-log/state_log.rs`とアプリ計測の書き手`config/app-metrics/app_metrics.rs`（lane `state-log`がこれらを写す）。`docs/state-log.md`と`config/local/compose.yaml`の冒頭のコメント（ローカルで動くもの・動かないもの）は、取り込んだ後に読む。
+- 読むもの: `docs/official/`（あれば。特に、更新の即時反映、整合性の検査、再起動の後に求められること）、`docs/benchmark-scenario.md`（あれば）、状態ログの書き手`config/state-log/state_log.go`とアプリ計測の書き手`config/app-metrics/app_metrics.go`（lane `state-log`がこれらを写す）。`docs/state-log.md`と`config/local/compose.yaml`の冒頭のコメント（ローカルで動くもの・動かないもの）は、取り込んだ後に読む。
 - 変えてよいもの: `webapp/`のアプリのコード、`docs/cache-design.md`、`config/local/flows/`（確かめるための操作の列）。schema、他の`config/`・`scripts/`・文書は変えない（mainを取り込んで入ってくる変更は別）。このlaneの間もimproveの投稿やlaneのcommitがmainへ入り続けるので、変更はメモリ化に要る範囲に留め、衝突を小さくする。
 
 ## 作るもの
@@ -15,7 +15,7 @@
 1. **store。** アプリが読むtableの行（または応答に要る形）をメモリに持つ型を作る。起動したときと、initializeの後に、DBから全部読み込む。initializeでは古いメモリを捨ててから読み込み、読み込みが終わるまで他のリクエストに古い状態を見せない。
 2. **変更を確定する箇所を1つにする。** すべての書き込みはstoreの関数を通す。その関数は、(1) DBへ書く、(2) commitが成功したらメモリを変える、(3) 状態ログを書く、の順に行う。状態ログは、前の状態がメモリにあるので`state_log::changed`（作るときは`created`）で書き、`entered`は使わない。lane `state-log`が入れた呼び出しは、取り込むとき（下の「state-logとlocal-envを取り込む」）にこの関数へ移す。取り込むまでは、状態ログを書く場所だけを関数に用意しておく。handlerがDBへ直接書く経路を残さない。
 3. **読み取りはすべてstoreから。** DBへのSELECTは、起動時とinitializeの読み込みだけにする。
-4. **同じ対象への同時の変更。** DBのtransactionや行lockで守っていた検査（重複、一意性、残高や在庫、状態の前提）は、storeのlockの中で同じ検査をしてからDBへ書く。lockは対象の単位を基本にし、全体を1つのlockで覆うなら理由を書く。lockを持ったままDBを待つ範囲は小さくする。storeのlockは、どれもアプリ計測の`app_metrics::Lock`で包んで取る（`static STORE_LOCK: app_metrics::Lock = app_metrics::Lock::new("store");`と`STORE_LOCK.acquire(|| self.inner.lock().unwrap())`、tokioなら`acquire_async(...).await`。書き手はlane `state-log`が`config/app-metrics/app_metrics.rs`から写す。取り込む前は同じfileを写して使う）。全体を覆うlockの待ちと保持の時間がisuscopeの`app_locks`に出るので、lockが粗いせいで遅いのかを、推理せずに測れる（practice-14-ninthでは、WAL・matchingの計画・nearbyの全走査が1つのlockを持ったまま走り、upstreamのp95からの推理で見つけるまで約9 runかかった）。
+4. **同じ対象への同時の変更。** DBのtransactionや行lockで守っていた検査（重複、一意性、残高や在庫、状態の前提）は、storeのlockの中で同じ検査をしてからDBへ書く。lockは対象の単位を基本にし、全体を1つのlockで覆うなら理由を書く。lockを持ったままDBを待つ範囲は小さくする。storeのlockは、どれもアプリ計測の`appMetricsNewLock`で包んで取る（`var storeLock = appMetricsNewLock("store")`と`release := storeLock.acquire(mu.Lock, mu.Unlock)`・`defer release()`。書き手はlane `state-log`が`config/app-metrics/app_metrics.go`から写す。取り込む前は同じfileを写して使う）。全体を覆うlockの待ちと保持の時間がisuscopeの`app_locks`に出るので、lockが粗いせいで遅いのかを、推理せずに測れる（practice-14-ninthでは、WAL・matchingの計画・nearbyの全走査が1つのlockを持ったまま走り、upstreamのp95からの推理で見つけるまで約9 runかかった）。
 5. **書き込みは同期のまま。** 応答はDBのcommitの後に返す。同時に来た複数のリクエストの行を1つの文にまとめてcommitしてよい（各リクエストは自分の行のcommitを待って応答する）。後で書くこと（write-behind）、WAL、DBの退役はしない。
 
 ## 守ること
@@ -34,6 +34,8 @@
 目的は、終える前に「守ること」が成り立っていると分かっていること。特に、書き換える前と後で状態の変わり方が同じであることは、応答を見るだけでは分からない。どう確かめるかはこのlaneが決める。使える道具:
 
 - `config/local/flows/`の操作の列（JSON。形は`scripts/local-flow.py`の冒頭）と`make local-flow FLOW=<file>`。`FROM=<前半>`で、途中で`make local-up`し直した後の続きを流せる（再起動の確認）。
+- `make codemap CHECK=read-sql`は、APIから呼ぶコードに読み取りのSQL（SELECT、FOR UPDATE）が残っていればその場所を並べてexit 1にする（initializeは除く）。読み取りをすべてメモリへ移したかを、これで確かめる。
+- `LOCAL_RACE=1 make local-up`でrace detector付きに動かし、`make local-flow FLOW=<file> PARALLEL=8`で同じ操作を8本並行に流してから`make local-race`で報告を読む（`{copy}`で複製ごとに名前を変え、initializeは`"once": true`）。メモリの状態を複数のrequestが同時に触るので、lockの漏れはここで出る。
 - `make local-state-log NAME=<名前>`で状態ログを取り、`python3 scripts/state-log-compare.py <前>.jsonl <後>.jsonl`で比べる（`.local/local-runtime/state-log/`）。書き換える前の版のログは、分岐元に`lane/state-log`・`lane/local-env`を合わせた使い捨ての版（`git switch --detach`して`git merge`）で取れる。直さない違いは、理由を`docs/cache-design.md`に書いて`--ignore-kind`で外す。
 - `make local-*`は環境変数を前に付けずにそのまま呼ぶ（付けた形はlaneの権限で止められる）。終わったら`make local-down`する。
 

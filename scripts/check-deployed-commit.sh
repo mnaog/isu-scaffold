@@ -43,7 +43,8 @@ case "${sync}" in
 esac
 paths=$( {
   printf '%s\n' "${manifest_relative}"
-  jq -r '.items[]?.local, .local_builds[]?.dockerfile // empty' "${sync}"
+  # The builder script decides the deployed binary too.
+  jq -r '.items[]?.local, (if (.local_builds // []) | length > 0 then "scripts/local-build.py" else empty end)' "${sync}"
 } | sort -u)
 
 failed=0

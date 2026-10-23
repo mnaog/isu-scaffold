@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 
 REPO = Path(__file__).resolve().parent.parent
-# config/state-log/state_log.rs writes here unless the service sets ISUSCOPE_STATE_LOG.
+# config/state-log/state_log.go writes here unless the service sets ISUSCOPE_STATE_LOG.
 DEFAULT_STATE_LOG = "/var/tmp/isuscope-state.jsonl"
 
 
@@ -55,9 +55,31 @@ def state_log_sources(config):
             yield name, path
 
 
+RACE_BUILT = "local app built with -race"
+RACE_LINE = "WARNING: DATA RACE"
+
+
+def race_reports(log):
+    """The race detector's reports: from `WARNING: DATA RACE` to the next line of `=`."""
+    reports, current = [], None
+    for line in log.splitlines():
+        if RACE_LINE in line:
+            current = [line]
+            continue
+        if current is not None:
+            if set(line.strip()) == {"="}:
+                reports.append("\n".join(current))
+                current = None
+            else:
+                current.append(line)
+    if current:
+        reports.append("\n".join(current))
+    return reports
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["up", "check", "down", "logs", "reset", "state-log"])
+    parser.add_argument("action", choices=["up", "check", "down", "logs", "reset", "state-log", "race"])
     parser.add_argument("name", nargs="?", default="latest", help="state-log: saved as .local/local-runtime/state-log/NAME.jsonl")
     args = parser.parse_args()
     if not args.name.replace("-", "").replace("_", "").replace(".", "").isalnum():
@@ -132,13 +154,26 @@ def main():
             record = {"project": project, "url": url, "worktree": str(REPO),
                       "data_level": os.environ.get("LOCAL_DATA_LEVEL", "unspecified"),
                       "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO).decode().strip(),
-                      "dirty": bool(subprocess.check_output(["git", "status", "--porcelain", "--", "webapp"], cwd=REPO))}
+                      "dirty": bool(subprocess.check_output(["git", "status", "--porcelain", "--", "webapp"], cwd=REPO)),
+                      "race": os.environ.get("LOCAL_RACE") == "1"}
             (state / "status.json").write_text(json.dumps(record, indent=2) + "\n")
             print(json.dumps(record, ensure_ascii=False))
         elif args.action == "check":
             print(check())
         elif args.action == "logs":
             invoke("logs", "--tail", "100")
+        elif args.action == "race":
+            _, rebuilt = split_services(config)
+            log = invoke("logs", "--no-color", "--no-log-prefix", *rebuilt, capture=True).stdout.decode(errors="replace")
+            if RACE_BUILT not in log:
+                raise ValueError("the local app was not built with the race detector: LOCAL_RACE=1 make local-up "
+                                 "(compose.yaml passes LOCAL_RACE to the app like compose.example.yaml)")
+            races = race_reports(log)
+            for report in races:
+                print(report)
+            print(json.dumps({"races": len(races), "services": rebuilt}))
+            if races:
+                raise RuntimeError(f"{len(races)} data race reports in the local app's log")
         elif args.action == "state-log":
             # The writer flushes every 100ms. A container that was recreated (local-up) starts a new file.
             time.sleep(0.5)
@@ -153,7 +188,7 @@ def main():
                 if result.returncode == 0 and copy.is_file():
                     parts.append((service, copy))
             if not parts:
-                raise ValueError("no service has a state log yet: the app needs state_log.rs and a state change "
+                raise ValueError("no service has a state log yet: the app needs state_log.go and a state change "
                                  f"after the last local-up (looked for ISUSCOPE_STATE_LOG or {DEFAULT_STATE_LOG})")
             with target.open("wb") as out:
                 for _, copy in parts:
