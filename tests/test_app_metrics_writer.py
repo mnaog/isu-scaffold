@@ -1,7 +1,7 @@
 """lane state-logがアプリへ写すアプリ計測の書き手（config/app-metrics/app_metrics.go）を、単独のGoのmoduleで確かめる。
 
 isuscopeとの約束（collectorの標準のmetric行）を守ること、lockの待ちが数えられること、
-環境変数で止められることを見る。goが無い端末では飛ばす。
+環境変数で止められること、Goのruntimeの値（`app.go.*`）も書くことを見る。goが無い端末では飛ばす。
 """
 import json
 import os
@@ -162,13 +162,60 @@ func TestTheWriterGoroutineAppendsLinesAndStopsAfterTheLastSecond(t *testing.T) 
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSuffix(string(written), "\n"), "\n")
-	if len(lines) != 3 {
-		t.Fatal(string(written))
-	}
+	calls := 0
 	for _, line := range lines {
 		if !strings.HasPrefix(line, "{\"type\":\"metric\"") {
 			t.Fatal(line)
 		}
+		if strings.Contains(line, "\"name\":\"app.call.") {
+			calls++
+		}
+	}
+	// 呼び出しの3行と、runtimeの今の値（最初の1回は差を書かない）。
+	if calls != 3 || !strings.Contains(string(written), "\"name\":\"app.go.goroutines\"") {
+		t.Fatal(string(written))
+	}
+}
+
+func TestRuntimeHistogramsWriteCountSumAndTail(t *testing.T) {
+	bounds := []float64{0, 0.001, 0.002, 0.004}
+	previous := []uint64{10, 0, 0}
+	counts := []uint64{108, 1, 1}
+	value := appMetricsRuntimeValue{"/sched/latencies:seconds", "app.go.sched_wait", "ms", 2, 1000}
+	out := string(appMetricsHistogram(nil, value, bounds, counts, previous, 1))
+	for _, want := range []string{
+		`"name":"app.go.sched_waits","value":100,`,
+		// 98回を0.5ms、1回を1.5ms、1回を3msとして足す。
+		`"name":"app.go.sched_wait_ms","value":53.5,`,
+		// 100回の99番目は2つ目の区間（1〜2ms）にあるので、その上の端。
+		`"name":"app.go.sched_wait_p99_ms","value":2,`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("%s not in %s", want, out)
+		}
+	}
+	if got := appMetricsHistogram(nil, value, bounds, previous, previous, 1); len(got) != 0 {
+		t.Fatal(string(got))
+	}
+}
+
+func TestRuntimeValuesAreDeltasAfterTheFirstRead(t *testing.T) {
+	reader := appMetricsNewRuntime()
+	if len(reader.values) < 8 {
+		t.Fatalf("this Go runtime offers only %d of the values", len(reader.values))
+	}
+	first := string(reader.append(nil, 1))
+	if strings.Contains(first, "gc_cycles") || !strings.Contains(first, "app.go.goroutines") {
+		t.Fatal(first)
+	}
+	garbage := make([][]byte, 0, 64)
+	for index := 0; index < 20000; index++ {
+		garbage = append(garbage[:0], make([]byte, 4096))
+	}
+	_ = garbage
+	second := string(reader.append(nil, 2))
+	if !strings.Contains(second, `"name":"app.go.alloc_bytes"`) {
+		t.Fatal(second)
 	}
 }
 
@@ -223,7 +270,7 @@ class AppMetricsWriterTest(unittest.TestCase):
         result = subprocess.run(['go', 'test', *race_flags(env), '-count=1', '-v', '.'],
                                 cwd=self.module, env=env, capture_output=True, text=True, timeout=300)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(result.stdout.count('--- PASS'), 5, result.stdout)
+        self.assertEqual(result.stdout.count('--- PASS'), 7, result.stdout)
 
     def test_the_writer_passes_go_vet(self):
         result = subprocess.run(['go', 'vet', '.'], cwd=self.module, env=self.env, capture_output=True, text=True)
@@ -237,6 +284,8 @@ class AppMetricsWriterTest(unittest.TestCase):
         for line in lines:
             self.assertEqual(line['type'], 'metric')
             self.assertTrue(line['name'].startswith('app.'), line)
+            if line['name'].startswith('app.go.'):
+                self.assertEqual(line['labels'], {}, line)
             self.assertIsInstance(line['timestamp'], (int, float))
             self.assertGreater(line['timestamp'], 1_600_000_000, 'Unix seconds')
             self.assertTrue(all(isinstance(value, str) for value in line['labels'].values()))
@@ -252,6 +301,10 @@ class AppMetricsWriterTest(unittest.TestCase):
         self.assertEqual(total('app.lock.count', lock='store'), 200)
         self.assertGreaterEqual(total('app.lock.hold_sum', lock='store'), 200)
         self.assertGreater(total('app.lock.wait_sum', lock='store'), 0, 'four threads contend for one lock')
+        # 書き手は起動時に始まり、runtimeの値も毎秒書く。
+        names = {line['name'] for line in lines}
+        for name in ('app.go.goroutines', 'app.go.gomaxprocs', 'app.go.heap_live_bytes'):
+            self.assertIn(name, names)
 
     def test_an_empty_variable_writes_nothing(self):
         default = Path('/var/tmp/isuscope-app-metrics.jsonl')
