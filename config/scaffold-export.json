@@ -117,6 +117,7 @@
     "scripts/state-log-compare.py",
     "scripts/pgo.py",
     "scripts/prebuild.py",
+    "scripts/bench.sh",
     "scripts/go-codemap/go.mod",
     "scripts/go-codemap/main.go",
     "scripts/deploy-plan.py",

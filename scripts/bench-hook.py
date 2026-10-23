@@ -52,19 +52,19 @@ spec.loader.exec_module(isuscope_prune)
 
 
 def is_benchmark(program, args):
-    """isuscope run / survey-run, make first-bench, or scripts/first-bench.sh, but not their help."""
+    """isuscope run / survey-run, make first-bench / bench, or scripts/first-bench.sh / bench.sh, but not their help."""
     options = [a for a in args if a.startswith('-')]
     if '-h' in options or '--help' in options:
         return False
     if program == 'isuscope':
         return bool(args) and args[0] in BENCH_ISUSCOPE
     if program == 'make':
-        return 'first-bench' in [a for a in args if not a.startswith('-')]
+        return bool({'first-bench', 'bench'} & {a for a in args if not a.startswith('-')})
     if program in tool_guard.SHELLS:
         if '-n' in options:
             return False  # a syntax check reads the script without running it
         program = os.path.basename(next((a for a in args if not a.startswith('-')), ''))
-    return program == 'first-bench.sh'
+    return program in ('first-bench.sh', 'bench.sh')
 
 
 class BenchmarkFinder(tool_guard.Guard):

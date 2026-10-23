@@ -1,4 +1,4 @@
-.PHONY: help session discover kickoff kickoff-apply build deploy rollback status bench-check first-bench tare durability pgo codemap lanes proposals builder-images isuscope-node final-check final-reboot final-db-late
+.PHONY: help session discover kickoff kickoff-apply build deploy rollback status bench-check first-bench bench tare durability pgo codemap lanes proposals builder-images isuscope-node final-check final-reboot final-db-late
 
 help:
 	@printf '%s\n' \
@@ -24,6 +24,7 @@ help:
 		'make final-db-late                    終了前: DBが後から起動してもアプリが立ち直るか確かめる' \
 		'make bench-check                      ベンチ前の全node・isuscope検査を行う' \
 		'make first-bench                      import commit後にbench-check・初回survey-run・deployを続けて行う' \
+		'make bench                            mergeした投稿をdeployしてベンチを回し、結果とbriefを出す（mainがbackgroundで）' \
 		'make tare                             baseline後に接続・fdの上限を上げる1 commitを作る' \
 		'make durability                       DBの書き込み待ちが見えたらMySQLの耐久性を緩める1 commitを作る' \
 		'make pgo RUN=<run> [NODE=<node>]      runで取ったGoのCPU profileをPGOのprofile（default.pgo）にする' \
@@ -101,6 +102,9 @@ bench-check:
 
 first-bench:
 	@./scripts/first-bench.sh
+
+bench:
+	@./scripts/bench.sh
 
 .PHONY: board test
 board:

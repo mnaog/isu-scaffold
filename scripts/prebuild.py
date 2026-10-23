@@ -135,6 +135,11 @@ def main():
     args = parser.parse_args()
     if os.environ.get('PROPOSAL_AUTO_PREBUILD') == '0':
         return 0
+    # It starts with the benchmark, when main's own deploy may still be building: let that one go first.
+    try:
+        os.nice(10)
+    except OSError:
+        pass
     root = root_of(SCRIPTS)
     if not (root / 'config/sync.json').is_file():
         print('prebuild: no config/sync.json yet (before kickoff-apply); nothing to build')

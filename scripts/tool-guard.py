@@ -61,10 +61,10 @@ LANE_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-
                 'inspect-environment.sh', 'bench-check.sh', 'quick-import-code.sh', 'run-ansible-playbook.sh',
                 'status.sh', 'switch-language-service.sh', 'sync-check.sh', 'benchmark.sh',
                 'benchmark-prepare.sh', 'ansible-install.sh', 'tare.py', 'durability.py', 'kickoff-build.py',
-                'lane.py', 'review-draft.py', 'check-deployed-commit.sh', 'first-bench.sh',
+                'lane.py', 'review-draft.py', 'check-deployed-commit.sh', 'first-bench.sh', 'bench.sh',
                 'benchmark-markers.py', 'deploy-plan.py', 'final-verification.py'}
 LANE_MAKE_TARGETS = {'deploy', 'rollback', 'status', 'final-check', 'final-reboot', 'final-db-late', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap',
-                     'bench-check', 'first-bench', 'tare', 'durability'}
+                     'bench-check', 'first-bench', 'bench', 'tare', 'durability'}
 # Read-only isuscope commands; everything else records, benchmarks or reaches nodes.
 LANE_ISUSCOPE = {'list', 'brief', 'query', 'sql', 'series', 'help', '--help', '-h', '--version', 'version'}
 # `isuscope change` subcommands that only read; `decide` records.
@@ -78,9 +78,9 @@ MAIN_SCRIPTS = {'deploy.sh', 'rollback.sh', 'import.sh', 'kickoff.sh', 'kickoff-
                 'bootstrap-ssh.sh', 'configure-apply.sh', 'bench-check.sh', 'quick-import-code.sh',
                 'run-ansible-playbook.sh', 'switch-language-service.sh', 'benchmark.sh', 'benchmark-prepare.sh',
                 'benchmark-stop.sh', 'ansible-install.sh', 'tare.py', 'durability.py', 'first-bench.sh',
-                'final-verification.py'}
+                'bench.sh', 'final-verification.py'}
 MAIN_MAKE_TARGETS = {'deploy', 'rollback', 'final-reboot', 'final-db-late', 'kickoff', 'kickoff-apply', 'discover', 'bootstrap', 'bench-check',
-                     'first-bench', 'tare', 'durability'}
+                     'first-bench', 'bench', 'tare', 'durability'}
 LOCAL_URL = re.compile(r'^(?:https?://)?(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:/|$)')
 
 
