@@ -25,6 +25,11 @@ reads (BENCHMARK_SCORE_REGEX='^ISUXPORTAL .*score=[0-9]+', PASS/FAIL on passed=t
 
   ISUXPORTAL job=<id> status=<FINISHED|ERRORED|CANCELLED|TIMEOUT> passed=<true|false> score=<n>
 
+`run` polls the job every --poll-seconds (3) and, from --fast-before (10) seconds before the time the
+last job took, every --fast-poll-seconds (1): the result is seen about a second after it is out
+without asking the portal every second for the whole run. The time is kept in
+.local/portal-job-seconds (PORTAL_JOB_SECONDS_FILE).
+
 They exit 0 only for a finished, passed job; 1 for any other result; 2 when the portal could not
 be used (no job, no final line). A contestant cannot cancel a job, so stopping this script
 (scripts/benchmark-stop.sh, the adapter's timeout) leaves the job running on the portal.
@@ -33,6 +38,7 @@ Only the fields used here are decoded; field numbers follow proto/isuxportal of 
 import argparse
 import html
 import os
+from pathlib import Path
 import re
 import signal
 import sys
@@ -285,9 +291,11 @@ def report(result):
     return 0 if result['status'] == 'FINISHED' and result['passed'] else 1
 
 
-def wait(portal, job_id, poll_seconds, timeout):
-    """Poll until the job is done; a few failed polls in a row are tolerated (the bench keeps going)."""
-    deadline = time.monotonic() + timeout if timeout > 0 else None
+def wait(portal, job_id, poll_seconds, timeout, fast_seconds=None, fast_after=None):
+    """Poll until the job is done; a few failed polls in a row are tolerated (the bench keeps going).
+    After `fast_after` seconds (near the time the last job took), poll every `fast_seconds`."""
+    started = time.monotonic()
+    deadline = started + timeout if timeout > 0 else None
     status, failures = None, 0
     while True:
         try:
@@ -308,15 +316,41 @@ def wait(portal, job_id, poll_seconds, timeout):
         if deadline is not None and time.monotonic() >= deadline:
             return {'id': job_id, 'target': 0, 'status': 'TIMEOUT', 'score': 0, 'passed': False,
                     'reason': f'no result within {timeout:g}s; the job keeps running on the portal', 'stdout': ''}
-        time.sleep(poll_seconds)
+        fast = fast_seconds is not None and fast_after is not None and time.monotonic() - started >= fast_after
+        time.sleep(min(poll_seconds, fast_seconds) if fast else poll_seconds)
+
+
+def job_seconds_file():
+    return Path(os.environ.get('PORTAL_JOB_SECONDS_FILE') or Path(__file__).resolve().parent.parent / '.local/portal-job-seconds')
+
+
+def last_job_seconds():
+    try:
+        return float(job_seconds_file().read_text().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def remember_job_seconds(seconds):
+    try:
+        path = job_seconds_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f'{seconds:.1f}\n')
+    except OSError:
+        pass  # only the next run's polling depends on it
 
 
 def command_run(portal, args):
     target = require_target(args)
     job = job_result(portal.enqueue(target))
     print(f'ISUXPORTAL enqueued job={job["id"]} target={target}', flush=True)
+    last = last_job_seconds()
+    fast_after = max(0.0, last - args.fast_before) if last is not None else None
+    started = time.monotonic()
     try:
-        result = wait(portal, job['id'], args.poll_seconds, args.timeout)
+        result = wait(portal, job['id'], args.poll_seconds, args.timeout, args.fast_poll_seconds, fast_after)
+        if result['status'] == 'FINISHED':
+            remember_job_seconds(time.monotonic() - started)
     except PortalError as error:
         print(f'isuxportal-bench: {error}', file=sys.stderr)
         result = {'id': job['id'], 'target': target, 'status': 'ERRORED', 'score': 0, 'passed': False,
@@ -373,6 +407,11 @@ def main(argv=None):
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument('--portal', default=os.environ.get('PORTAL_URL', ''), help='portal base URL (PORTAL_URL)')
     common.add_argument('--poll-seconds', type=number, default=number(os.environ.get('PORTAL_POLL_SECONDS', '3')))
+    common.add_argument('--fast-poll-seconds', type=number,
+                        default=number(os.environ.get('PORTAL_FAST_POLL_SECONDS', '1')),
+                        help='poll this often near the time the last job took')
+    common.add_argument('--fast-before', type=number, default=number(os.environ.get('PORTAL_FAST_BEFORE_SECONDS', '10')),
+                        help='start polling fast this many seconds before that time')
     common.add_argument('--timeout', type=number, default=number(os.environ.get('PORTAL_TIMEOUT_SECONDS', '1800')),
                         help='give up waiting after this many seconds (0: no limit)')
     common.add_argument('--request-timeout', type=number, default=15)

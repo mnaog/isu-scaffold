@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import threading
 import unittest
+from unittest import mock
 import urllib.parse
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -100,6 +101,9 @@ class IsuxportalBenchTest(unittest.TestCase):
         self.server.state = {}
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.url = f'http://127.0.0.1:{self.server.server_address[1]}'
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.job_seconds = Path(scratch.name) / 'portal-job-seconds'
 
     def tearDown(self):
         self.server.shutdown()
@@ -108,6 +112,7 @@ class IsuxportalBenchTest(unittest.TestCase):
     def bench(self, *args, cookie='_isuxportal_session=signed-in; other=1'):
         env = {k: v for k, v in os.environ.items() if not k.startswith('PORTAL_')}
         env['PORTAL_COOKIE'] = cookie
+        env['PORTAL_JOB_SECONDS_FILE'] = str(self.job_seconds)
         return subprocess.run(['python3', str(SCRIPT), *args, '--portal', self.url, '--poll-seconds', '0.01'],
                                capture_output=True, text=True, env=env, timeout=30)
 
@@ -194,6 +199,56 @@ class IsuxportalBenchTest(unittest.TestCase):
         self.assertEqual(message.int(99), 0)
         with self.assertRaises(ValueError):
             bench.parse(field(2, 'abc')[:-1])
+
+
+class PollingTest(unittest.TestCase):
+    """The job is polled slowly, and every second from shortly before the time the last job took."""
+
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('isuxportal_bench', SCRIPT)
+        self.module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.module)
+        self.clock = 0.0
+        self.sleeps = []
+        for name, fake in (('monotonic', lambda: self.clock), ('sleep', self.sleep)):
+            patcher = mock.patch.object(self.module.time, name, fake)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.clock += seconds
+
+    def portal(self, done_at):
+        test = self
+
+        class Portal:
+            def job(self, job_id):
+                return {'id': job_id, 'status': 'FINISHED' if test.clock >= done_at else 'RUNNING'}
+        self.module.job_result = lambda job: {**job, 'score': 1, 'passed': True, 'target': 1, 'stdout': '', 'reason': ''}
+        return Portal()
+
+    def test_polls_every_second_only_near_the_end(self):
+        result = self.module.wait(self.portal(61.5), 7, 3, 0, fast_seconds=1, fast_after=50)
+        self.assertEqual(result['status'], 'FINISHED')
+        self.assertEqual(self.sleeps[:17], [3] * 17)  # 0..51s
+        self.assertEqual(set(self.sleeps[17:]), {1})
+        self.assertLessEqual(self.clock - 61.5, 1, 'seen within a second of the end')
+        self.assertLess(len(self.sleeps), 30, 'not every second for the whole run')
+
+    def test_without_a_previous_time_it_polls_at_the_slow_pace(self):
+        self.module.wait(self.portal(10), 7, 3, 0, fast_seconds=1, fast_after=None)
+        self.assertEqual(set(self.sleeps), {3})
+
+    def test_the_time_of_a_finished_job_is_kept_for_the_next_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            os.environ['PORTAL_JOB_SECONDS_FILE'] = str(Path(directory) / 'seconds')
+            try:
+                self.assertIsNone(self.module.last_job_seconds())
+                self.module.remember_job_seconds(71.66)
+                self.assertEqual(self.module.last_job_seconds(), 71.7)
+            finally:
+                del os.environ['PORTAL_JOB_SECONDS_FILE']
 
 
 if __name__ == '__main__':
