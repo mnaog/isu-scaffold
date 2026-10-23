@@ -30,7 +30,13 @@ A flow is a JSON file:
 
 The variables and cookies are saved to .local/local-runtime/flows/<flow name>.json, and
 `--continue <flow name>` starts from them, e.g. to finish a flow after restarting the app.
+
+`--parallel N` runs N copies of the flow at once, each with its own variables and cookies, to put
+concurrent requests on shared state (with LOCAL_RACE=1 make local-up, then make local-race). `{copy}`
+is the copy's number (1..N); use it where copies must not collide (user names, for example).
+Top-level steps with `"once": true` (initialize) run once before the copies start. Nothing is saved.
 """
+import concurrent.futures
 import argparse
 import http.cookies
 import json
@@ -226,9 +232,33 @@ def run_steps(base, steps, variables, sessions, prefix):
             raise FlowError(f"step {label} has none of path, sleep or repeat: {step}")
 
 
+def run_parallel(base, flow, copies):
+    steps = flow["steps"]
+    once = [step for step in steps if step.get("once")]
+    rest = [step for step in steps if not step.get("once")]
+    variables = dict(flow.get("vars", {}))
+    if once:
+        run_steps(base, once, dict(variables, copy=0), {}, "once.")
+
+    def one(copy):
+        run_steps(base, rest, dict(variables, copy=copy), {}, f"#{copy}.")
+
+    failures = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=copies) as pool:
+        futures = {pool.submit(one, copy): copy for copy in range(1, copies + 1)}
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                future.result()
+            except (FlowError, KeyError, ValueError, OSError) as exc:
+                failures.append(f"copy {futures[future]}: {exc}")
+    if failures:
+        raise FlowError(f"{len(failures)} of {copies} copies failed: " + "; ".join(sorted(failures)))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("flow", type=Path)
+    parser.add_argument("--parallel", type=int, metavar="N", help="run N copies at once (see above)")
     parser.add_argument("--continue", dest="previous", metavar="FLOW_NAME",
                         help="start from the variables and cookies a previous flow saved")
     parser.add_argument("--url", help="loopback base URL (default: the one make local-up recorded)")
@@ -236,6 +266,12 @@ def main():
     if not args.flow.is_file():
         raise FlowError(f"no flow file: {args.flow} (make local-flow FLOW=<path>)")
     flow = json.loads(args.flow.read_text())
+    if args.parallel:
+        if args.parallel < 1 or args.previous:
+            raise FlowError("--parallel needs N >= 1 and cannot continue a saved flow")
+        run_parallel(base_url(args.url), flow, args.parallel)
+        print(f"flow {args.flow} passed in {args.parallel} parallel copies")
+        return
     saved = STATE / "flows"
     variables, sessions = {}, {}
     if args.previous:

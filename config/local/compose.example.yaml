@@ -32,6 +32,8 @@ services:
       GOCACHE: /cache/go-build
       GOMODCACHE: /cache/gomod
       GOFLAGS: -buildvcs=false
+      # LOCAL_RACE=1 make local-upでrace detector付きにbuildする（start.sh、make local-race）。
+      LOCAL_RACE: ${LOCAL_RACE:-}
       ISUCON_DB_HOST: db
       ISUCON_DB_PORT: '3306'
       ISUCON_DB_USER: isucon

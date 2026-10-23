@@ -46,6 +46,19 @@ make local-flow FLOW=<後半>.json FROM=<前半>               # 前半の値と
 
 `local-flow`は`local-up`が記録したloopbackのURLにだけ送る。`local-state-log`は各serviceの`ISUSCOPE_STATE_LOG`（無ければ`/var/tmp/isuscope-state.jsonl`）を`docker compose cp`で取り出す。`local-up`はアプリのcontainerを作り直すので、状態ログは`local-up`のたびに空から始まる。比べるのは、種類ごとに、同じ数の対象が同じ順番で状態を通ったかで、IDの違いは見ない。
 
+## 並行に流してdata raceを探す
+
+全メモリ化やlockの変更は、複数のrequestが同じ状態を同時に触ったときにだけ壊れることがある。race detector付きで動かし、同じ操作の列を並行に流して確かめる。
+
+```bash
+LOCAL_RACE=1 make local-up                               # start.shが-race（cgo）でbuildする
+make local-flow FLOW=config/local/flows/<流れ>.json PARALLEL=8   # 8本を同時に流す
+make local-race                                          # アプリのlogからdata raceの報告を抜き出す（あればexit 1）
+make local-up                                            # 普段の版へ戻す
+```
+
+並行に流すとき、各複製は別の変数とcookieを持つ。複製ごとに変えたい値（利用者の名前など）は`{copy}`（1〜N）で書き、initializeのように1回だけ流す段は最上位に`"once": true`を付ける（複製を始める前に1回流す）。並行の実行は保存しないので、`FROM=`の続きには使えない。race detectorはcgoとgccを使うので、`LOCAL_GO_IMAGE`はDebianのgolangのtagにする。
+
 ## 検証範囲を記録する
 
 `LOCAL_DATA_LEVEL`に`schema`、`subset`、`full`などを指定する。これは操作者の申告であり、コマンドがデータの完全性を保証するものではない。起動記録にはcommit・webappの未commit変更の有無も保存する。起動後に編集した場合は再起動・再検証する。

@@ -142,6 +142,26 @@ class LocalFlowTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("never met", result.stderr)
 
+    def test_parallel_copies_run_at_once_with_their_own_variables_after_the_once_steps(self):
+        result = self.run_flow("crowd", {"vars": {"prefix": "p"}, "steps": [
+            {"once": True, "method": "GET", "path": "/count"},
+            {"method": "POST", "path": "/users", "session": "user", "json": {"name": "{prefix}{copy}"},
+             "expect": 201, "save": {"user": "user.id"}},
+            {"method": "POST", "path": "/orders", "session": "user", "json": {"item": "{user}"}}]},
+            "--parallel", "4")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("passed in 4 parallel copies", result.stdout)
+        self.assertEqual(App.polls, 1, "a once step runs a single time")
+        self.assertEqual(len(App.orders), 4)
+        self.assertFalse((self.tmp / ".local/local-runtime/flows/crowd.json").exists(), "parallel runs save nothing")
+
+    def test_a_failing_copy_fails_the_parallel_run(self):
+        result = self.run_flow("missing", {"steps": [{"method": "GET", "path": "/orders/none-{copy}"}]},
+                               "--parallel", "3")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("3 of 3 copies failed", result.stderr)
+        self.assertIn("copy 2:", result.stderr)
+
     def test_only_loopback_urls_are_used(self):
         path = self.tmp / "remote.json"
         path.write_text(json.dumps({"steps": [{"method": "GET", "path": "/"}]}))
