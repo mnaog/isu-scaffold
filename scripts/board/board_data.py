@@ -115,7 +115,7 @@ def detail(repo, cfg, run, base='', limit=50, measured=None):
         result = records(command_json(repo, cfg['isuscope'] + args, max_bytes=2_000_000, uncapped=True))
         result = with_common(nested_comparison(result))
         return brief_items(result) if args[:1] == ['brief'] else result
-    brief = read(['brief', run, '--limit', '25'])
+    brief = read(['brief', run, '--limit', '25', '--json'])
     if 'error' in brief:
         return {'error': brief['error']}
     candidate = brief_run(brief)
@@ -130,7 +130,7 @@ def detail(repo, cfg, run, base='', limit=50, measured=None):
     if base == 'auto':
         base = analysis.get('base') or ''
     if base:
-        baseline = read(['brief', base, '--limit', '1'])
+        baseline = read(['brief', base, '--limit', '1', '--json'])
         if 'error' in baseline or (baseline.get('summary') or {}).get('state') not in ('complete', 'degraded', 'failed', 'aborted'):
             return {'error': baseline.get('error', '終了した比較元runを選んでください')}
         result['base'] = brief_run(baseline)
@@ -219,7 +219,7 @@ def initial(read):
     if not index.get('rows'):
         return {'error': index.get('error'), 'run': None}
     first = index['rows'][0]
-    result = read(['brief', first['id'], '--limit', '200'])
+    result = read(['brief', first['id'], '--limit', '200', '--json'])
     result['quality'] = read(['query', first['id'], '--metric-prefix', 'transition.', '--limit', '1000'])
     return result
 

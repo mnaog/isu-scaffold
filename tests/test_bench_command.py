@@ -146,7 +146,10 @@ class BenchCommandRecognitionTest(unittest.TestCase):
 
     def test_the_hook_sees_make_bench_and_bench_sh_as_benchmarks(self):
         for command in ('make bench', 'scripts/bench.sh --hypothesis x', './scripts/bench.sh', 'bash scripts/bench.sh'):
-            self.assertEqual(self.hook.starts_benchmark(ROOT, self.payload(command)), (True, True), command)
+            self.assertEqual(self.hook.starts_benchmark(ROOT, self.payload(command)), (True, True, False), command)
+        # A comparison base given to make bench or bench.sh reaches the hook.
+        for command in ('make bench BASE=856309ef', 'scripts/bench.sh --base 856309ef'):
+            self.assertEqual(self.hook.starts_benchmark(ROOT, self.payload(command)), (True, True, True), command)
         for command in ('make bench-check', 'bash -n scripts/bench.sh', 'make build'):
             self.assertEqual(self.hook.starts_benchmark(ROOT, self.payload(command))[0], False, command)
 

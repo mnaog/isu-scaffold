@@ -100,7 +100,7 @@ first-bench:
 	@./scripts/first-bench.sh
 
 bench:
-	@./scripts/bench.sh
+	@./scripts/bench.sh $(if $(BASE),--base $(BASE))
 
 .PHONY: board test
 board:

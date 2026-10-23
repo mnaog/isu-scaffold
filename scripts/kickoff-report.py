@@ -63,7 +63,7 @@ def limit_failures(failed):
     found = []
     for run in failed:
         try:
-            limits = table(isuscope('brief', run['id'][-8:]).get('limits'))
+            limits = table(isuscope('brief', run['id'][-8:], '--json').get('limits'))
         except (RuntimeError, ValueError):
             continue
         # brief lists every limit it read; one was hit only where a log or a counter says so.

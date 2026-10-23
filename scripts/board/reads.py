@@ -98,5 +98,5 @@ def metrics(repo, cfg, stop=None):
         entry.update(known.get(entry['id']) or {})
     run = completed[0]
     result['latest'] = run
-    result['brief'] = read(prefix + ['brief', run['id'], '--limit', '5'])
+    result['brief'] = read(prefix + ['brief', run['id'], '--limit', '5', '--json'])
     return result

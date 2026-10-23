@@ -9,6 +9,22 @@ ROOT = Path(__file__).resolve().parent.parent
 HOOK = ROOT / 'scripts/bench-hook.py'
 
 
+# Answers `isuscope sql` with the previous finished run and the last run an accepted change was
+# decided on, or with no rows when FAKE_NO_RUNS is set.
+FAKE_ISUSCOPE = """#!/usr/bin/env python3
+import json, os, sys
+query = sys.argv[-1]
+if os.environ.get('FAKE_NO_RUNS'):
+    rows = []
+elif 'change_decisions' in query:
+    rows = [['856309ef', 970776]]
+else:
+    rows = [['3bbbebf8', 958487, 'rejected']]
+columns = ['id', 'score'] if 'change_decisions' in query else ['id', 'score', 'verdict']
+print(json.dumps({'columns': columns, 'rows': rows}))
+"""
+
+
 def write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
@@ -25,9 +41,9 @@ class BenchHookTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def hook(self, tool_input, *args, tool='Bash', session='main'):
+    def hook(self, tool_input, *args, tool='Bash', session='main', env=None):
         payload = {'tool_name': tool, 'tool_input': tool_input, 'cwd': str(self.root), 'session_id': session}
-        env = {k: v for k, v in os.environ.items() if k != 'ISUCON_LANE'}
+        env = {**{k: v for k, v in os.environ.items() if k != 'ISUCON_LANE'}, **(env or {})}
         env['TOOL_GUARD_ROOT'] = str(self.root)
         result = subprocess.run(['python3', str(HOOK), *args], input=json.dumps(payload), text=True,
                                 capture_output=True, env=env)
@@ -74,6 +90,25 @@ class BenchHookTest(unittest.TestCase):
         output = self.hook(started, '--post')
         self.assertIn('docs/benchmark-scenario.md', output['additionalContext'])
         self.assertIsNone(self.hook({'command': 'isuscope run --hypothesis x'}, '--post'))
+
+    def test_a_benchmark_without_a_base_asks_main_to_choose_one_meanwhile(self):
+        bin_dir = self.root / 'bin'
+        write(bin_dir / 'isuscope', FAKE_ISUSCOPE)
+        (bin_dir / 'isuscope').chmod(0o755)
+        env = {'PATH': f'{bin_dir}{os.pathsep}{os.environ["PATH"]}'}
+        output = self.hook({'command': 'make bench', 'run_in_background': True}, '--post', env=env)
+        context = output['additionalContext']
+        self.assertIn('`isuscope base running <run>`', context)
+        self.assertIn('最後に採用 856309ef（970776）', context)
+        self.assertIn('直前 3bbbebf8（958487、rejected）', context)
+        # A named base needs no reminder, and there is nothing else to say here.
+        for command in ['make bench BASE=856309ef', 'scripts/bench.sh --base 856309ef',
+                        'isuscope run --base=856309ef --hypothesis x']:
+            with self.subTest(command=command):
+                self.assertIsNone(self.hook({'command': command, 'run_in_background': True}, '--post', env=env))
+        # Before the first finished run there is no base to choose.
+        self.assertIsNone(self.hook({'command': 'make first-bench', 'run_in_background': True}, '--post',
+                                    env={**env, 'FAKE_NO_RUNS': '1'}))
 
     def test_claude_settings_run_both_hooks(self):
         claude = json.loads((ROOT / '.claude/settings.json').read_text())

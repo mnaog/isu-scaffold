@@ -17,6 +17,10 @@ Bash call. Heredoc bodies and `bash -n` syntax checks do not count as starting o
   --decision ...`) onto the proposals being measured, and once none waits for a decision, writes
   `main analyzed` for improve from that analysis (scripts/proposal.py after_analysis), so main
   writes each decision and each analysis once.
+- A benchmark main starts without a comparison base (`--base`, or `BASE=` for make bench) gets a
+  reminder to choose one while it runs and set it with `isuscope base running <run>`, with the last
+  run an accepted change was decided on and the previous finished run as candidates. brief shows no
+  differences without a base. There is no reminder before the first finished run.
 - When a benchmark starts, it also drops the state-log caches earlier isuscope versions left and keeps
   isuscope-data out of Spotlight and Time Machine (scripts/isuscope-prune.py).
 
@@ -40,6 +44,8 @@ SCENARIO_HINT = (f'ベンチの完了を待つ間に、`{SCENARIO}`（ベンチ�
                  'ベンチの仕様（得点・FAIL条件・シナリオの流れ・応答へのベンチの反応）について、'
                  '観測で確かめた・食い違った記述だけを該当する節の中で直す（推測を事実へ、出典にrun ID）。'
                  'runのスコア、改善の効果、負荷や制約の推移は書かない（isuscope analyzeへ）。')
+BASE_HINT = ('このベンチの比較の基準runが未指定。ベンチ中に決め、`isuscope base running <run>`で指定する'
+             '（briefは基準runとの差を出す。未指定なら差を出さない）。')
 spec = importlib.util.spec_from_file_location('tool_guard', Path(__file__).with_name('tool-guard.py'))
 tool_guard = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tool_guard)
@@ -49,6 +55,9 @@ spec.loader.exec_module(proposal)
 spec = importlib.util.spec_from_file_location('isuscope_prune', Path(__file__).with_name('isuscope-prune.py'))
 isuscope_prune = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(isuscope_prune)
+spec = importlib.util.spec_from_file_location('isuscope_sql', Path(__file__).with_name('isuscope_sql.py'))
+isuscope_sql = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(isuscope_sql)
 
 
 def is_benchmark(program, args):
@@ -76,10 +85,12 @@ class BenchmarkFinder(tool_guard.Guard):
         self.drop_heredocs = True
         self.benchmarks = []
         self.analyses = []
+        self.based = False
 
     def seen(self, program, args):
         if is_benchmark(program, args):
             self.benchmarks.append(program)
+            self.based = self.based or any(a == '--base' or a.startswith(('--base=', 'BASE=')) for a in args)
         elif program == 'isuscope' and args[:1] == ['analyze'] and not {'-h', '--help'} & set(args):
             self.analyses.append(program)
 
@@ -101,11 +112,11 @@ def find(root, payload):
 
 
 def starts_benchmark(root, payload):
-    """True when this Bash call starts a benchmark, and whether it runs in the background."""
+    """Whether this Bash call starts a benchmark, runs it in the background, and names a comparison base."""
     finder = find(root, payload)
     if finder is None:
-        return False, False
-    return bool(finder.benchmarks), payload['tool_input'].get('run_in_background') is True
+        return False, False, False
+    return bool(finder.benchmarks), payload['tool_input'].get('run_in_background') is True, finder.based
 
 
 def analyzed(root, payload):
@@ -166,7 +177,31 @@ def start_sync(repo):
         pass  # main can still run them by hand
 
 
-def started(root, session):
+def base_reminder(repo):
+    """Ask main to choose the comparison base while the benchmark runs; None before the first finished run."""
+    try:
+        previous = isuscope_sql.rows(repo, (
+            "SELECT substr(r.id, -8) AS id, r.score, (SELECT verdict FROM run_analyses a WHERE a.run_id = r.id "
+            "ORDER BY a.created_at DESC LIMIT 1) AS verdict FROM runs r "
+            "WHERE r.state IN ('complete', 'degraded', 'failed') ORDER BY r.started_at DESC LIMIT 1"))
+        accepted = isuscope_sql.rows(repo, (
+            "SELECT substr(r.id, -8) AS id, r.score FROM runs r JOIN change_decision_runs c ON c.run_id = r.id "
+            "JOIN change_decisions d ON d.id = c.decision_id WHERE d.status = 'accepted' "
+            "ORDER BY r.started_at DESC LIMIT 1"))
+    except (isuscope_sql.Unavailable, ValueError, KeyError):
+        return None
+    if not previous:
+        return None
+    last = previous[0]
+    candidates = []
+    if accepted and accepted[0]['id'] != last['id']:
+        candidates.append(f"最後に採用 {accepted[0]['id']}（{accepted[0]['score']}）")
+    candidates.append(f"直前 {last['id']}（{last['score']}、{last['verdict'] or '分析なし'}"
+                      f"{'、最後に採用' if accepted and accepted[0]['id'] == last['id'] else ''}）")
+    return f"{BASE_HINT}候補: {'、'.join(candidates)}。"
+
+
+def started(root, session, based=True):
     """A benchmark started in the background: the merged proposals are measured now, then the waiting context."""
     repo = main_worktree(root)
     try:
@@ -184,9 +219,12 @@ def started(root, session):
             requeued = []
         measuring = proposal.start_measuring(repo)
         start_sync(repo)
+        reminder = None if based else base_reminder(repo)
     else:
-        measuring = []
+        measuring, reminder = [], None
     context = waiting_context(root, session)
+    if reminder:
+        context = '\n\n'.join(part for part in (reminder, context) if part)
     if measuring:
         named = ', '.join(f'{branch}（--change {proposal.change_id(branch)}）' for branch in measuring)
         again = f'前のrunで採否の付かなかった{", ".join(requeued)}も、もう一度このベンチで測る。' if requeued else ''
@@ -200,7 +238,7 @@ def main():
         payload = json.load(sys.stdin)
         payload = payload if isinstance(payload, dict) else {}
         root = Path(os.environ.get('TOOL_GUARD_ROOT') or ROOT)
-        benchmark, background = starts_benchmark(root, payload)
+        benchmark, background, based = starts_benchmark(root, payload)
         if not benchmark:
             if '--post' in sys.argv and (context := analyzed(root, payload)):
                 print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUse', 'additionalContext': context}},
@@ -209,7 +247,8 @@ def main():
         if '--pre' in sys.argv and not background:
             output = {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
                       'permissionDecisionReason': BACKGROUND_HINT}
-        elif '--post' in sys.argv and background and (context := started(root, str(payload.get('session_id') or ''))):
+        elif '--post' in sys.argv and background and (context := started(root, str(payload.get('session_id') or ''),
+                                                                           based)):
             output = {'hookEventName': 'PostToolUse', 'additionalContext': context}
         else:
             return 0
