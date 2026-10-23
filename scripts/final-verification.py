@@ -171,6 +171,10 @@ def node_script(config, units, http, envcheck=False, settled=False):
         # このshell自身（command lineに探す語を含む）は除く。
         'probes=$(pgrep -af "perf record|offcputime|bpftrace|isuscope-[0-9a-f]{8}|pprof" 2>/dev/null | grep -v -e pgrep -e "say()" | cut -c1-80 | paste -sd"; " -)',
         '[ -n "$probes" ] && say WARN "measurement processes" "$probes" || say OK "measurement processes" none',
+        # Goのアプリのprofileの窓口（profile.go）。ISUCON_PROFILE_ADDRを空にすると聞かない。
+        'if command -v ss >/dev/null 2>&1; then listen=$(ss -Hltn "sport = :6060" 2>/dev/null | head -n 1); '
+        '[ -n "$listen" ] && say WARN "Go profile endpoint" "port 6060 still listens; set ISUCON_PROFILE_ADDR= (empty) in the app EnvironmentFile" '
+        '|| say OK "Go profile endpoint" off; fi',
         # 再起動で消える設定: 起動時にsystemd-sysctlが入れる値（file名の順で後のものが勝つ）と、今の値が違う。
         SYSCTL_DRIFT,
         'used=$(df -P / | awk \'NR==2 {sub("%", "", $5); print $5}\')',

@@ -46,14 +46,25 @@ scripts/runs.sh states sql latest "SELECT ..."
 scripts/runs.sh change list
 ```
 
-laneは`make lanes`。
+Goのアプリなら、CPUと待ちは`go_cpu_app`（直す関数）・`go_routes`（APIごと）・`go_classes`（GC・割り当て・lock・HTTP・暗号・JSONなどの割合）・`go_waits`（mutexの取り合いを起こした関数）・`go_allocs`・`app_runtime`で関数まで絞れる（`docs/reference/isuscope.md`）。APIからSQL・tableへの対応は`make codemap`。laneは`make lanes`。
+
+### Goで足しやすい手
+
+Goのruntimeが自分で数えた値があるので、次の手は計測を根拠に選べる。どれも1つの投稿にし、根拠の値を仮説に書く。
+
+- `go_classes`の`gc`・`alloc`、`app_runtime`の`gc_cpu_percent`が大きい: `go_allocs`の上位の関数で割り当てを減らす（使い回すbuffer、`sync.Pool`、事前の容量、文字列の連結をやめる）。GCの目標（`GOGC`）を上げる、nodeのメモリに余裕があれば`GOMEMLIMIT`を足す（DBと同じnodeなら空きを残す）。
+- `go_waits`の`mutex`、`app_runtime`の`mutex_wait_ms_per_s`が大きい: その関数がlockを持つ範囲を縮める、lockを分ける、読み取りだけの値をatomicやcopy-on-writeにする。`sched_wait_p99_max_ms`が大きいならgoroutineがCPUを待っている（core不足、GOMAXPROCS、重い処理の並列数）。
+- `go_classes`の`http`・`net`・`syscall`が大きい: nginxとアプリの間をunix socketにする（Goでは`net.Listen("unix", path)`の数行とnginxの`upstream`）、upstreamのkeepaliveを増やす、要求ごとのheaderの読み書きを減らす。
+- `go_classes`の`json`が大きい: 回数の多い応答（通知、近くの一覧など）の組み立てを手で書く、変わらない部分を前もってencodeしておく。
+- アプリの外のprocess（curlの繰り返しなど）がCPUを使っている（`cpu`欄・`hosts`のservice）: アプリの中のgoroutine（`time.Ticker`）で同じことをする。
+- CPUで詰まり、上位の関数に当てる手が残っていない: PGO。最新の採用構成のrunのCPUのprofileを`make pgo RUN=<短縮ID>`で`default.pgo`にしてcommitし、投稿する（`make build`がそれを使う。仮説には、そのrunの`go_cpu`の上位とcoreの使い方を書く）。
 
 ### 1つの変更の流れ
 
 1. **選ぶ**: mainの最新の分析が示す最大の制約から選ぶ（AGENTS.mdの「判断の原則」）。mainの分析の1文目（次の最大の制約とその場所）とrunを使い、その制約を外して点を上げる変更を選ぶ。分析とrunが合わない、予想と違う動きがあるときは、その理由を先に調べる。ロジックを変える案（順位付け、待ちの条件、上限など）は、実装の前に状態ログで前提を確かめ、確かめた数字を仮説に書く。キューにある投稿とは、作業が重ならず、一緒に測っても効果を切り分けられるものを選ぶ。APIの前後に一律に待つだけの変更は、mainが`ISUCON_WAITS`（`scripts/waits.py`）で試すので作らない（`waits.py history`に結果がある）。応答の中身や状態で待ちを変えるものは作ってよい。
 2. **branchを切る**: `git switch -c improve-<短い名前> <mainのbranch>`（mainのbranchは上の`main-session.py show`の`branch`）。取り込み前の自分の投稿の上に積むなら、そのbranchから切る（`submit`が積んだことを記録し、土台が棄却・取り下げになると一緒にキューから外れる）。切ったら`python3 scripts/proposal.py working "<狙う制約と変更>"`で、ボードの「作業中」に出す（`improve working`の行も出る。投稿すると消え、やめたら`working --done`）。
 3. **作る**: 変更の目的ごとにcommitを分ける。メモリ化やキャッシュは、`docs/cache-design.md`に正本・反映・無効化・再構築を書いてから入れる。
-4. **確かめる**: 最後に判定するのはmainのベンチなので、ここで要るのは、buildが通り、ベンチを落とさない（応答と状態の変わり方を壊さない）と分かっていることまで。使える道具は`make build`、テスト、`make local-up / local-check`、`make local-flow`と状態ログの比較（`docs/local-development.md`）。サーバーの様子は`make status`と`scripts/ssh-node.sh <node> '<読むだけのcommand>'`で見てよいが、サーバー上を変えない。
+4. **確かめる**: 最後に判定するのはmainのベンチなので、ここで要るのは、buildが通り、ベンチを落とさない（応答と状態の変わり方を壊さない）と分かっていることまで。使える道具は`make build`、テスト、`make local-up / local-check`、`make local-flow`と状態ログの比較（`docs/local-development.md`）。lock・共有する状態・goroutineを変えたら、`LOCAL_RACE=1 make local-up`、`make local-flow FLOW=<file> PARALLEL=8`、`make local-race`でdata raceが無いことも確かめる。サーバーの様子は`make status`と`scripts/ssh-node.sh <node> '<読むだけのcommand>'`で見てよいが、サーバー上を変えない。
 5. **投稿する**:
 
    ```bash
