@@ -1,5 +1,5 @@
 ---
-description: このセッションをimprove（最新runの最大の制約を調べて改善を作り、mainへ投稿し続けるセッション）にする
+description: このセッションをimprove（runを調べて点を上げる改善を作り、mainへ投稿し続けるセッション）にする
 allowed-tools: Bash(git rev-parse:*), Bash(python3 scripts/progress.py path), Bash(python3 scripts/main-session.py show), Bash(python3 scripts/proposal.py improve)
 ---
 ## 今いる場所
@@ -46,25 +46,14 @@ scripts/runs.sh states sql latest "SELECT ..."
 scripts/runs.sh change list
 ```
 
-Goのアプリなら、CPUと待ちを関数まで絞れる。briefの`go`の行に、CPUを使ったアプリの関数（`cpu`）と種類（`classes`。GC・割り当て・lock・HTTP・暗号・JSONなど）の上位が出る。続きは`query <run> --metric <名前>`で、`go.cpu.app_seconds`（直す関数）・`go.cpu.route_seconds`（APIごと）・`go.cpu.class_seconds`（種類ごと）・`go.mutex.delay_ms`（mutexの取り合いを起こした関数）・`go.alloc.bytes`（割り当てた関数）、Goのruntimeの値は`--metric-prefix app.go. --scope series --window load`で読む（`docs/reference/isuscope.md`）。APIからSQL・tableへの対応は`make codemap`。laneは`make lanes`。
-
-### Goで足しやすい手
-
-Goのruntimeが自分で数えた値があるので、次の手は計測を根拠に選べる。どれも1つの投稿にし、根拠の値を仮説に書く。
-
-- `classes`の`gc`・`alloc`、`app.go.gc_cpu_ms`が大きい: `go.alloc.bytes`の上位の関数で割り当てを減らす（使い回すbuffer、`sync.Pool`、事前の容量、文字列の連結をやめる）。GCの目標（`GOGC`）を上げる、nodeのメモリに余裕があれば`GOMEMLIMIT`を足す（DBと同じnodeなら空きを残す）。
-- `go.mutex.delay_ms`、`app.go.mutex_wait_ms`が大きい: その関数がlockを持つ範囲を縮める、lockを分ける、読み取りだけの値をatomicやcopy-on-writeにする。`app.go.sched_wait`が大きいならgoroutineがCPUを待っている（core不足、GOMAXPROCS、重い処理の並列数）。
-- `classes`の`http`・`net`・`syscall`が大きい: nginxとアプリの間をunix socketにする（Goでは`net.Listen("unix", path)`の数行とnginxの`upstream`）、upstreamのkeepaliveを増やす、要求ごとのheaderの読み書きを減らす。
-- `classes`の`json`が大きい: 回数の多い応答（通知、近くの一覧など）の組み立てを手で書く、変わらない部分を前もってencodeしておく。
-- アプリの外のprocess（curlの繰り返しなど）がCPUを使っている（briefの`nodes`のservice）: アプリの中のgoroutine（`time.Ticker`）で同じことをする。
-- CPUで詰まり、上位の関数に当てる手が残っていない: PGO。最新の採用構成のrunのCPUのprofileを`make pgo RUN=<短縮ID>`で`default.pgo`にしてcommitし、投稿する（`make build`がそれを使う。仮説には、そのrunのbriefの`go`の`cpu`の上位とcoreの使い方を書く）。
+Goのアプリなら、CPUと待ちを関数まで絞れる。briefの`go`の行に、CPUを使ったアプリの関数（`cpu`）と種類（`classes`。GC・割り当て・lock・HTTP・暗号・JSONなど）の上位が出る。続きは`query <run> --metric <名前>`で、`go.cpu.app_seconds`（直す関数）・`go.cpu.route_seconds`（APIごと）・`go.cpu.class_seconds`（種類ごと）・`go.mutex.delay_ms`（mutexの取り合いを起こした関数）・`go.alloc.bytes`（割り当てた関数）、Goのruntimeの値は`--metric-prefix app.go. --scope series --window load`で読む（`docs/reference/isuscope.md`）。PGOは、`make pgo RUN=<短縮ID>`がそのrunのCPUのprofileを`default.pgo`にする（commitすると`make build`が使う）。APIからSQL・tableへの対応は`make codemap`。laneは`make lanes`。
 
 ### 1つの変更の流れ
 
-1. **選ぶ**: mainの最新の分析が示す最大の制約から選ぶ（AGENTS.mdの「判断の原則」）。mainの分析の1文目（次の最大の制約とその場所）とrunを使い、その制約を外して点を上げる変更を選ぶ。分析とrunが合わない、予想と違う動きがあるときは、その理由を先に調べる。ロジックを変える案（順位付け、待ちの条件、上限など）は、実装の前に状態ログで前提を確かめ、確かめた数字を仮説に書く。キューにある投稿とは、作業が重ならず、一緒に測っても効果を切り分けられるものを選ぶ。APIの前後に一律に待つだけの変更は、mainが`ISUCON_WAITS`（`scripts/waits.py`）で試すので作らない（`waits.py history`に結果がある）。応答の中身や状態で待ちを変えるものは作ってよい。
+1. **選ぶ**: mainの最新の分析とrunを読み、点を上げる変更を選ぶ。キューにある投稿とは、作業が重ならず、一緒に測っても効果を切り分けられるものを選ぶ。APIの前後に一律に待つだけの変更は、mainが`ISUCON_WAITS`（`scripts/waits.py`）で試すので作らない（`waits.py history`に結果がある）。応答の中身や状態で待ちを変えるものは作ってよい。
 2. **branchを切る**: `git switch -c improve-<短い名前> <mainのbranch>`（mainのbranchは上の`main-session.py show`の`branch`）。取り込み前の自分の投稿の上に積むなら、そのbranchから切る（`submit`が積んだことを記録し、土台が棄却・取り下げになると一緒にキューから外れる）。切ったら`python3 scripts/proposal.py working "<狙う制約と変更>"`で、ボードの「作業中」に出す（`improve working`の行も出る。投稿すると消え、やめたら`working --done`）。
 3. **作る**: 変更の目的ごとにcommitを分ける。メモリ化やキャッシュは、`docs/cache-design.md`に正本・反映・無効化・再構築を書いてから入れる。APIを応答まで要求を開いたままにする形（long polling、SSEなど）に変えたら、同じcommitで`.isuscope/policy.toml`の`[brief]`の`polling_routes`へそのrouteを足す（開いている時間が合計に積まれてbriefのHTTPの上位を占め、ほかのAPIが見えなくなるため。書き方は`config/lanes/state-log.md`の手順8）。
-4. **確かめる**: 最後に判定するのはmainのベンチなので、ここで要るのは、buildが通り、ベンチを落とさない（応答と状態の変わり方を壊さない）と分かっていることまで。使える道具は`make build`、テスト、`make local-up / local-check`、`make local-flow`と状態ログの比較（`docs/local-development.md`）。lock・共有する状態・goroutineを変えたら、`LOCAL_RACE=1 make local-up`、`make local-flow FLOW=<file> PARALLEL=8`、`make local-race`でdata raceが無いことも確かめる。サーバーの様子は`make status`と`scripts/ssh-node.sh <node> '<読むだけのcommand>'`で見てよいが、サーバー上を変えない。
+4. **確かめる**: 最後に判定するのはmainのベンチなので、ここで要るのは、buildが通り、ベンチを落とさない（応答と状態の変わり方を壊さない）と分かっていることまで。使える道具は`make build`、テスト、`make local-up / local-check`、`make local-flow`と状態ログの比較（`docs/local-development.md`）、data raceを探す`LOCAL_RACE=1 make local-up`・`make local-flow FLOW=<file> PARALLEL=8`・`make local-race`。サーバーの様子は`make status`と`scripts/ssh-node.sh <node> '<読むだけのcommand>'`で見てよいが、サーバー上を変えない。
 5. **投稿する**:
 
    ```bash
@@ -77,7 +66,7 @@ Goのruntimeが自分で数えた値があるので、次の手は計測を根�
 
    終了コード3（キューが埋まっている）なら、上の「キュー」のとおり`wait`をbackgroundで起動する。
 6. **次へ**: `submit`がこのworktreeを投稿したbranchから外す（HEADは同じcommit）。次のbranchを切り、採否を待たずに次の候補を進めてよい。調整の続きのように直前の結果を見ないと作れない変更は、結果を待つか、その間に別の制約を調べる。
-7. **返事を読む**: mainは、runの直後に採否と制約だけの短い分析を書き、次のベンチの間に詳しい分析を同じrunへ追記する。`main analyzed`は両方で届くので、短い方で次を選び始め、詳しい方で前提を確かめ直す。`rejected`・`deferred`は、mainの分析とrunで理由を確かめて次の案に活かす。ベンチ側の動きの変化は`--view transitions`で比較元と比べられる（`docs/reference/isuscope.md`）。採用された変更の上で、最大の制約がどこへ動いたかを見て次を選ぶ。
+7. **返事を読む**: mainは、runの直後に採否と決め手だけの短い分析を書き、次のベンチの間に詳しい分析を同じrunへ追記する。`main analyzed`は両方で届くので、短い方で次を選び始め、詳しい方で前提を確かめ直す。`rejected`・`deferred`は、mainの分析とrunで理由を確かめて次の案に活かす。ベンチ側の動きの変化は`--view transitions`で比較元と比べられる（`docs/reference/isuscope.md`）。
 
 ### kickoffの間
 

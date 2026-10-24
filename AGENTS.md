@@ -17,7 +17,7 @@
 | 役割 | 動かし方 | 受け持つこと | 手順書 |
 | --- | --- | --- | --- |
 | main | このrepoのrootで起動したClaude Codeが`/main`で宣言する。目標は人間が`/goal`で渡す | merge、次に測るものの判断、deploy、ベンチ、分析、採否。ベンチを止めずに回す。改善は実装しない（取り込みに要る直しなどの統合作業と、APIごとの待ちの表`ISUCON_WAITS`の値は除く） | `.claude/commands/main.md` |
-| improve | worktree `improve`で`/improve` | mainの分析が示す最大の制約を調べ、改善を実装して投稿でmainへ渡し続ける | `.claude/commands/improve.md` |
+| improve | worktree `improve`で`/improve` | mainの分析とrunから点を上げる変更を調べ、実装して投稿でmainへ渡し続ける | `.claude/commands/improve.md` |
 | portal | worktree `portal`で`/portal` | kickoffの間に、サーバーの情報・ベンチ接続・当日マニュアルを作る | `.claude/commands/portal.md` |
 | lane | `scripts/lane.py`が起動する`claude -p` | 出力が決まった有限のタスクを、自分のworktreeとbranch（`lane/<名前>`）で1回だけ行い、commitして終わる | `config/lanes/<名前>.md` |
 | 人間・手で動かすセッション | worktree `human`、または`make worktree BRANCH=<name> PURPOSE="..."` | 調査・実装・ローカル検証をして投稿する | [準備](docs/guides/preparation.md) |
@@ -29,20 +29,17 @@
 - 作業中の他worktreeを変更・削除しない。実行中のlockは手で消さず、別の操作の終了を待つ。status・checkなどの読み取りは並行してよい。
 
 ## 判断の原則
-- 次の変更は、直近runの計測で見えた最大の制約から選ぶ。負荷の位置は変更のたびに動くので、毎回最新のrunから決める。
-- 得点へ直接つながる処理を優先する。速くしたことで、点にならない処理の実行回数だけが増えていないか、シナリオごとの成功数と得点で確かめる。速くしたのに点が上がらない・下がるときは、制約がほかの場所へ移っていないかも確かめる。制約の場所は、サーバーの資源（CPU・DB・I/Oなど）、ベンチ側（ベンチの処理量や利用者の振る舞い。行動遷移を`isuscope query RUN --base BASE --view transitions`で比べる）、得点の仕組み（得点の式のうち、速さではなく選び方や順序で決まる部分）の3つで呼ぶ。台数があるというだけで分割しない。
-- メモリ化やキャッシュは、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築を`docs/cache-design.md`へ書いてから入れる。
-- これまでの履歴、差分から、最大の制約をよく調査して考える。予想と反する事象や、説明のつかない動きは、急所である可能性が高いためよく調査する。
-- ロジックを変える案（順位付け、待ちの条件、上限など）は、実装の前に状態ログ（`isuscope states`）で前提を確かめ、確かめた数字を仮説に書く。状態やベンチの反応についての疑問のために、計測を足すrunを回さない。ベンチの反応は毎回のrunの行動遷移に残っている（`isuscope query RUN --base BASE --view transitions`）。
-- 採否はスコアで決める。スコアが下がった変更を処理指標や状態ログ上の改善を理由に残すことは許容するが、原則的には不採用とする。同じ構成でもスコアは振れるので、その振れ幅を踏まえて決める（振れ幅の測り方と1回で決めることは`/main`）。
+- 何を次に変えるかに、決まった手順は無い。毎回、最新のrunとこれまでの履歴から考えて決める。
+- 採否の基準は、競技終了時のスコアにする。同じ構成でもスコアは振れるので、その振れ幅を踏まえて決める（振れ幅の測り方と1回で決めることは`/main`）。
   - TODO（検証中）: 得点の差が振れ幅の内側にあるときに、採否をどう扱うかはまだ決めていない。人間が決めて`/main`の「振れ幅を測る」に追記する。セッションはこの行を書き換えない。
+- メモリ化やキャッシュは、整合性が崩れるとベンチがFAILし、主催者の追試では失格になる。なので、データの正本、更新時の反映、無効化、initialize後と再起動後の再構築を`docs/cache-design.md`へ書いてから入れる。
 
 ## 流れ
 | 段階 | すること | 手順書 |
 | --- | --- | --- |
 | 準備（開始前） | 問題に依存しない道具・認証・検証を済ませる。chrome-debugでのポータルのログインと、worktree `portal`・`improve`・`human`も作っておく | [準備](docs/guides/preparation.md) |
 | kickoff | 開始と同時に、人間が`make session ROLE=main`・`ROLE=portal`・`ROLE=improve`で各セッションを起動する。mainは`make kickoff`をbackgroundで始め、完全importをcommitしたら人間の確認を待たずに`make first-bench`で初回baselineを取る。lane `full-memory`も先行回収と同時に全メモリ化を始める | [kickoff](docs/guides/kickoff.md) |
-| 改善 | 観測された最大の制約から順に、継続的に構成を含めて変える。improveが作って投稿し、mainが測って分析し、採否を決める | このファイルの「判断の原則」、各役割の手順書 |
+| 改善 | 構成も含めて、継続的に変える。improveが作って投稿し、mainが測って分析し、採否を決める | このファイルの「判断の原則」、各役割の手順書 |
 | 終了前 | 人間がmainへ指示して始める。新しい変更を止め、最終構成を固定し、確認のベンチを3回行う | [終了前](docs/guides/finish.md) |
 
 コマンドと各段階の契約（kickoff、deploy、rollback、import、ベンチ接続、投稿とキュー、isuscopeの設定）は[自動化の仕様](docs/reference/automation.md)を正とする。runの読み方は[isuscopeの使い方](docs/reference/isuscope.md)にある。
