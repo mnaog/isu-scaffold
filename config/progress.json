@@ -2,6 +2,8 @@
   "description": "Who acts on each line of .local/progress.log, and what to do. `python3 scripts/progress.py follow <role>` prints only the lines routed to that role, with its note; the file keeps every line as the record. A line is matched against `lines` (\"<source> <state>\", fnmatch patterns) top to bottom, and the first rule that matches decides; `to` maps each role that should act to its note, and an empty `to` routes the line to nobody. A line no rule matches goes to main. A role never gets the lines it wrote itself.",
   "rules": [
     {"lines": ["benchmark slow"], "to": {"main": "ベンチが遅い。アプリ・nginxのerror logとnodeの負荷を確かめ、止まっていれば`scripts/benchmark-stop.sh`で止める"}},
+    {"lines": ["benchmark finished", "benchmark failed"], "attach": ".local/bench-results/{first}.txt", "to": {"main": "ベンチが終わった（下に事実とbrief）。採否を決めて`python3 scripts/proposal.py next`で記録と取り込みをし、`make bench`を起動する。決めきれなければ先に読む。同じベンチの完了通知（task-notification）では、出力を読み直さない"}},
+    {"lines": ["benchmark not-started"], "attach": ".local/bench-results/{first}.txt", "to": {"main": "ベンチが始まらなかった（下に理由）。直して起動し直す"}},
     {"lines": ["final settled"], "to": {"main": "再起動の後、時間を置いた確認も通った"}},
     {"lines": ["prebuild failed"], "to": {"main": "ベンチの間に先にbuildした次の候補が、mainのbranchの上で衝突・buildの失敗・testの失敗になった。その投稿は、mergeする前に直すか棄却する（詳細は`.local/prebuild.json`）"}},
     {"lines": ["* failed", "* draft-failed"], "to": {"main": "段階が失敗した。本文とログで原因を見て直す"}},

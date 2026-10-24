@@ -121,6 +121,7 @@
     "scripts/pgo.py",
     "scripts/prebuild.py",
     "scripts/bench.sh",
+    "scripts/bench-result.py",
     "scripts/go-codemap/go.mod",
     "scripts/go-codemap/main.go",
     "scripts/deploy-plan.py",

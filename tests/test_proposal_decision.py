@@ -108,7 +108,7 @@ class ProposalDecisionTest(unittest.TestCase):
         commit = self.commit_and_submit('insert.txt', '座標をまとめてINSERTする')
         self.deliver()
         self.git('merge', '-q', '--no-ff', '-m', 'Take human', 'human')
-        self.assertIn('このベンチで測る投稿: human（--change human）', self.deliver())
+        self.assertIn('このベンチで測る投稿: human（キューから外し', self.deliver())
         # The run ended without a decision (a FAIL is not analyzed): the next benchmark measures it again.
         self.assertIn('前のrunで採否の付かなかったhuman', self.deliver())
         self.assertIn('採否はまだ出ていない', self.script('proposal.py', 'show', 'human').stdout)
@@ -156,7 +156,7 @@ class ProposalDecisionTest(unittest.TestCase):
         run_id = '01a15900-0000-7000-8000-00000000aaaa'
         db, bin_dir = isuscope_stub.install(self.tmp.name)
         db.execute("INSERT INTO runs (id, score, passed) VALUES (?, 720000, 1)", (run_id,))
-        db.execute("INSERT INTO run_analyses VALUES ('an-1', ?, '2999-01-01T00:00:00.123456789Z', 'supported', ?)",
+        db.execute("INSERT INTO run_analyses (id, run_id, created_at, verdict, body) VALUES ('an-1', ?, '2999-01-01T00:00:00.123456789Z', 'supported', ?)",
                    (run_id, '次の最大の制約: POST /coordinate のDB書き込み。\nINSERTが1/5に減った。'))
         db.execute("INSERT INTO changes (id, created_at) VALUES ('human', '2999-01-01T00:00:00.123456789Z')")
         db.execute("INSERT INTO change_decisions VALUES ('d1', 'human', '2999-01-01T00:00:00.123456789Z', 'accepted', "
@@ -187,7 +187,7 @@ class ProposalDecisionTest(unittest.TestCase):
         db, bin_dir = isuscope_stub.install(self.tmp.name)
         db.execute("INSERT INTO runs (id, score, passed, finished_at) VALUES (?, 720000, 1, '2999-01-01T00:00:00Z')",
                    (run_id,))
-        db.execute("INSERT INTO run_analyses VALUES ('an-1', ?, '2999-01-01T00:01:00Z', 'supported', ?)",
+        db.execute("INSERT INTO run_analyses (id, run_id, created_at, verdict, body) VALUES ('an-1', ?, '2999-01-01T00:01:00Z', 'supported', ?)",
                    (run_id, '次の最大の制約: POST /coordinate。採用: INSERTが1/5、score +12%。'))
         db.execute("INSERT INTO changes (id, created_at) VALUES ('human', '2999-01-01T00:01:00Z')")
         db.execute("INSERT INTO change_decisions VALUES ('d1', 'human', '2999-01-01T00:01:00Z', 'accepted', 'x', NULL)")
@@ -202,7 +202,7 @@ class ProposalDecisionTest(unittest.TestCase):
         self.deliver()
         db.execute("UPDATE runs SET finished_at = '2000-01-01T00:00:00Z' WHERE id = ?", (run_id,))
         # ...and the detailed analysis of run aaaa is appended meanwhile.
-        db.execute("INSERT INTO run_analyses VALUES ('an-2', ?, '2999-01-01T00:02:00Z', 'supported', ?)",
+        db.execute("INSERT INTO run_analyses (id, run_id, created_at, verdict, body) VALUES ('an-2', ?, '2999-01-01T00:02:00Z', 'supported', ?)",
                    (run_id, '次の最大の制約: POST /coordinate のロック。詳しく: 待ちが1.2ms、transitionsは変わらず。'))
         db.commit()
         told = self.analyze()

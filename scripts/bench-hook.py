@@ -157,7 +157,7 @@ def started(root, session, based=True):
     if reminder:
         context = '\n\n'.join(part for part in (reminder, context) if part)
     if measuring:
-        named = ', '.join(f'{branch}（--change {proposal.change_id(branch)}）' for branch in measuring)
+        named = ', '.join(measuring)
         again = f'前のrunで採否の付かなかった{", ".join(requeued)}も、もう一度このベンチで測る。' if requeued else ''
         note = f'このベンチで測る投稿: {named}（キューから外し、測定中にした）。{again}'
         context = '\n\n'.join(part for part in (note, context) if part)

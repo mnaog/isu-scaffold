@@ -57,8 +57,8 @@ briefは、採否と次の制約を決めるための短い文で、行ごとに
 - CPUの使用率に余裕があるのに遅いときは、briefの`nodes`の`rd`（serviceのthreadがCPUを待った平均の数）と、nodeの`host.procs_running`（`query <run> --metric host.procs_running --window load`）を見る。threadの数がコアより多いと、lockを持ったままpreemptされて待ちが延びる。
 - DBの比較では、`query --base`の`total_ms_delta_by_calls`（回数の増減による分）と`total_ms_delta_by_avg`（1回あたりの時間による分）で、合計時間の変化の理由を分ける。
 - 判定には`supported`、`rejected`、`inconclusive`、`skipped`を使う。`analyze`には、実行結果か`isuscope list`で得たrun IDを明示する。本文でrunに触れるときは、isuscopeの出力が示す短縮ID（run IDの末尾8文字）にそろえる。
-- PASSしたrunは、分析を記録するまで次のベンチを開始できない。FAILまたは中断したrunに分析は不要。
-- 変更を残すか戻すかを決めたら、分析と同時に`--change <変更ID> --decision <accepted|provisional|rejected|deferred>`で記録する（`provisional`は`--revisit`必須）。仮説の判定と変更の採否は別に扱い、本文に「採用」と書くだけで済ませない。
+- PASSしたrunは、判定を記録するまで次のベンチを開始できない。FAILまたは中断したrunに分析は不要。
+- 仮説の判定と変更の採否は別に扱い、本文に「採用」と書くだけで済ませない。mainは、判定と採否を`python3 scripts/proposal.py next`で記録する（`next`が採否ごとに`analyze --change <変更ID> --decision <accepted|provisional|rejected|deferred>`を呼び、投稿へも写す。`provisional`には`--revisit`が要る）。後から同じrunへ書く詳しい分析には`--change`を付けない。
 - 同じ配布物・計測設定のrunは、isuscopeが始めない。意図して測り直すときは`isuscope run --repeat "理由"`を付ける（いつ測り直すかは`/main`と`docs/guides/finish.md`）。
 
 ## 原因を探す

@@ -211,10 +211,11 @@ def set_rule(root, args):
     print(f'commit: {message}' if committed.returncode == 0
           else f'commitできなかった（{(committed.stderr or committed.stdout).strip()[:200]}）。`git commit -m "{message}" -- {path.relative_to(root)}`')
     print('次:')
-    print('  make deploy（buildは要らない）')
-    print(f'  isuscope run --tag wait --tag "wait:{route}" --hypothesis "wait: {route} {what}。'
+    # bench.sh deploys (no build for the table alone) and ends like any benchmark: the facts reach main's Monitor.
+    print(f'  scripts/bench.sh{" --base " + base if base else ""} --tag wait --tag "wait:{route}" --hypothesis "wait: {route} {what}。'
           f'基準 {base or "<短縮ID>"}。期待: "（run_in_background。期待だけを書き足す）')
-    print(f'  isuscope analyze RUN ... --change {record[:100]} --decision accepted|rejected')
+    print(f'  python3 scripts/proposal.py next RUN --verdict supported|rejected --note "<決め手>" '
+          f'--decide {record[:100]}=accepted|rejected（不採用なら`git revert`で前の値へ戻す）')
 
 
 def phase_ms(spec, args, phase):

@@ -60,7 +60,7 @@ nodeの診断は、SSHの失敗・時間切れ・空の出力・途中で終わ�
 - 3回のPASSと再現率は、最後の`make final-check`が出す。崩れた回があれば、原因を調べて直す。
 - 整合性エラー・失格条件・タイムアウト、資源の余裕、ベンチ後のserviceの状態は、各runの`brief`で読める。
 - メモリだけに持つデータや書き込み待ちのデータが再起動で失われないかは、`final-reboot`の行数の比較と3回目のrunで分かる（write-behindの書き切りは`docs/cache-design.md`）。
-- 最終runをrun ID指定で分析する。
+- 最終runをrun ID指定で分析する。`proposal.py freeze`が並べた、詳しい分析がまだのrunも書く。
 
 ## 4. 終える
 

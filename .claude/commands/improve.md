@@ -66,7 +66,7 @@ Goのアプリなら、CPUと待ちを関数まで絞れる。briefの`go`の行
 
    終了コード3（キューが埋まっている）なら、上の「キュー」のとおり`wait`をbackgroundで起動する。
 6. **次へ**: `submit`がこのworktreeを投稿したbranchから外す（HEADは同じcommit）。次のbranchを切り、採否を待たずに次の候補を進めてよい。調整の続きのように直前の結果を見ないと作れない変更は、結果を待つか、その間に別の制約を調べる。
-7. **返事を読む**: mainは、runの直後に採否と決め手だけの短い分析を書き、次のベンチの間に詳しい分析を同じrunへ追記する。`main analyzed`は両方で届くので、短い方で次を選び始め、詳しい方で前提を確かめ直す。`rejected`・`deferred`は、mainの分析とrunで理由を確かめて次の案に活かす。ベンチ側の動きの変化は`--view transitions`で比較元と比べられる（`docs/reference/isuscope.md`）。
+7. **返事を読む**: mainは、runが終わるとすぐ採否と決め手だけを記録して次のベンチを起動し、そのベンチの間に詳しい分析を同じrunへ書く。採否は投稿の行（`proposal accepted`・`rejected`・`deferred`。決め手が付く）で先に届き、詳しい分析は後から`main analyzed`で届く。詳しい分析が届いたら読み、次の変更を選び直す（届くのを待たずに、今の候補を進めてよい）。`rejected`・`deferred`は、詳しい分析とrunで理由を確かめて次の案に活かす。ベンチ側の動きの変化は`--view transitions`で比較元と比べられる（`docs/reference/isuscope.md`）。
 
 ### kickoffの間
 

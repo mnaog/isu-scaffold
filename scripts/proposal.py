@@ -16,6 +16,8 @@ main only:
   proposal.py unhold BRANCH                back into the queue
   proposal.py requeue [BRANCH ...]         measuring back to waiting, after a benchmark that did not measure them
   proposal.py decide BRANCH accepted|rejected|deferred [--run ID] [--note TEXT] [--commit COMMIT]
+  proposal.py next RUN [--verdict V] --note TEXT [--decide BRANCH=STATUS[:NOTE] ...] [--merge BRANCH ...] [--requeue]
+                                           a finished run's decisions, then the next proposals merged
   proposal.py freeze [--off] [--note TEXT] stop improve's proposals before the end
 
 A person or a Claude Code session working in a worktree (make worktree) commits its change and
@@ -47,6 +49,14 @@ line to .local/progress.log (`proposal <state>`), which main and improve follow 
 
 A decision belongs to the commit main merged and measured, including earlier submissions in history.
 Acceptance requires a run; merged and measuring proposals remain owed a decision.
+
+`next` takes main from a finished run to the next benchmark in one call: it records the run's verdict
+and each decision in isuscope (the short analysis main writes before the next benchmark), copies them
+onto the proposals, which takes the waiting proposals built on a rejected one out of the queue,
+reverts what was not taken, checks the next proposals again and merges them. The proposals a run
+measured are those merged into the commit it deployed. Each step looks at what is already done, so
+the same command continues after a failure. improve does not hear of these short analyses (`main
+analyzed`); it hears of the detailed one main appends while the next benchmark runs.
 
 Before there is anything to submit, a worktree (improve, a person in worktree `human1`) says what it
 is building with `working`; the board shows who works on what until it submits (which clears it) or
@@ -86,13 +96,13 @@ FULL_EXIT = 3
 FROZEN_EXIT = 4
 WAIT_INTERVAL_SECONDS = 2
 HINT = ('worktreeからの投稿です（mainのbranchへ衝突なく入ることを確かめ済み）。ベンチを待つ間に読み、'
-        '次に測るものを選んだら`git merge --no-ff <branch>`して`make build`しておく。'
-        '何をどの順で、どう組み合わせて測るかはmainが決める（まとめたら、仮説に投稿ごとの期待を並べ、'
-        '`isuscope analyze`を投稿ごとに`--change <branch>`で記録する）。測るまでもなく棄却できるなら測らずに棄却してよい。'
-        '取り込んでbuild・deployが通らなければmainが直し、直せなければ棄却する（投稿者へ戻さない）。採否は'
-        '`isuscope analyze RUN ... --change <change ID> --decision accepted|rejected|deferred`で記録し、hookが投稿へ写す'
-        '（change IDはbranch名の`/`などを`-`にしたもの。ベンチを起動したときに投稿ごとに示す）'
-        '（runの無い判断だけ`python3 scripts/proposal.py decide`）。判断はmainへ取り込んで測ったcommitに付く。')
+        '次に測るものを決めておく（まだmergeしない。buildは先buildが済ませる）。ベンチが終わったら、そのrunの採否と一緒に'
+        '`python3 scripts/proposal.py next RUN --verdict ... --note "..." --decide <測った投稿>=<採否> --merge <次の投稿>`'
+        'で取り込む（採否を先に投稿へ写し、積んでいた投稿を外してから取り込むため）。'
+        '何をどの順で、どう組み合わせて測るかはmainが決める（まとめるなら--mergeを並べ、仮説には投稿ごとの期待が並ぶ）。'
+        '測るまでもなく棄却できるなら測らずに棄却してよい（`python3 scripts/proposal.py decide <branch> rejected --note "..."`）。'
+        '取り込んでbuild・deployが通らなければmainが直し、直せなければ棄却する（投稿者へ戻さない）。'
+        '判断はmainへ取り込んで測ったcommitに付く。')
 GROUPS = {'measuring': '測定中', 'merged': '次のベンチ', 'delivered': '待ち', 'submitted': '待ち（未読）',
           'needs-sync': '待ち（衝突）', 'held': '保留'}
 
@@ -234,7 +244,15 @@ def freeze(root, off=False, note=None):
         return 'improveの投稿を再び受け付ける。'
     write_json(path, {'at': now(), 'note': note or ''})
     progress_emit(root, 'main', 'freeze', note or '')
-    return 'improveの新しい投稿を止めた（`wait`も止まる）。人間の投稿は受け付ける。'
+    lines = ['improveの新しい投稿を止めた（`wait`も止まる）。人間の投稿は受け付ける。']
+    # The last runs often keep only the line `next` recorded: the end is when their detailed analysis is written.
+    try:
+        if owed := analyses_owed(root):
+            lines.append('詳しい分析がまだのrun: ' + ', '.join(short_id(run) for run in owed)
+                         + '。終了前に`isuscope analyze RUN <判定> --analysis "..."`で追記する。')
+    except isuscope_sql.Unavailable:
+        pass
+    return '\n'.join(lines)
 
 
 def working_dir(root):
@@ -455,13 +473,21 @@ def instant(stamp):
 
 
 def latest_change_decision(root, branch):
-    """The last decision isuscope recorded for the proposal's change, with the first run it cites."""
+    """The last decision isuscope recorded for the proposal's change, with the run it measured.
+
+    `isuscope analyze RUN --change` cites the run and its comparison base. The measured run is the one
+    analysed against the other; run IDs grow with time, so the newer one when that cannot be told
+    (thirteenth took the older one, the base, for 33 of its 42 decisions)."""
     # change_id leaves only [A-Za-z0-9_-], so it is safe inside the SQL string.
     rows = isuscope_sql.rows(root, f"""
-        SELECT d.created_at, d.status, d.reason,
-               (SELECT run_id FROM change_decision_runs WHERE decision_id = d.id ORDER BY run_id LIMIT 1) AS run_id
-        FROM change_decisions d WHERE d.change_id = '{change_id(branch)}'
-        ORDER BY d.created_at DESC, d.id DESC LIMIT 1""")
+        SELECT d.created_at, d.status, d.reason, c.run_id
+        FROM change_decisions d LEFT JOIN change_decision_runs c ON c.decision_id = d.id
+        WHERE d.change_id = '{change_id(branch)}'
+        ORDER BY d.created_at DESC, d.id DESC,
+                 EXISTS (SELECT 1 FROM run_analyses a JOIN change_decision_runs o ON o.run_id = a.base_run_id
+                         WHERE o.decision_id = c.decision_id AND o.run_id <> c.run_id AND a.run_id = c.run_id) DESC,
+                 c.run_id DESC
+        LIMIT 1""")
     return rows[0] if rows and instant(rows[0]['created_at']) else None
 
 
@@ -514,10 +540,11 @@ def after_analysis_reading(root, lines):
     owed = [data['branch'] for data in load_all(root) if data.get('status') == 'measuring'
             and (ended is None or (since := instant(data.get('measuring_since'))) is None or since <= ended)]
     if owed:
-        lines.append(f'まだ採否の無い測定中の投稿: {", ".join(owed)}（`isuscope analyze RUN ... --change '
-                     f'{change_id(owed[0])} --decision ...`で記録する）。')
+        lines.append(f'まだ採否の無い測定中の投稿: {", ".join(owed)}（`python3 scripts/proposal.py next RUN ... '
+                     f'--decide {owed[0]}=<採否>`で記録する）。')
         return '\n'.join(lines)
-    if not analysis:
+    # The short analysis `next` recorded with the decisions is not improve's material; the detailed one is.
+    if not analysis or analysis['id'] in quick_ids(root):
         return '\n'.join(lines)
     state = state_dir(root) / 'analyzed.json'
     told = read_json(state) or {}
@@ -622,7 +649,7 @@ def deliver(root, session, at=None):
                      '`python3 scripts/proposal.py sync`で取り込み、衝突を解消する。')
     if waiting:
         parts.append(f'取り込んだが採否を記録していない投稿: {", ".join(waiting)}。測ったrunの'
-                     '`isuscope analyze RUN ... --change <その投稿のchange ID> --decision ...`で記録する'
+                     '`python3 scripts/proposal.py next RUN ... --decide <branch>=<採否>`で記録する'
                      '（runが無い判断は`python3 scripts/proposal.py decide <branch> ...`）。')
     return '\n\n'.join(parts)
 
@@ -730,6 +757,254 @@ def requeue(root, branches=None):
         raise Refused('測定中の投稿は無い。' if not branches else f'{", ".join(branches)}は測定中ではない。')
     progress(root, 'requeued', ', '.join(back))
     return f'キューへ戻した: {", ".join(back)}'
+
+
+STATUSES = ('accepted', 'provisional', 'rejected', 'deferred')
+VERDICTS = ('supported', 'rejected', 'inconclusive', 'skipped')
+
+
+def short_id(run_id):
+    return (run_id or '')[-8:]
+
+
+def quick_path(root):
+    """The short analyses `next` recorded with the decisions; the detailed one follows during the next benchmark."""
+    return state_dir(root) / 'quick-analyses.json'
+
+
+def quick_ids(root):
+    return read_json(quick_path(root)) or {}
+
+
+def find_run(root, run):
+    """A finished run by its ID or short ID, from isuscope's index."""
+    if not re.fullmatch(r'[0-9a-f-]{4,36}', run or ''):
+        raise Refused(f'runはIDか短縮ID（briefの先頭の8文字）で指定する: {run}')
+    rows = isuscope_sql.rows(root, f"""
+        SELECT id, state, passed, score, commit_hash, started_at, finished_at FROM runs
+        WHERE id = '{run}' OR id LIKE '%{run}' ORDER BY started_at DESC""")
+    if len(rows) != 1:
+        raise Refused(f'run {run}が{"見つからない" if not rows else "一意に決まらない"}（`scripts/runs.sh list`で確かめる）。')
+    if rows[0]['state'] in ('running', 'pending') or not rows[0]['finished_at']:
+        raise Refused(f'run {run}はまだ終わっていない（state {rows[0]["state"]}）。')
+    if not rows[0]['commit_hash']:
+        raise Refused(f'run {run}のcommitが記録されていない。測った投稿を決められないので、'
+                      '`isuscope analyze`と`proposal.py decide`で記録する。')
+    return rows[0]
+
+
+def measured_in(root, items, commit, run):
+    """The proposals a run measured, with the commit each decision belongs to: merged into the commit the run
+    deployed and not decided before it. Those already decided on this run come too, so `next` can run again."""
+    found = []
+    for data in items:
+        decision = data.get('decision') or {}
+        if data.get('status') in DECISIONS and decision.get('run') == short_id(run):
+            found.append((data, decision.get('commit') or data['commit'], True))
+            continue
+        for entry in open_entries(data):
+            if entry.get('status') in ('merged', 'measuring') and is_ancestor(root, entry['commit'], commit):
+                found.append((data, entry['commit'], False))
+                break
+    return found
+
+
+def run_analysis_ids(root, run_id):
+    return {row['id'] for row in isuscope_sql.rows(root, f"SELECT id FROM run_analyses WHERE run_id = '{run_id}'")}
+
+
+def base_of(root, run_id):
+    """The run's comparison base: `run --base`, `isuscope base`, else what its analyses were written against."""
+    rows = isuscope_sql.rows(root, f"""
+        SELECT base_run_id FROM run_bases WHERE run_id = '{run_id}'
+        UNION ALL SELECT base_run_id FROM (SELECT base_run_id FROM run_analyses
+                                           WHERE run_id = '{run_id}' AND base_run_id IS NOT NULL
+                                           ORDER BY created_at DESC LIMIT 1)""")
+    return next((row['base_run_id'] for row in rows if row['base_run_id']), None)
+
+
+def analyses_owed(root, but=None):
+    """Runs whose only analyses are the short ones `next` recorded: their detailed analysis is still owed.
+    A skipped run (the spread, a run that tested nothing) needs no more than its one line."""
+    quick = quick_ids(root)
+    runs = sorted({run for run in quick.values() if re.fullmatch(r'[0-9a-f-]{36}', run) and run != but})
+    if not runs:
+        return []
+    listed = "', '".join(runs)
+    rows = isuscope_sql.rows(root, f"""
+        SELECT a.id, a.run_id, a.verdict FROM run_analyses a JOIN runs r ON r.id = a.run_id
+        WHERE a.run_id IN ('{listed}') ORDER BY r.started_at, a.created_at""")
+    by_run = {}
+    for row in rows:
+        by_run.setdefault(row['run_id'], []).append(row)
+    return [run for run, analyses in by_run.items()
+            if all(row['id'] in quick for row in analyses) and any(row['verdict'] != 'skipped' for row in analyses)]
+
+
+def merge_that_brought(root, commit):
+    """The merge on main's branch (first parent) that brought `commit` in."""
+    log = git('log', '--first-parent', '--merges', '--format=%H %P', '-n', '500', 'HEAD', cwd=root).stdout
+    for line in log.splitlines():
+        merge, first, *others = line.split()
+        if any(is_ancestor(root, commit, other) for other in others) and not is_ancestor(root, commit, first):
+            return merge
+    return None
+
+
+def already_reverted(root, merge):
+    return bool(git('log', '--first-parent', '--format=%H', '--fixed-strings',
+                    f'--grep=This reverts commit {merge}', 'HEAD', cwd=root).stdout.strip())
+
+
+def parse_decisions(pairs):
+    """`--decide BRANCH=STATUS[:NOTE]` (git refuses `:` in a branch name) into {branch: (status, note)}."""
+    decisions = {}
+    for pair in pairs or []:
+        branch, sep, rest = pair.partition('=')
+        status, _, note = rest.partition(':')
+        if not sep or not branch or status not in STATUSES:
+            raise Refused(f'--decideは<branch>=<{"|".join(STATUSES)}>[:<理由>]で書く: {pair}')
+        decisions[branch] = (status, note.strip())
+    return decisions
+
+
+def advance(root, run, verdict=None, note='', decide_pairs=(), merge=(), requeue_rest=False, revisit=None):
+    """From a finished run to the next benchmark, in an order that keeps the code and the proposals in step:
+    record the decisions in isuscope, copy them onto the proposals (which takes the proposals built on a
+    rejected one out of the queue), revert what was not taken, check the next proposals again, and merge them.
+    Every step looks at what is already done, so after a failure the same command continues."""
+    row = find_run(root, run)
+    run_id, short, passed = row['id'], short_id(row['id']), row['passed'] == 1
+    decisions = parse_decisions(decide_pairs)
+    note = (note or '').strip()
+    base = main_session.main_branch(root)
+    items = [refresh(root, data, base) for data in load_all(root)]
+    by_branch = {data['branch']: data for data in items}
+    measured = measured_in(root, items, row['commit_hash'], run_id)
+    names = {data['branch'] for data, _, _ in measured}
+    open_ones = [(data, commit) for data, commit, done in measured if not done]
+    # Checked before anything is recorded: a refusal here leaves everything as it was.
+    if passed and verdict not in VERDICTS:
+        raise Refused(f'PASSしたrun {short}には、仮説の判定（{"|".join(VERDICTS)}）を付ける。')
+    if not passed and verdict:
+        raise Refused(f'run {short}はPASSしていないので、isuscopeへ判定を書けない。--verdictを外し、'
+                      '投稿は--decide <branch>=rejected|deferredか--requeueで扱う。')
+    # The note is each decision's reason unless the decision brings its own; a PASS run's verdict needs one too.
+    if not note and not all([own for _, own in decisions.values()] or [not passed]):
+        raise Refused('--noteに採否の決め手を短く書く（投稿の採否の理由にもなる）。')
+    if requeue_rest and passed:
+        raise Refused('PASSしたrunで測った投稿は、そのrunで採否を決める（測り直さない）。')
+    stray = [b for b in decisions if b in by_branch and b not in names]
+    if stray:
+        raise Refused(f'run {short}で測っていない投稿: {", ".join(stray)}（run {short}のcommitに入っていない）。')
+    if not passed and any(status in ('accepted', 'provisional') for status, _ in decisions.values()):
+        raise Refused(f'PASSしていないrun {short}では採用しない。')
+    missing = [data['branch'] for data, _ in open_ones if data['branch'] not in decisions]
+    if missing and not requeue_rest:
+        raise Refused(f'run {short}で測った投稿の採否が無い: {", ".join(missing)}。--decide <branch>=<採否>で全部に付ける'
+                      + ('。' if passed else '（測り直すなら--requeue）。'))
+    for data, commit in open_ones:
+        if decisions.get(data['branch'], ('',))[0] in ('accepted', 'provisional') and not is_ancestor(root, commit, base):
+            raise Refused(f'{data["branch"]}の{commit[:8]}は{base}に入っていない。採用は取り込んで測ったcommitにだけ付ける。')
+    for branch in merge:
+        if branch not in by_branch:
+            raise Refused(f'{branch}の投稿は無い。`python3 scripts/proposal.py list`で確かめる。')
+
+    lines = []
+    # 1. isuscope: the run's verdict with each decision, as the short analysis main writes before the next
+    # benchmark. A proposal an earlier `next` decided on this run is recorded there already.
+    decided_before = {data['branch'] for data, _, done in measured if done}
+    changes = [(change_id(branch) if branch in by_branch else branch, status, own or note)
+               for branch, (status, own) in decisions.items() if branch not in decided_before]
+    if passed and (changes or not decisions):
+        before = run_analysis_ids(root, run_id)
+        for change, status, body in changes or [(None, None, note)]:
+            extra = ['--change', change, '--decision', status] if change else []
+            if change and revisit and status == 'provisional':
+                extra += ['--revisit', revisit]
+            done = subprocess.run(['isuscope', 'analyze', run_id, verdict, '--analysis', body, *extra], cwd=root,
+                                  capture_output=True, text=True)
+            if done.returncode:
+                raise Refused('isuscope analyzeが失敗した（ここまでに記録したものは残る。直して同じコマンドを打つ）:\n'
+                              + (done.stderr.strip() or done.stdout.strip()) + ('\n' + '\n'.join(lines) if lines else ''))
+        # These short analyses are not told to improve (`main analyzed`): the detailed one is.
+        if added := run_analysis_ids(root, run_id) - before:
+            write_json(quick_path(root), {**quick_ids(root), **{analysis: run_id for analysis in added}})
+        lines.append(f'run {short}を記録した（isuscope、判定 {verdict}）'
+                     + (': ' + ', '.join(f'{change} {status}' for change, status, _ in changes) if changes else '。'))
+    # 2. The proposals: decisions (taking the waiting ones built on a rejected one with them), or back to the queue.
+    dropped = []
+    for data, commit in open_ones:
+        branch = data['branch']
+        if branch not in decisions:
+            continue
+        status, own = decisions[branch]
+        lines += decide(root, branch, 'accepted' if status == 'provisional' else status, run=short,
+                        note=own or note, commit=commit).splitlines()
+        if status not in ('accepted', 'provisional'):
+            dropped += [d for d in load_all(root) if branch in (d.get('depends_on') or []) and d.get('status') == 'deferred']
+    rest = [data['branch'] for data, _ in open_ones
+            if data['branch'] not in decisions and data.get('status') == 'measuring']
+    if requeue_rest and rest:
+        lines.append(requeue(root, rest))
+    # 3. Revert what was not taken: the decided ones, and those built on them that main had merged already.
+    undo = [(data['branch'], commit) for data, commit, _ in measured
+            if (load(root, data['branch']) or {}).get('status') in ('rejected', 'deferred')]
+    undo += [(d['branch'], d['commit']) for d in dropped if is_ancestor(root, d['commit'], 'HEAD')]
+    merges = []
+    for branch, commit in undo:
+        if not is_ancestor(root, commit, 'HEAD'):
+            continue
+        found = merge_that_brought(root, commit)
+        if not found:
+            raise Refused(f'{branch}（{commit[:8]}）をmainのbranchへ入れたmergeが見つからない。戻すcommitを確かめて'
+                          '`git revert`し、同じコマンドを打ち直す。\n' + '\n'.join(lines))
+        if not already_reverted(root, found) and found not in [m for m, _ in merges]:
+            merges.append((found, branch))
+    # Newest first, so each revert applies on the code it changed.
+    order = git('log', '--first-parent', '--format=%H', '-n', '500', 'HEAD', cwd=root).stdout.split()
+    for found, branch in sorted(merges, key=lambda item: order.index(item[0]) if item[0] in order else 0):
+        reverted = git('revert', '--no-edit', '-m', '1', found, cwd=root)
+        if reverted.returncode:
+            git('revert', '--abort', cwd=root)
+            raise Refused(f'{branch}のmerge {found[:8]}を戻せない（衝突）。`git revert -m 1 {found}`で戻して解消し、'
+                          f'同じコマンドを打ち直す:\n{reverted.stdout.strip() or reverted.stderr.strip()}\n' + '\n'.join(lines))
+        lines.append(f'{branch}を戻した（merge {found[:8]}をrevert）。')
+    # 4. The next proposals, checked again now that the decisions may have taken them out, then merged.
+    for branch in merge:
+        data = refresh(root, load(root, branch), base)
+        status = data.get('status')
+        if status == 'merged':
+            lines.append(f'{branch}はもう取り込んである（次のベンチで測る）。')
+            continue
+        if status not in ('submitted', 'delivered'):
+            reason = {'needs-sync': '衝突している（`python3 scripts/proposal.py sync`で解消する）',
+                      'held': '保留にしてある（`unhold`で戻す）', 'measuring': '測定中'}.get(
+                status, f'{status}（{(data.get("decision") or {}).get("note") or ""}）')
+            raise Refused(f'{branch}は取り込めない: {reason}。\n' + '\n'.join(lines))
+        tip = git('rev-parse', '--verify', '-q', f'refs/heads/{branch}', cwd=root).stdout.strip()
+        if tip != data['commit']:
+            raise Refused(f'{branch}は投稿の後にbranchが動いた（{tip[:8] or "消えた"}）。投稿の`commit`と見比べる。\n'
+                          + '\n'.join(lines))
+        merged = git('merge', '--no-ff', '--no-edit', branch, cwd=root)
+        if merged.returncode:
+            git('merge', '--abort', cwd=root)
+            raise Refused(f'{branch}を取り込めない（衝突）: {merged.stdout.strip() or merged.stderr.strip()}\n'
+                          + '\n'.join(lines))
+        refresh(root, load(root, branch), base)
+        lines.append(f'{branch}を取り込んだ（次のベンチで測る）。')
+    # 5. What comes next.
+    if passed and any(status in ('accepted', 'provisional') for status, _ in decisions.values()):
+        next_base = short
+    else:
+        next_base = short_id(base_of(root, run_id) or '') or (short if passed else '')
+    bench = f'make bench BASE={next_base}' if next_base else 'make bench'
+    lines.append(f'次: `{bench}`をrun_in_backgroundで起動する。'
+                 + (f'起動したら最初に、run {short}の詳しい分析を`isuscope analyze {short} {verdict} --analysis "..."`で追記する'
+                    '（improveへはこれが`main analyzed`で届く）。' if passed and verdict != 'skipped' else ''))
+    if owed := analyses_owed(root, but=run_id):
+        lines.append('詳しい分析がまだのrun: ' + ', '.join(short_id(r) for r in owed) + '（採否だけ記録してある）。')
+    return '\n'.join(lines)
 
 
 def withdraw(root, branch):
@@ -964,6 +1239,15 @@ def main():
     p.add_argument('--note')
     p.add_argument('--commit', help='判断を付けるcommit（既定は、mainへ取り込んだ未判断のcommit）')
     sub.add_parser('adopt')
+    p = sub.add_parser('next', help='runの採否を記録し、次の投稿を取り込む（make benchの前）')
+    p.add_argument('run', help='終わったrunのIDか短縮ID')
+    p.add_argument('--verdict', choices=VERDICTS, help='仮説の判定（PASSしたrunでは必須）')
+    p.add_argument('--note', default='', help='採否の決め手（短く。投稿の採否の理由にもなる）')
+    p.add_argument('--decide', action='append', default=[], metavar='BRANCH=STATUS[:NOTE]',
+                   help=f'測った投稿の採否（{"|".join(STATUSES)}）。投稿でないchange ID（wait-...）も書ける')
+    p.add_argument('--revisit', help='provisionalの再評価条件')
+    p.add_argument('--merge', action='append', default=[], metavar='BRANCH', help='次のベンチで測る投稿')
+    p.add_argument('--requeue', action='store_true', help='PASSしなかったrunで測った投稿を、待ちへ戻して測り直す')
     p = sub.add_parser('freeze')
     p.add_argument('--off', action='store_true')
     p.add_argument('--note')
@@ -977,11 +1261,13 @@ def main():
     root = main_session.root_repo()
     _, session = main_session.current_session()
     try:
-        if args.action in ('pending', 'sync', 'hold', 'unhold', 'requeue', 'decide', 'freeze') \
+        if args.action in ('pending', 'sync', 'hold', 'unhold', 'requeue', 'decide', 'freeze', 'next') \
                 and main_session.is_main(root, session) is False:
             raise Refused('これはmain（/mainで宣言したセッション）の操作。')
         if args.action == 'submit':
             print(submit(root, args.hypothesis, args.expect, args.verified, args.note, based_on=args.based_on))
+        elif args.action == 'next':
+            print(advance(root, args.run, args.verdict, args.note, args.decide, args.merge, args.requeue, args.revisit))
         elif args.action == 'pending':
             print(deliver(root, session or 'unknown') or '新しい投稿は無い。')
         elif args.action == 'decide':

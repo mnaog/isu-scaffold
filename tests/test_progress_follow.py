@@ -34,6 +34,20 @@ class FollowTests(unittest.TestCase):
         self.assertIn('宛先の表', self.shown('main', 'something', 'new'))  # unknown lines reach main
         self.assertIsNone(self.shown('improve', 'something', 'new'))
 
+    def test_the_end_of_a_benchmark_brings_its_facts_and_brief_to_main(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / '.local/bench-results').mkdir(parents=True)
+            (Path(tmp) / '.local/bench-results/abcd1234.txt').write_text('# run abcd1234 PASS 123456\n## brief\nx\n')
+            line = '2026-10-21T10:42:00+0900\tbenchmark\tfinished\tabcd1234 PASS score 123456'
+            shown = progress.for_role(self.rules, 'main', line, tmp)
+            self.assertTrue(shown.startswith('10:42 benchmark finished abcd1234 PASS score 123456 → '), shown)
+            self.assertTrue(shown.endswith('# run abcd1234 PASS 123456\n## brief\nx'), shown)
+            self.assertIsNone(progress.for_role(self.rules, 'improve', line, tmp))
+            missing = progress.for_role(self.rules, 'main', line.replace('abcd1234', 'ffff0000'), tmp)
+            self.assertNotIn('\n', missing)  # the line alone when the file is gone
+            # A first word that is not a plain file name attaches nothing.
+            self.assertNotIn('\n', progress.for_role(self.rules, 'main', line.replace('abcd1234', '../x'), tmp))
+
     def follow_improve(self, log, *steps):
         """Follow `log` for improve. Each step runs just before one of the follower's polls, so the follower
         has polled once between two steps however slow the machine is; it stops after the last step's poll."""

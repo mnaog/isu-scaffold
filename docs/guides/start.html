@@ -453,6 +453,18 @@ make worktree BRANCH=human-codex PURPOSE="人間の作業場所（Codex）"</pre
       </ul>
       <p>以後は、improveが作って投稿し、mainが測って採否を決める流れが続く。人間は見守り、伝えたいことをmainへ伝える。終了前の手順は、人間がmainへ指示して始める（<code>docs/guides/finish.md</code>）。</p>
     </div>
+    <div class="card" style="margin-top:10px">
+      <div class="card-head"><h3>人間の作業場所を開く</h3><span class="badge human">人間</span></div>
+      <p>自分でも調べたい・直したいときは、準備で作ったworktree（repoの隣の<code>&lt;名前&gt;-&lt;repo&gt;</code>）で開く。mainの作業ツリー（repoのroot）には触れない。Claude Codeは<code>human1</code>〜<code>human3</code>を、名前の付いたセッションとして開く（新しい端末で、repoのrootから）。</p>
+      <div class="cmd"><pre>make session ROLE=human1</pre><button type="button">コピー</button></div>
+      <p>2つ目・3つ目は<code>ROLE=human2</code>・<code>ROLE=human3</code>。Codexはworktree <code>human-codex</code>で起動する（repoのrootから。初回は信頼の確認が出る。名前を宛先にしたメッセージは送れない）。</p>
+      <div class="cmd"><pre>cd "../human-codex-$(basename "$PWD")" &amp;&amp; codex</pre><button type="button">コピー</button></div>
+      <ul>
+        <li>作り始めたら<code>python3 scripts/proposal.py working "&lt;狙う制約と変更&gt;"</code>でボードの「作業中」に出す。</li>
+        <li>変更は、worktreeの名前を頭に付けたbranch（<code>git switch -c human1-&lt;名前&gt; &lt;mainのbranch&gt;</code>）でcommitし、<code>python3 scripts/proposal.py submit</code>でmainへ渡す。</li>
+        <li>mainに伝えることは、human1〜3のセッションで「<code>@main-bench</code>に…と伝えて」。</li>
+      </ul>
+    </div>
   </section>
 
   <footer>手順の詳細は<code>docs/guides/preparation.md</code>（準備）と<code>docs/guides/kickoff.md</code>（kickoff）にある。</footer>

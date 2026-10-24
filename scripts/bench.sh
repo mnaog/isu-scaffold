@@ -9,9 +9,13 @@ set -uo pipefail
 #   make bench                                   the queue's hypothesis (proposal.py hypothesis)
 #   scripts/bench.sh --repeat "振れ幅: ..." --hypothesis "..."   options go to `isuscope run`
 #
-# If the deploy fails, the benchmark does not start: the proposals the hook marked measuring go back
-# to the queue, and the deploy's output is printed. The run's output stays in .local/bench-last.out
-# and the deploy's in .local/deploy-last.out. Exits with the deploy's or the run's code.
+# It ends with what main decides on (scripts/bench-result.py): the facts the brief does not say, then the
+# brief, also in .local/bench-results/<run>.txt and sent to main's Monitor (`benchmark finished`), so main
+# need not read this output first. Nothing starts while a PASS run still waits for its analysis (checked
+# before the deploy). If the deploy fails, or isuscope starts no run, the benchmark does not start and that
+# is reported the same way (`benchmark not-started`); the proposals the hook marked measuring go back to
+# the queue. The run's output stays in .local/bench-last.out and the deploy's in .local/deploy-last.out.
+# Exits with the deploy's or the run's code.
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "${script_dir}/.." && pwd)
 cd "${repo_dir}" || exit 2
@@ -33,18 +37,28 @@ if [[ "${has_hypothesis}" == 0 ]]; then
   args+=(--hypothesis "${hypothesis}")
 fi
 
+python3 scripts/bench-result.py check || exit 2
 if ! make deploy >"${deploy_log}" 2>&1; then
   echo "bench: the deploy failed, so the benchmark did not start (${deploy_log}):"
-  tail -n 20 "${deploy_log}"
   python3 scripts/proposal.py requeue 2>&1 || true
+  python3 scripts/bench-result.py not-started "the deploy failed (${deploy_log})" --output "${deploy_log}"
   exit 1
 fi
 echo "deploy: $(tail -n 1 "${deploy_log}")"
 
 code=0
 isuscope run "${args[@]}" >"${bench_log}" 2>&1 || code=$?
-tail -n 12 "${bench_log}"
 run=$(awk '$1 == "run" && NF == 2 {id = $2} END {print id}' "${bench_log}")
+if [[ -z "${run}" ]]; then
+  # No run came of it (refused, or failed before one existed): the latest run's brief would read as this one's.
+  python3 scripts/bench-result.py not-started "isuscope run started no run (exit ${code})" --output "${bench_log}"
+  exit $((code == 0 ? 1 : code))
+fi
+# isuscope's own next step is `isuscope analyze`; main records with `proposal.py next` instead.
+tail -n 12 "${bench_log}" | grep -v '^next '
 echo
-isuscope brief "${run:-latest}" || true
+mkdir -p .local/bench-results
+brief=.local/bench-results/${run}.brief
+isuscope brief "${run}" >"${brief}" 2>&1 || true
+python3 scripts/bench-result.py report "${run}" --brief "${brief}" --output "${bench_log}"
 exit "${code}"

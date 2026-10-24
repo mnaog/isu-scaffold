@@ -61,7 +61,8 @@ class WaitsScriptTests(unittest.TestCase):
         self.commit('Other')
         (self.repo / 'other.txt').write_text('changed\n')  # someone's unrelated edit
         out = self.waits('set', 'GET', '/api/app/nearby-chairs', '--after', '30').stdout
-        self.assertIn('--change wait-get-api-app-nearby-chairs-after-30', out)
+        self.assertIn('--decide wait-get-api-app-nearby-chairs-after-30=accepted|rejected', out)
+        self.assertIn('scripts/bench.sh --tag wait', out)  # deploys, and its end reaches main like any benchmark
         self.assertIn('--hypothesis "wait: GET /api/app/nearby-chairs after 0→30ms。基準 <短縮ID>。期待: "', out)
         env = (self.repo / 'config/app/env.sh').read_text()
         self.assertIn('ISUCON_DB_HOST=127.0.0.1\n', env)

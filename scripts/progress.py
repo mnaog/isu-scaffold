@@ -9,13 +9,16 @@ agent can do next (code imported, build settings needed, draft ready, a lane fin
 Worktrees write to the root repository's file, so every lane reports to one place.
 
 `follow <role>` keeps reading the file and prints only the lines config/progress.json routes to that
-role, each with what to do; a session follows it with Monitor and wakes only for its own lines.
+role, each with what to do; a session follows it with Monitor and wakes only for its own lines. A rule
+with `attach` prints a file after the line, named by the line's first word (`benchmark finished` brings
+the run's facts and brief), all at once, so Monitor delivers them as one notification.
 """
 import argparse
 import fnmatch
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import time
 
@@ -55,27 +58,41 @@ def load_rules(root=None):
         return []
 
 
-def route(rules, source, state):
-    """{role: note} for a line: the first rule whose `lines` match "<source> <state>", else main."""
+def rule_for(rules, source, state):
+    """The first rule whose `lines` match "<source> <state>", else one that sends the line to main."""
     line = f'{source} {state}'
     for rule in rules:
         if any(fnmatch.fnmatchcase(line, pattern) for pattern in rule.get('lines') or []):
-            return rule.get('to') or {}
-    return {'main': '宛先の表（config/progress.json）に無い行。読んで判断し、必要なら表へ足す'}
+            return rule
+    return {'to': {'main': '宛先の表（config/progress.json）に無い行。読んで判断し、必要なら表へ足す'}}
 
 
-def for_role(rules, role, text):
-    """The line as `follow` prints it for the role, or None when the line is not the role's."""
+def route(rules, source, state):
+    """{role: note} for a line."""
+    return rule_for(rules, source, state).get('to') or {}
+
+
+def for_role(rules, role, text, root=None):
+    """The line as `follow` prints it for the role, or None when the line is not the role's. With `attach`,
+    the file it names under `root` follows (a missing file is left out)."""
     fields = text.rstrip('\n').split('\t')
     if len(fields) < 3:
         return None
     at, source, state, message = fields[0], fields[1], fields[2], fields[3] if len(fields) > 3 else ''
     if source == role:
         return None
-    note = route(rules, source, state).get(role)
+    rule = rule_for(rules, source, state)
+    note = (rule.get('to') or {}).get(role)
     if note is None:
         return None
-    return f'{at[11:16]} {source} {state} {message}'.rstrip() + f' → {note}'
+    shown = f'{at[11:16]} {source} {state} {message}'.rstrip() + f' → {note}'
+    first = message.split(' ', 1)[0]
+    if rule.get('attach') and root and re.fullmatch(r'[A-Za-z0-9._-]+', first):
+        try:
+            shown += '\n' + (Path(root) / rule['attach'].format(first=first)).read_text(errors='replace').rstrip()
+        except OSError:
+            pass
+    return shown
 
 
 def follow(role, root=None, from_start=False, interval=0.5, stop=None):
@@ -103,7 +120,7 @@ def follow(role, root=None, from_start=False, interval=0.5, stop=None):
             complete = chunk[:chunk.rfind(b'\n') + 1]
             position += len(complete)
             for text in complete.decode(errors='replace').splitlines():
-                if (shown := for_role(rules, role, text)) is not None:
+                if (shown := for_role(rules, role, text, path.parent.parent)) is not None:
                     print(shown, flush=True)
         time.sleep(interval)
 
