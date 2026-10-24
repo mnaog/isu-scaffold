@@ -36,6 +36,10 @@ if sys.argv[1:3] == ['sql', '--limit']:
     sys.exit(0)
 if sys.argv[1:2] != ['analyze']:
     sys.exit('stub isuscope answers sql and analyze only: ' + ' '.join(sys.argv[1:]))
+# isuscope (clap) takes a value that starts with '-' only as --option=value.
+for option, value in zip(sys.argv[2:], sys.argv[3:]):
+    if option in ('--base', '--analysis', '--change', '--decision', '--revisit') and value.startswith('-'):
+        sys.exit(f"error: unexpected argument '{value}' found")
 parser = argparse.ArgumentParser()
 parser.add_argument('run')
 parser.add_argument('verdict', choices=['supported', 'rejected', 'inconclusive', 'skipped'])

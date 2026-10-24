@@ -23,10 +23,20 @@ mkdir -p .local
 deploy_log=.local/deploy-last.out
 bench_log=.local/bench-last.out
 
-args=("$@")
+# isuscope takes text that starts with '-' (a hypothesis such as "-2% ...") only as --option=value.
+args=()
+while [[ $# -gt 0 ]]; do
+  if [[ ( "$1" == --hypothesis || "$1" == --repeat ) && $# -gt 1 ]]; then
+    args+=("$1=$2")
+    shift 2
+  else
+    args+=("$1")
+    shift
+  fi
+done
 has_hypothesis=0
 for arg in "${args[@]+"${args[@]}"}"; do
-  [[ "${arg}" == --hypothesis || "${arg}" == --hypothesis=* ]] && has_hypothesis=1
+  [[ "${arg}" == --hypothesis=* ]] && has_hypothesis=1
 done
 if [[ "${has_hypothesis}" == 0 ]]; then
   if ! hypothesis=$(python3 scripts/proposal.py hypothesis 2>&1); then
@@ -34,7 +44,7 @@ if [[ "${has_hypothesis}" == 0 ]]; then
     echo 'bench: no hypothesis; pass --hypothesis "..." for a benchmark without a merged proposal' >&2
     exit 2
   fi
-  args+=(--hypothesis "${hypothesis}")
+  args+=("--hypothesis=${hypothesis}")
 fi
 
 python3 scripts/bench-result.py check || exit 2

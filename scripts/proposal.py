@@ -921,8 +921,9 @@ def advance(root, run, verdict=None, note='', decide_pairs=(), merge=(), requeue
         for change, status, body in changes or [(None, None, note)]:
             extra = ['--change', change, '--decision', status] if change else []
             if change and revisit and status == 'provisional':
-                extra += ['--revisit', revisit]
-            done = subprocess.run(['isuscope', 'analyze', run_id, verdict, '--analysis', body, *extra], cwd=root,
+                extra += [f'--revisit={revisit}']
+            # isuscope takes text that starts with '-' (`-2%、…`) only as --option=value.
+            done = subprocess.run(['isuscope', 'analyze', run_id, verdict, f'--analysis={body}', *extra], cwd=root,
                                   capture_output=True, text=True)
             if done.returncode:
                 raise Refused('isuscope analyzeが失敗した（ここまでに記録したものは残る。直して同じコマンドを打つ）:\n'

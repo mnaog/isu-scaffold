@@ -122,12 +122,13 @@ class BenchCommandTest(unittest.TestCase):
         return path
 
     def test_deploys_runs_and_prints_the_result_and_that_runs_brief(self):
-        result = self.bench('--repeat', '振れ幅: 1234abcd', '--hypothesis', '振れ幅を測る')
+        result = self.bench('--repeat', '振れ幅: 1234abcd', '--hypothesis', '-2%の振れ幅を測る')
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = self.calls()
         self.assertEqual(calls[0], 'make deploy')
+        # isuscope takes text that starts with '-' only as --option=value.
         self.assertEqual(json.loads(calls[1].removeprefix('isuscope ')),
-                         ['run', '--repeat', '振れ幅: 1234abcd', '--hypothesis', '振れ幅を測る'])
+                         ['run', '--repeat=振れ幅: 1234abcd', '--hypothesis=-2%の振れ幅を測る'])
         self.assertEqual(json.loads(calls[2].removeprefix('isuscope ')), ['brief', 'abcd1234'])
         self.assertIn('deploy: deploy complete: r1 (3s)', result.stdout)
         self.assertIn('score     123456', result.stdout)
@@ -140,8 +141,8 @@ class BenchCommandTest(unittest.TestCase):
         result = self.bench()
         self.assertEqual(result.returncode, 0, result.stderr)
         run = json.loads(self.calls()[1].removeprefix('isuscope '))
-        self.assertEqual(run[:2], ['run', '--hypothesis'])
-        self.assertIn('座標をまとめてINSERTする', run[2])
+        self.assertEqual(run[0], 'run')
+        self.assertTrue(run[1].startswith('--hypothesis=') and '座標をまとめてINSERTする' in run[1], run)
 
     def test_a_failed_deploy_starts_no_benchmark_and_puts_the_proposal_back(self):
         path = self.measure_a_proposal()
