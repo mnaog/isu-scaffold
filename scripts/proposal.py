@@ -1205,6 +1205,19 @@ def listing(root, everything=False):
     return '\n\n'.join([head, *sections]) if sections else head + '\n投稿は無い。'
 
 
+TEXT_OPTIONS = ('--note', '--hypothesis', '--expect', '--verified', '--until', '--revisit')
+
+
+def with_text_values(argv):
+    """`--note "-2%、…"` as `--note=-2%、…`: free text may start with '-', which argparse before Python 3.14
+    reads as the next option, leaving --note without its value."""
+    joined, rest = [], list(argv)
+    while rest:
+        arg = rest.pop(0)
+        joined.append(f'{arg}={rest.pop(0)}' if arg in TEXT_OPTIONS and rest else arg)
+    return joined
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest='action', required=True)
@@ -1257,7 +1270,7 @@ def main():
     p.add_argument('what', nargs='?', help='何をしているか（狙う制約と変更）')
     p.add_argument('--done', action='store_true')
     sub.add_parser('hypothesis')
-    args = parser.parse_args()
+    args = parser.parse_args(with_text_values(sys.argv[1:]))
     root = main_session.root_repo()
     _, session = main_session.current_session()
     try:

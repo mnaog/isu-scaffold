@@ -27,6 +27,7 @@
     --phase-3: #c2410c;
     --phase-4: #1d4ed8;
     --phase-5: #15803d;
+    --phase-start: #be123c;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -51,6 +52,7 @@
       --phase-3: #fb923c;
       --phase-4: #7aa2ff;
       --phase-5: #4ade80;
+      --phase-start: #fb7185;
     }
   }
   :root[data-theme="dark"] {
@@ -75,6 +77,7 @@
     --phase-3: #fb923c;
     --phase-4: #7aa2ff;
     --phase-5: #4ade80;
+    --phase-start: #fb7185;
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
@@ -213,7 +216,7 @@
 <div class="page">
   <header class="top">
     <h1>初動の手順</h1>
-    <p>準備からkickoffが終わるまでに、人間がすること。上から順に進める。</p>
+    <p>prepareからkickoffが終わるまでに、人間がすること。上から順に進める。</p>
     <div class="legend">
       <span class="badge human">人間</span>
       <span class="badge ai">AI（自動）</span>
@@ -225,8 +228,8 @@
   <!-- 1 -->
   <section class="phase" style="--accent: var(--phase-1)">
     <div class="phase-head">
-      <span class="when">開始の前日まで</span>
-      <h2>1. 準備</h2>
+      <span class="when">前日の練習終了時</span>
+      <h2>1. prepare</h2>
       <p>問題を使わない道具・認証・作業場所をそろえる。問題のコードや配布物は、開始まで持ち込まない。</p>
     </div>
     <ol class="steps">
@@ -300,7 +303,7 @@ make worktree BRANCH=human-codex PURPOSE="人間の作業場所（Codex）"</pre
   <!-- 2 -->
   <section class="phase" style="--accent: var(--phase-2)">
     <div class="phase-head">
-      <span class="when">開始の直前</span>
+      <span class="when">当日朝〜9:59</span>
       <h2>2. 構える</h2>
       <p>開始の時刻に、すぐ3つのセッションを起動できる状態にしておく。</p>
     </div>
@@ -308,30 +311,54 @@ make worktree BRANCH=human-codex PURPOSE="人間の作業場所（Codex）"</pre
       <li class="step">
         <span class="num">1</span>
         <div class="card">
-          <div class="card-head"><h3>認証が生きているか</h3><span class="badge human">人間</span></div>
-          <ul>
-            <li>AWSの認証が通ること。切れていたら入り直す。</li>
-            <li>chrome-debugでポータルを開き、ログインが切れていないこと。</li>
-          </ul>
-          <div class="cmd"><pre>aws sts get-caller-identity</pre><button type="button">コピー</button></div>
+          <div class="card-head"><h3>AWSにログインする</h3><span class="badge human">人間</span></div>
+          <p>ブラウザが開くので、SSOでログインする。続けて、認証が通ることを確かめる。</p>
+          <div class="cmd"><pre>aws sso login
+aws sts get-caller-identity</pre><button type="button">コピー</button></div>
+          <div class="check"><strong>確かめる:</strong> 2つ目のコマンドがaccountとroleを返すこと。</div>
         </div>
       </li>
       <li class="step">
         <span class="num">2</span>
         <div class="card">
+          <div class="card-head"><h3>ポータルのログインを確かめる</h3><span class="badge human">人間</span></div>
+          <p>chrome-debugでポータルを開き、ログインが切れていないこと。切れていたら入り直す。</p>
+        </div>
+      </li>
+      <li class="step">
+        <span class="num">3</span>
+        <div class="card">
           <div class="card-head"><h3>端末を3つ開く</h3><span class="badge human">人間</span></div>
-          <p>3つとも大会用repoのrootへ移っておく。ボードを見るブラウザも用意する。</p>
-          <div class="cmd"><pre>cd &lt;大会用repoのroot&gt;</pre><button type="button">コピー</button></div>
+          <p>4で使う<code>open-*</code>はどこからでも打てるので、移動はいらない。ボードを見るブラウザも用意する。</p>
         </div>
       </li>
     </ol>
   </section>
 
   <!-- 3 -->
+  <section class="phase" style="--accent: var(--phase-start)">
+    <div class="phase-head">
+      <span class="when">10:00</span>
+      <h2>3. 大会が始まる</h2>
+      <p>ここから競技の時間が数えられる。サーバーの作成や起動の待ち時間も、競技の時間に入る。</p>
+    </div>
+    <ol class="steps">
+      <li class="step">
+        <span class="num">1</span>
+        <div class="card">
+          <div class="card-head"><h3>ポータルが開く</h3><span class="badge human">人間</span></div>
+          <p>開始の時刻になると、ポータルで当日マニュアルとサーバーの情報（AMI、CloudFormationのtemplate、台数）が公開される。読むのは次の4で起動するportalのセッションに任せ、人間はすぐ4へ進む。</p>
+          <div class="practice-note"><strong>練習のとき:</strong> 人間が開始を宣言し、時刻を記録する。運営が始めの手順を流す（isuxportalの練習は<code>practice-portal/scripts/start.sh</code>）。ポータルの無い練習では、運営がstackを作り、配布物を<code>.local/distribution/README.md</code>に置いて<code>portal environment</code>の行を出す。</div>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
   <section class="phase" style="--accent: var(--phase-3)">
     <div class="phase-head">
-      <span class="when">開始から5分</span>
-      <h2>3. 3つのセッションを起動する</h2>
+      <span class="when">10:00〜10:05</span>
+      <h2>4. 3つのセッションを起動する</h2>
       <p>人間が手を動かすのはここまで。あとはAIが役割ごとに進める。</p>
     </div>
     <ol class="steps">
@@ -339,17 +366,18 @@ make worktree BRANCH=human-codex PURPOSE="人間の作業場所（Codex）"</pre
         <span class="num">1</span>
         <div class="card">
           <div class="card-head"><h3>3つの端末で、それぞれ1行打つ</h3><span class="badge human">人間</span></div>
-          <p>役割の名前の付いたClaude Codeが、それぞれの作業場所で起動する。最初のcommand（<code>/main</code>・<code>/portal</code>・<code>/improve</code>）は自動で入るので、打たなくてよい。</p>
+          <p>役割の名前の付いたClaude Codeが、それぞれの作業場所で起動する。どのdirectoryから打ってもよく、いちばん新しい練習repo（repoかそのworktreeの中で打てば、そのrepo）を開く。最初のcommand（<code>/main</code>・<code>/portal</code>・<code>/improve</code>）は自動で入るので、打たなくてよい。</p>
           <div class="terminals">
             <div class="terminal"><div class="bar"><i></i><i></i><i></i>&nbsp;端末1 main-bench</div>
-              <div class="body"><div>$ make session ROLE=main-bench</div><div class="auto">→ /main（自動）
+              <div class="body"><div>$ open-main</div><div class="auto">→ /main（自動）
 → ボードも起動</div></div></div>
             <div class="terminal"><div class="bar"><i></i><i></i><i></i>&nbsp;端末2 portal</div>
-              <div class="body"><div>$ make session ROLE=portal</div><div class="auto">→ /portal（自動）</div></div></div>
+              <div class="body"><div>$ open-portal</div><div class="auto">→ /portal（自動）</div></div></div>
             <div class="terminal"><div class="bar"><i></i><i></i><i></i>&nbsp;端末3 improve</div>
-              <div class="body"><div>$ make session ROLE=improve</div><div class="auto">→ /improve（自動）</div></div></div>
+              <div class="body"><div>$ open-improve</div><div class="auto">→ /improve（自動）</div></div></div>
           </div>
-          <div class="check"><strong>確かめる:</strong> ボードが<code>http://127.0.0.1:8765</code>で開くこと。portが使われていたら、mainを<code>BOARD_PORT=&lt;別のport&gt; make session ROLE=main-bench</code>で起動する。</div>
+          <p><code>open-*</code>は<code>~/.zshrc</code>の関数で、開くrepoを1行出してから、そのrepoで<code>make session ROLE=&lt;役割&gt;</code>（mainは<code>main-bench</code>）を打つ。別のrepoを開くなら<code>ISU_REPO=&lt;path&gt; open-main</code>。関数が無い端末では、repoのrootで<code>make session ROLE=main-bench</code>・<code>ROLE=portal</code>・<code>ROLE=improve</code>を打つ。</p>
+          <div class="check"><strong>確かめる:</strong> 1行目に出たrepoが今回の練習のものであること。ボードが<code>http://127.0.0.1:8765</code>で開くこと。portが使われていたら、mainを<code>BOARD_PORT=&lt;別のport&gt; open-main</code>で起動する。</div>
         </div>
       </li>
       <li class="step">
@@ -371,11 +399,11 @@ make worktree BRANCH=human-codex PURPOSE="人間の作業場所（Codex）"</pre
     </ol>
   </section>
 
-  <!-- 4 -->
+  <!-- 5 -->
   <section class="phase" style="--accent: var(--phase-4)">
     <div class="phase-head">
-      <span class="when">5分〜初回ベンチ</span>
-      <h2>4. kickoffを見守る</h2>
+      <span class="when">10:05〜10:20ごろ（初回ベンチ）</span>
+      <h2>5. kickoffを見守る</h2>
       <p>3つのセッションが並行して進む。人間は止めずに、ボードで進み具合を見る。</p>
     </div>
     <div class="lanes">
@@ -421,7 +449,7 @@ make worktree BRANCH=human-codex PURPOSE="人間の作業場所（Codex）"</pre
         <div class="card-head"><h3>伝える</h3><span class="badge human">人間</span></div>
         <ul>
           <li>mainの端末へ直接打つ。</li>
-          <li>または<code>make session ROLE=human1</code>（human2・human3も同じ）のセッションで「<code>@main-bench</code>に…と伝えて」。</li>
+          <li>または<code>open-human1</code>（<code>open-human2</code>・<code>open-human3</code>も同じ）のセッションで「<code>@main-bench</code>に…と伝えて」。</li>
         </ul>
       </div>
     </div>
@@ -432,21 +460,21 @@ make worktree BRANCH=human-codex PURPOSE="人間の作業場所（Codex）"</pre
           <tr><td>ポータルのログインが切れた</td><td>chrome-debugでポータルに入り直す。</td></tr>
           <tr><td>AWSの認証が切れた</td><td>手元で入り直す（<code>aws sts get-caller-identity</code>で通ることを確かめる）。</td></tr>
           <tr><td>手元のdiskが足りない</td><td>不要なものを消して空ける。laneとbuildが同時に落ちる前に。</td></tr>
-          <tr><td>自分でも調べたい・直したい</td><td><code>make session ROLE=human1</code>（human2・human3）で人間の作業場所を開く。Codexならworktree <code>human-codex</code>で<code>codex</code>を起動する。作り始めたら<code>python3 scripts/proposal.py working "&lt;狙う制約と変更&gt;"</code>、できたら<code>python3 scripts/proposal.py submit</code>でmainへ渡す。</td></tr>
+          <tr><td>自分でも調べたい・直したい</td><td><code>open-human1</code>（<code>open-human2</code>・<code>open-human3</code>）で人間の作業場所を開く。Codexなら<code>open-codex</code>。作り始めたら<code>python3 scripts/proposal.py working "&lt;狙う制約と変更&gt;"</code>、できたら<code>python3 scripts/proposal.py submit</code>でmainへ渡す。</td></tr>
         </tbody>
       </table>
       <p style="color:var(--muted); font-size:13.5px; margin-top:10px;">mainの作業ツリーには触らない。deploy・ベンチ・remoteの変更はmainだけが行う（ほかから打つとhookが止める）。</p>
     </div>
   </section>
 
-  <!-- 5 -->
+  <!-- 6 -->
   <section class="phase" style="--accent: var(--phase-5)">
     <div class="phase-head">
-      <span class="when">初回ベンチの後</span>
-      <h2>5. 初動の終わり</h2>
+      <span class="when">10:20ごろ〜（初回ベンチの後）</span>
+      <h2>6. kickoffの終わり</h2>
     </div>
     <div class="done-box">
-      <h3>ここまで来たら初動は完了</h3>
+      <h3>ここまで来たらkickoffは完了</h3>
       <ul>
         <li>ボードに初回ベンチのscoreが出て、mainの分析（<code>main analyzed</code>）が出ている。</li>
         <li>improveが最初の改善を作り始めている。</li>
@@ -455,10 +483,11 @@ make worktree BRANCH=human-codex PURPOSE="人間の作業場所（Codex）"</pre
     </div>
     <div class="card" style="margin-top:10px">
       <div class="card-head"><h3>人間の作業場所を開く</h3><span class="badge human">人間</span></div>
-      <p>自分でも調べたい・直したいときは、準備で作ったworktree（repoの隣の<code>&lt;名前&gt;-&lt;repo&gt;</code>）で開く。mainの作業ツリー（repoのroot）には触れない。Claude Codeは<code>human1</code>〜<code>human3</code>を、名前の付いたセッションとして開く（新しい端末で、repoのrootから）。</p>
-      <div class="cmd"><pre>make session ROLE=human1</pre><button type="button">コピー</button></div>
-      <p>2つ目・3つ目は<code>ROLE=human2</code>・<code>ROLE=human3</code>。Codexはworktree <code>human-codex</code>で起動する（repoのrootから。初回は信頼の確認が出る。名前を宛先にしたメッセージは送れない）。</p>
-      <div class="cmd"><pre>cd "../human-codex-$(basename "$PWD")" &amp;&amp; codex</pre><button type="button">コピー</button></div>
+      <p>自分でも調べたい・直したいときは、prepareで作ったworktree（repoの隣の<code>&lt;名前&gt;-&lt;repo&gt;</code>）で開く。mainの作業ツリー（repoのroot）には触れない。Claude Codeは<code>human1</code>〜<code>human3</code>を、名前の付いたセッションとして開く（新しい端末で。どこから打ってもよい）。</p>
+      <div class="cmd"><pre>open-human1</pre><button type="button">コピー</button></div>
+      <p>2つ目・3つ目は<code>open-human2</code>・<code>open-human3</code>。Codexはworktree <code>human-codex</code>で起動する（初回は信頼の確認が出る。名前を宛先にしたメッセージは送れない）。</p>
+      <div class="cmd"><pre>open-codex</pre><button type="button">コピー</button></div>
+      <p>関数が無い端末では、repoのrootで<code>make session ROLE=human1</code>、Codexは<code>cd "../human-codex-$(basename "$PWD")" &amp;&amp; codex</code>。</p>
       <ul>
         <li>作り始めたら<code>python3 scripts/proposal.py working "&lt;狙う制約と変更&gt;"</code>でボードの「作業中」に出す。</li>
         <li>変更は、worktreeの名前を頭に付けたbranch（<code>git switch -c human1-&lt;名前&gt; &lt;mainのbranch&gt;</code>）でcommitし、<code>python3 scripts/proposal.py submit</code>でmainへ渡す。</li>
@@ -467,7 +496,7 @@ make worktree BRANCH=human-codex PURPOSE="人間の作業場所（Codex）"</pre
     </div>
   </section>
 
-  <footer>手順の詳細は<code>docs/guides/preparation.md</code>（準備）と<code>docs/guides/kickoff.md</code>（kickoff）にある。</footer>
+  <footer>手順の詳細は<code>docs/guides/preparation.md</code>（prepare）と<code>docs/guides/kickoff.md</code>（kickoff）にある。</footer>
 </div>
 <script>
   for (const button of document.querySelectorAll('.cmd button')) {

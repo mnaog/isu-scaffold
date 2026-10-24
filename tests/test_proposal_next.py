@@ -205,6 +205,11 @@ class ProposalNextTest(unittest.TestCase):
         self.assertFalse((self.repo / 'a.txt').exists())  # reverted
         self.assertEqual(self.analyses(), [])  # a FAIL run gets no analysis
 
+    def test_a_note_that_starts_with_a_dash_stays_the_note(self):
+        # argparse before Python 3.14 reads such a value as the next option; the arguments are joined first.
+        self.assertEqual(self.proposal.with_text_values(['next', 'x', '--note', '-2%', '--decide', 'a=rejected:-1%']),
+                         ['next', 'x', '--note=-2%', '--decide', 'a=rejected:-1%'])
+
     def test_the_decision_points_to_the_run_measured_not_its_base(self):
         # `isuscope analyze --change` cites the run and its older base; the proposal gets the run.
         self.submit('human1-a', 'a.txt')
