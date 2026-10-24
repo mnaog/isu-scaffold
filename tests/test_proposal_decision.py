@@ -11,7 +11,7 @@ import unittest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'tests'))
 import isuscope_stub  # noqa: E402
-HOOK = ROOT / 'scripts/bench-hook.py'
+import isu_hook  # noqa: E402
 GIT_ENV = {'GIT_AUTHOR_NAME': 't', 'GIT_AUTHOR_EMAIL': 't@example.com',
            'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@example.com'}
 
@@ -33,7 +33,7 @@ class ProposalDecisionTest(unittest.TestCase):
         self.git('init', '-q', '-b', 'main')
         self.git('add', '.')
         self.git('commit', '-qm', 'fixture')
-        self.worktree = Path(self.tmp.name) / 'repo-human'
+        self.worktree = Path(self.tmp.name) / 'human-repo'
         self.git('worktree', 'add', '-q', '-b', 'human', str(self.worktree))
         self.script('main-session.py', 'claim', session='S-main')
 
@@ -67,7 +67,7 @@ class ProposalDecisionTest(unittest.TestCase):
     def deliver(self):
         payload = {'tool_name': 'Bash', 'session_id': 'S-main', 'cwd': str(self.repo),
                    'tool_input': {'command': 'isuscope run --hypothesis x', 'run_in_background': True}}
-        result = subprocess.run(['python3', str(HOOK), '--post'], input=json.dumps(payload), text=True,
+        result = subprocess.run(isu_hook.command('post'), input=json.dumps(payload), text=True,
                                 capture_output=True, env=dict(self.env, TOOL_GUARD_ROOT=str(self.repo), PROPOSAL_AUTO_SYNC='0'))
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)['hookSpecificOutput']['additionalContext'] if result.stdout.strip() else ''
@@ -142,7 +142,7 @@ class ProposalDecisionTest(unittest.TestCase):
     def analyze(self):
         payload = {'tool_name': 'Bash', 'session_id': 'S-main', 'cwd': str(self.repo),
                    'tool_input': {'command': 'isuscope analyze 0000aaaa supported --analysis x --change human --decision accepted'}}
-        result = subprocess.run(['python3', str(HOOK), '--post'], input=json.dumps(payload), text=True,
+        result = subprocess.run(isu_hook.command('post'), input=json.dumps(payload), text=True,
                                 capture_output=True, env=dict(self.env, TOOL_GUARD_ROOT=str(self.repo)))
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)['hookSpecificOutput']['additionalContext'] if result.stdout.strip() else ''
@@ -219,7 +219,7 @@ class ProposalDecisionTest(unittest.TestCase):
         self.git('commit', '-qm', 'Main moves on')
         payload = {'tool_name': 'Bash', 'session_id': 'S-main', 'cwd': str(self.repo),
                    'tool_input': {'command': 'isuscope run --hypothesis x', 'run_in_background': True}}
-        subprocess.run(['python3', str(HOOK), '--post'], input=json.dumps(payload), text=True, capture_output=True,
+        subprocess.run(isu_hook.command('post'), input=json.dumps(payload), text=True, capture_output=True,
                        env=dict(self.env, TOOL_GUARD_ROOT=str(self.repo)), check=True)
         log = self.repo / '.local/proposal-sync.log'
         for _ in range(100):

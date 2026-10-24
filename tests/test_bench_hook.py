@@ -2,11 +2,13 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
-HOOK = ROOT / 'scripts/bench-hook.py'
+sys.path.insert(0, str(ROOT / 'tests'))
+import isu_hook  # noqa: E402
 
 
 # Answers `isuscope sql` with the previous finished run and the last run an accepted change was
@@ -45,7 +47,7 @@ class BenchHookTest(unittest.TestCase):
         payload = {'tool_name': tool, 'tool_input': tool_input, 'cwd': str(self.root), 'session_id': session}
         env = {**{k: v for k, v in os.environ.items() if k != 'ISUCON_LANE'}, **(env or {})}
         env['TOOL_GUARD_ROOT'] = str(self.root)
-        result = subprocess.run(['python3', str(HOOK), *args], input=json.dumps(payload), text=True,
+        result = subprocess.run(isu_hook.command(args[0].lstrip('-')), input=json.dumps(payload), text=True,
                                 capture_output=True, env=env)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stderr, '')
@@ -114,9 +116,8 @@ class BenchHookTest(unittest.TestCase):
         claude = json.loads((ROOT / '.claude/settings.json').read_text())
         pre = [hook['command'] for group in claude['hooks']['PreToolUse'] for hook in group['hooks']]
         post = [hook['command'] for group in claude['hooks']['PostToolUse'] for hook in group['hooks']]
-        self.assertTrue(any('scripts/tool-guard.py' in command for command in pre))
-        self.assertTrue(any('scripts/bench-hook.py' in command and '--pre' in command for command in pre))
-        self.assertTrue(any('scripts/bench-hook.py' in command and '--post' in command for command in post))
+        self.assertTrue(any('scripts/hook.sh' in command and command.endswith(' pre') for command in pre))
+        self.assertTrue(any('scripts/hook.sh' in command and command.endswith(' post') for command in post))
         self.assertFalse([command for command in post if '--emergency' in command])
 
 

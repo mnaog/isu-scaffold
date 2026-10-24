@@ -1,8 +1,8 @@
-.PHONY: help session discover kickoff kickoff-apply build deploy rollback status bench-check first-bench bench tare durability pgo codemap lanes proposals builder-images isuscope-node final-check final-reboot
+.PHONY: help session discover kickoff kickoff-apply build deploy rollback status bench-check first-bench bench tare durability pgo codemap lanes proposals builder-images isuscope-node hook final-check final-reboot
 
 help:
 	@printf '%s\n' \
-		'make session ROLE=<main|improve|portal|human>  役割の名前を付けたClaude Codeを、その作業場所で起動する（mainはボードも）' \
+		'make session ROLE=<main-bench|improve|portal|human1|human2|human3>  役割の名前を付けたClaude Codeを、その作業場所で起動する（main-benchは/mainとボードも）' \
 		'make discover                         providerからnodeと全設定を再生成する' \
 		'make kickoff                          コード先行回収・kickoff buildからdraft生成と検査まで進める' \
 		'make lanes                            claude -pのAI lane（indexes、local-env、scenarioなど）の状態を見る' \
@@ -16,6 +16,7 @@ help:
 		'make build                            ローカルでLinux向けGoバイナリを準備する' \
 		'make builder-images                   準備: Go toolchainと両targetの標準libraryを事前にbuildする' \
 		'make isuscope-node                    準備: nodeでaccess logを集計するisuscope-nodeをbuildする' \
+		'make hook                             禁止操作のhook（tools/isu-hook）をbuildする（make sessionも行う）' \
 		'make deploy                           commit済みのlocal状態を全nodeへ反映する' \
 		'make rollback RELEASE=<id>            deploy前のremote状態へ戻す' \
 		'make status                           全nodeを並列に検査する（様子とstatus_commands、20秒で打ち切り）' \
@@ -51,6 +52,9 @@ builder-images:
 
 isuscope-node:
 	@./scripts/build-isuscope-node.sh
+
+hook:
+	@cargo build --release --locked --quiet --manifest-path tools/isu-hook/Cargo.toml --target-dir .local/isu-hook
 
 worktree:
 	@test -n "$(BRANCH)" || { echo 'BRANCH=<name>を指定してください' >&2; exit 2; }

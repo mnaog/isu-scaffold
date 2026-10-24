@@ -38,7 +38,7 @@
 | 各CLIの会話履歴の保存 | 未完了 | | |
 | lane用の`claude -p`（`config/lanes.json`のmodel・effort・permission mode） | 未完了 | | |
 | ボード（`make board`）の表示 | 未完了 | | |
-| 禁止操作のhook（`.claude/settings.json`、`.codex/hooks.json`、`config/tool-guard.json`） | 未完了 | | |
+| 禁止操作のhook（`make hook`、`.claude/settings.json`、`.codex/hooks.json`、`config/tool-guard.json`） | 未完了 | | |
 
 ## アカウント・接続・参加準備
 
@@ -68,4 +68,4 @@
 
 | 項目 | 状態 | 確認日 | 使用版・根拠 |
 | --- | --- | --- | --- |
-| worktree `human`（`make worktree BRANCH=human`）の確認 | 未完了 | | |
+| worktree `human1`〜`human3`・`human-codex`（`make worktree BRANCH=human1`など）の確認 | 未完了 | | |

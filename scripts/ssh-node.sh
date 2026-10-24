@@ -56,8 +56,11 @@ ssh_options+=(-o ServerAliveInterval=5 -o ServerAliveCountMax=3)
 # Reuse one connection per node: deploy, prepare and the checks open many short sessions,
 # each paying a full handshake otherwise. The socket path stays short for macOS (104 bytes).
 # SSH_CONTROL_PERSIST=0 turns it off.
+# A long command takes its own connection: macOS gives the socket to the shared connection about
+# 8 KB, and a request that fills it fails with "mm_send_fd: sendmsg(0): Message too long"
+# (a deploy of every item sends each node about 8 KB of preflight checks).
 persist=${SSH_CONTROL_PERSIST:-60}
-if [[ "${persist}" != 0 ]]; then
+if [[ "${persist}" != 0 && "$(printf '%s' "${remote_command}" | wc -c)" -le 4096 ]]; then
   control_dir=/tmp/isucon-ssh-$(id -u)
   if mkdir -p -m 0700 "${control_dir}" 2>/dev/null && [[ -O "${control_dir}" ]]; then
     ssh_options+=(-o ControlMaster=auto -o "ControlPath=${control_dir}/%C" -o "ControlPersist=${persist}")

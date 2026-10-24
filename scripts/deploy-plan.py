@@ -29,6 +29,18 @@ def git(*args):
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def object_ids(specs):
+    """The object each `commit:path` names, or None where it does not exist, in one git call."""
+    if not specs:
+        return {}
+    result = subprocess.run(['git', 'cat-file', '--batch-check=%(objectname)'], cwd=ROOT, capture_output=True,
+                            text=True, input=''.join(f'{spec}\n' for spec in specs))
+    lines = result.stdout.splitlines()
+    if result.returncode != 0 or len(lines) != len(specs):
+        return {spec: git('rev-parse', spec) for spec in specs}
+    return {spec: None if line.endswith((' missing', ' ambiguous')) else line for spec, line in zip(specs, lines)}
+
+
 def relative(manifest):
     path = Path(manifest).resolve()
     try:
@@ -53,14 +65,16 @@ def changed_items(manifest_path, previous, head):
     old_items = {item['name']: item for item in old.get('items', [])}
     old_builds = {build['item']: build for build in old.get('local_builds', [])}
     builds = {build['item']: build for build in manifest.get('local_builds', [])}
+    paths = [item['local'] for item in manifest['items']] + ['scripts/local-build.py']
+    ids = object_ids([f'{commit}:{path}' for path in paths for commit in (previous, head)])
     changed = []
     for item in manifest['items']:
         name = item['name']
         build = builds.get(name)
         same = (old_items.get(name) == item and old_builds.get(name) == build
-                and git('rev-parse', f'{previous}:{item["local"]}') == git('rev-parse', f'{head}:{item["local"]}'))
+                and ids[f'{previous}:{item["local"]}'] == ids[f'{head}:{item["local"]}'])
         if same and build:
-            same = git('rev-parse', f'{previous}:scripts/local-build.py') == git('rev-parse', f'{head}:scripts/local-build.py')
+            same = ids[f'{previous}:scripts/local-build.py'] == ids[f'{head}:scripts/local-build.py']
         if not same:
             changed.append(name)
     return changed

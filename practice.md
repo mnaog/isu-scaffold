@@ -54,7 +54,7 @@
 
 ## 練習の終わり方
 
-人間が練習の終了をmainへ伝えたら（humanのセッションから`@main`へ伝えてもよい）、mainが次の順で片付ける。本番の[終了前](docs/guides/finish.md)（競技の後はAWSを止めない）とは別の手順。eleventhでは、mainがベンチを回している間に別のセッションがEC2を消し、pushも`main`のbranchだけで終わった。
+人間が練習の終了をmainへ伝えたら（human1〜3のセッションから`@main-bench`へ伝えてもよい）、mainが次の順で片付ける。本番の[終了前](docs/guides/finish.md)（競技の後はAWSを止めない）とは別の手順。eleventhでは、mainがベンチを回している間に別のセッションがEC2を消し、pushも`main`のbranchだけで終わった。
 
 1. 新しいベンチとdeployを始めない。走っているベンチは終わるのを待ち、分析と採否を記録する。improveとhumanへ`SendMessage`で、止まって作業中の変更をcommitするよう伝える。
 2. 記録をcommitする。rootでは`isuscope-data/`（runとchanges。生ログは`.gitignore`のまま）と`docs/agent-history/`。各worktree（improve・portal・human）の`docs/agent-history/`も、そのworktreeのbranchでcommitする。commitの前に、AWSの鍵や秘密鍵が入っていないかを確かめる。

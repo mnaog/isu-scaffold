@@ -90,6 +90,21 @@ class BootstrapSshTests(unittest.TestCase):
         result = self.run_ssh(SSH_ONLY_NODE='missing')
         self.assertEqual(result.returncode, 2)
 
+    def test_a_long_command_does_not_go_through_the_shared_connection(self):
+        # thirteenth: a deploy of every item sent each node about 8 KB of preflight checks, and macOS
+        # refused to pass the shared connection its stdin ("mm_send_fd: sendmsg(0): Message too long").
+        arguments = Path(self.tmp.name) / 'ssh-arguments'
+        (Path(self.tmp.name) / 'bin/ssh').write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > {arguments}\n')
+
+        def options(command):
+            result = subprocess.run(['bash', str(self.repo / 'scripts/ssh-node.sh'), 'app1', command], cwd=self.repo,
+                                    env=self.env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return arguments.read_text()
+        self.set_access('none')
+        self.assertIn('ControlMaster=auto', options('uptime'))
+        self.assertNotIn('ControlMaster', options('true; ' + 'sudo test -d /home/isucon; ' * 400))
+
 
 if __name__ == '__main__':
     unittest.main()

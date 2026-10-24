@@ -10,8 +10,8 @@ The declaration is .local/main-session.json in the root repository, shared by ev
 Claude Code declares it with /main (.claude/commands/main.md), Codex with `claim --agent codex`.
 Claiming again from another session takes main over and says whose it was. Main runs in the root
 worktree, where deploy and the benchmark read their state. While a main is declared,
-scripts/tool-guard.py refuses deploy, benchmarks, isuscope records and the operation lock to every
-other session, and scripts/bench-hook.py hands worktree proposals (scripts/proposal.py) to main
+The hook (scripts/hook.sh, tools/isu-hook) refuses deploy, benchmarks, isuscope records and the operation
+lock to every other session, and scripts/bench-hook.py hands worktree proposals (scripts/proposal.py) to main
 alone. With no main declared nothing is refused, as before /main existed.
 """
 import argparse
@@ -41,6 +41,18 @@ def root_repo(cwd=None):
 def toplevel(cwd=None):
     top = git('rev-parse', '--show-toplevel', cwd=cwd)
     return Path(top).resolve() if top else None
+
+
+def worktree_name(root, here):
+    """`human1` for human1-<repo>: the worktrees sit next to the root repository, named
+    <name>-<repo> (scripts/worktree.sh). Worktrees made before that are <repo>-<name>."""
+    name = Path(here).name
+    repo = Path(root).resolve().name
+    if name.endswith('-' + repo) and len(name) > len(repo) + 1:
+        return name[:-len(repo) - 1]
+    if name.startswith(repo + '-') and len(name) > len(repo) + 1:
+        return name[len(repo) + 1:]
+    return name
 
 
 def main_branch(root):
@@ -148,8 +160,7 @@ def badge(root, session, cwd=None):
     here = toplevel(cwd)
     branch = git('symbolic-ref', '--quiet', '--short', 'HEAD', cwd=cwd) or git('rev-parse', '--short', 'HEAD', cwd=cwd)
     is_root = here == Path(root).resolve()
-    # Worktrees sit beside the root as <root>-<name> (make worktree, the role worktrees, lanes).
-    name = 'root' if is_root else (here.name.removeprefix(Path(root).resolve().name + '-') if here else '')
+    name = 'root' if is_root else (worktree_name(root, here) if here else '')
     result = {'branch': branch, 'worktree': str(here or ''), 'name': name, 'is_root': is_root,
               'main': declared}
     if not declared:

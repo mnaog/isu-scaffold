@@ -36,7 +36,7 @@
 - AI laneが使う`claude -p`を、`config/lanes.json`のmodel・effort・permission modeで短く実行して応答を確認する（例: `echo "Reply OK" | claude -p --model claude-opus-5-5 --effort high --permission-mode dontAsk`）。問題の探索は開始しない。
 - 開始後のコード先行回収と非同期buildの手順を確認する。
 - ボード（`make board`）のローカル表示を確認する。テストデータ・常駐processは開始前に残さない。
-- 禁止操作を止めるhookを確認する。Claude Codeは`.claude/settings.json`から`scripts/tool-guard.py`を呼ぶ。Codexは`.codex/hooks.json`から同じhookを呼ぶので、Codexで一度このrepoを開いてhookを信頼する。練習では`config/tool-guard.json`に、対象の開催回を表す語（`contest_keywords`、例: `isucon14`。アプリのhost名に含まれる語は入れない）とベンチマーカーの置き場所（`benchmarker_paths`、例: `/home/isucon/bench`）を書く。練習の資料を取得し終えてから書くか、取得してよい資料のURLを`allowed_urls`に入れる。練習が終わったら空に戻す。ベンチnodeへの直接の接続は、設定がなくても止まる。
+- 禁止操作を止めるhookを確認する。Claude Codeは`.claude/settings.json`から、Codexは`.codex/hooks.json`から`scripts/hook.sh`を呼ぶ。中身は`tools/isu-hook`（Rust）で、`make hook`がbuildする（`make session`も起動のたびにbuildする）。未build、またはsourceより古い間は、`make hook`のほかの操作を止める。Codexで一度このrepoを開いてhookを信頼する。練習では`config/tool-guard.json`に、対象の開催回を表す語（`contest_keywords`、例: `isucon14`。アプリのhost名に含まれる語は入れない）とベンチマーカーの置き場所（`benchmarker_paths`、例: `/home/isucon/bench`）を書く。練習の資料を取得し終えてから書くか、取得してよい資料のURLを`allowed_urls`に入れる。練習が終わったら空に戻す。ベンチnodeへの直接の接続は、設定がなくても止まる。
 
 ## アカウント・接続・参加準備
 
@@ -59,14 +59,22 @@
 
 ## 人間の作業場所
 
-- 開始用repoで`make worktree BRANCH=human PURPOSE="人間の作業場所"`を作っておく。人間は競技中ずっとここを触り、mainの作業ツリーには触れない。
-- 作り始めたら`python3 scripts/proposal.py working "<狙う制約と変更>"`でボードの「作業中」に出す。コードの変更は投稿（`scripts/proposal.py submit`）でmainへ渡す（投稿すると作業中の表示は消える）。投稿は変更ごとのbranch（`git switch -c human-<名前> <mainのbranch>`）から行い、投稿するとworktreeはそのbranchから外れる（投稿したbranchは、採否が出るまでmainが追従させる）。
+- 開始用repoで、人間の作業場所を4つ作っておく。`human1`〜`human3`はClaude Code（`make session ROLE=human1`など）、`human-codex`はCodex（そのworktreeで人間が`codex`を起動する。名前を宛先にしたメッセージは送れない）で使う。人間は競技中ずっとここを触り、mainの作業ツリーには触れない。
+
+  ```
+  make worktree BRANCH=human1 PURPOSE="人間の作業場所"
+  make worktree BRANCH=human2 PURPOSE="人間の作業場所"
+  make worktree BRANCH=human3 PURPOSE="人間の作業場所"
+  make worktree BRANCH=human-codex PURPOSE="人間の作業場所（Codex）"
+  ```
+
+- 作り始めたら`python3 scripts/proposal.py working "<狙う制約と変更>"`でボードの「作業中」に出す。コードの変更は投稿（`scripts/proposal.py submit`）でmainへ渡す（投稿すると作業中の表示は消える）。投稿は変更ごとのbranch（`git switch -c human1-<名前> <mainのbranch>`のように、worktreeの名前を頭に付ける）から行い、投稿するとworktreeはそのbranchから外れる（投稿したbranchは、採否が出るまでmainが追従させる）。
 
 ## セッションの名前と、セッション同士の話
 
-- main・improve・portal・humanのセッションは、役割の名前を付けて起動する。端末を役割ごとに1つ開き、`make session ROLE=<main|improve|portal|human>`を打つ（`scripts/session.sh`）。その役割の作業場所（mainはroot、ほかはworktree `<repo>-<役割>`）で`claude --name <役割> --settings config/claude/session.json`を始め、`/<役割>`を最初に打つ（humanは打たない）。`ROLE=main`はボードも裏で起動する（`BOARD_PORT`、既定8765、ログは`.local/board.log`）。`claude`を手で打つと名前が付かない。eleventhでは名前の無いセッション同士の伝言を人間が運んだ。Claude Code v2.1.224以降が要る（`claude --version`）。起動したら`/list-agents`で、互いの名前が見えることを確かめる。
+- main・improve・portal・human1〜3のセッションは、役割の名前を付けて起動する。端末を役割ごとに1つ開き、`make session ROLE=<main-bench|improve|portal|human1|human2|human3>`を打つ（`scripts/session.sh`）。その役割の作業場所（mainはroot、ほかはworktree `<役割>-<repo>`）で`claude --name <役割> --settings config/claude/session.json`を始め、`/<役割>`を最初に打つ（mainのセッションの名前は`main-bench`で、打つのは`/main`。humanは打たない）。`ROLE=main-bench`はボードも裏で起動する（`BOARD_PORT`、既定8765、ログは`.local/board.log`）。`claude`を手で打つと名前が付かない。eleventhでは名前の無いセッション同士の伝言を人間が運んだ。Claude Code v2.1.224以降が要る（`claude --version`）。起動したら`/list-agents`で、互いの名前が見えることを確かめる。
 - `config/claude/session.json`は、ほかのセッションからのメッセージをそのまま受け取る設定（`crossSessionInbound: accept`）。確認なしで動かすセッションでも、人間の承認を待たずに届く。project settings（`.claude/settings.json`）の`accept`は使われないので、`--settings`で渡す。
-- 名前があると、`@main`のように宛先を指してメッセージを送れる（Claudeが`SendMessage`で送り、相手は作業の合間に読む）。人間の意見や止めてほしいことは、humanのセッションで「`@main`に…と伝えて」と打つか、mainのセッションへ直接打つ。
+- 名前があると、`@main-bench`のように宛先を指してメッセージを送れる（Claudeが`SendMessage`で送り、相手は作業の合間に読む）。人間の意見や止めてほしいことは、human1〜3のセッションで「`@main-bench`に…と伝えて」と打つか、mainのセッションへ直接打つ。
 - 投稿・採否・kickoffとlaneの進み具合は、これまでどおりキュー（`scripts/proposal.py`）と`.local/progress.log`で知らせ合う。メッセージは、それに載らない話（質問、頼みごと、人間の意見）に使う。
 
 ## 開始後へ残すもの

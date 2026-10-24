@@ -15,8 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'tests'))
 import isuscope_stub  # noqa: E402,F401
 from test_local_build import FAKE_GO  # noqa: E402
-
-HOOK = ROOT / 'scripts/bench-hook.py'
+import isu_hook  # noqa: E402
 GIT_ENV = {'GIT_AUTHOR_NAME': 't', 'GIT_AUTHOR_EMAIL': 't@example.com',
            'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@example.com'}
 SCRIPTS = ('main-session.py', 'proposal.py', 'isuscope_sql.py', 'progress.py', 'prebuild.py', 'local-build.py')
@@ -51,7 +50,7 @@ class PrebuildTest(unittest.TestCase):
         self.git('init', '-q', '-b', 'main')
         self.git('add', '.')
         self.git('commit', '-qm', 'fixture')
-        self.human = base / 'repo-human'
+        self.human = base / 'human-repo'
         self.git('worktree', 'add', '-q', '-b', 'human', str(self.human))
         self.script('main-session.py', 'claim', session='S-main')
 
@@ -81,7 +80,7 @@ class PrebuildTest(unittest.TestCase):
     def start_benchmark(self):
         payload = {'tool_name': 'Bash', 'session_id': 'S-main', 'cwd': str(self.repo),
                    'tool_input': {'command': 'isuscope run --hypothesis x', 'run_in_background': True}}
-        result = subprocess.run([sys.executable, str(HOOK), '--post'], input=json.dumps(payload), text=True,
+        result = subprocess.run(isu_hook.command('post'), input=json.dumps(payload), text=True,
                                 capture_output=True,
                                 env=dict(self.env, TOOL_GUARD_ROOT=str(self.repo), PROPOSAL_AUTO_SYNC='0'))
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -151,11 +150,11 @@ class PrebuildTest(unittest.TestCase):
         self.submit('improve-e', 'webapp/go/e.go', 'package main\n// e\n')
         payload = {'tool_name': 'Bash', 'session_id': 'S-main', 'cwd': str(self.repo),
                    'tool_input': {'command': 'isuscope run --hypothesis x', 'run_in_background': True}}
-        hook = self.repo / 'scripts/bench-hook.py'
-        for name in ('bench-hook.py', 'isuscope-prune.py', 'tool-guard.py'):
+        hook = self.repo / 'scripts/hook.sh'
+        for name in ('bench-hook.py', 'isuscope-prune.py', 'hook.sh'):
             shutil.copy(ROOT / 'scripts' / name, self.repo / 'scripts' / name)
-        result = subprocess.run([sys.executable, str(hook), '--post'], input=json.dumps(payload), text=True,
-                                capture_output=True, env=dict(self.env, TOOL_GUARD_ROOT=str(self.repo)))
+        result = subprocess.run([str(hook), 'post'], input=json.dumps(payload), text=True, capture_output=True,
+                                env=dict(self.env, TOOL_GUARD_ROOT=str(self.repo), ISU_HOOK_BIN=str(isu_hook.build())))
         self.assertEqual(result.returncode, 0, result.stderr)
         record = self.wait_for_record()
         self.assertTrue((self.repo / '.local/proposal-sync.log').exists(), 'the sync ran first')

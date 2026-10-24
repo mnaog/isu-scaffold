@@ -8,7 +8,7 @@ allowed-tools: Bash(git rev-parse:*)
 
 ## portalの役割
 
-目的は、mainの最初のベンチを1分でも早く回せるようにすること。kickoffの間、mainと並行して、大会のポータルからサーバーの情報とベンチ接続を作る。このセッションはmainではない（deploy・kickoff・isuscopeでのベンチはmainが行い、ほかのセッションからは`scripts/tool-guard.py`が止める）。
+目的は、mainの最初のベンチを1分でも早く回せるようにすること。kickoffの間、mainと並行して、大会のポータルからサーバーの情報とベンチ接続を作る。このセッションはmainではない（deploy・kickoff・isuscopeでのベンチはmainが行い、ほかのセッションからはhook（`scripts/hook.sh`）が止める）。
 
 前提は準備（`docs/guides/preparation.md`の「ポータル」）で済んでいる: chrome-debug（port 9222。Playwright MCPがつながる）でポータルにログイン済みで、このセッションは準備で作ったworktree `portal`で動いている。
 

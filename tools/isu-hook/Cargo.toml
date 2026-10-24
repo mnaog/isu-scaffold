@@ -1,0 +1,10 @@
+[package]
+name = "isu-hook"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Claude Code and Codex hooks for this repository: the tool guard and the benchmark hook (scripts/hook.sh)."
+
+[dependencies]
+fancy-regex = "0.14"
+serde_json = { version = "1", features = ["preserve_order"] }

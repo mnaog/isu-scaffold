@@ -24,7 +24,8 @@ git rev-parse --verify "${base}^{commit}" >/dev/null 2>&1 || {
   exit 1
 }
 repo_name=$(basename -- "${repo_dir}")
-worktree=${WORKTREE_PATH:-$(dirname -- "${repo_dir}")/${repo_name}-${branch##*/}}
+# Beside the root, named <name>-<repo> (human1-<repo>, full-memory-<repo> for lane/full-memory).
+worktree=${WORKTREE_PATH:-$(dirname -- "${repo_dir}")/${branch##*/}-${repo_name}}
 
 lanes() {
   # Every other lane, straight from git: purpose, and how far it is from the base branch.

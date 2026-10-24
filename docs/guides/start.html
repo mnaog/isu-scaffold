@@ -274,10 +274,13 @@ make builder-images
         <span class="num">5</span>
         <div class="card">
           <div class="card-head"><h3>作業場所を作る</h3><span class="badge human">人間</span></div>
-          <p>portal・improve・humanのworktree。開始と同時に、それぞれでセッションを起動する。</p>
+          <p>portal・improveと、人間用のhuman1〜3・human-codexのworktree（場所はrepoの隣の<code>&lt;名前&gt;-&lt;repo&gt;</code>）。開始と同時に、portal・improveでセッションを起動する。human-codexはCodexを手で起動して使う。</p>
           <div class="cmd"><pre>make worktree BRANCH=portal PURPOSE="ポータルの情報とベンチ接続"
 make worktree BRANCH=improve PURPOSE="継続的な改善（/improve）"
-make worktree BRANCH=human PURPOSE="人間の作業場所"</pre><button type="button">コピー</button></div>
+make worktree BRANCH=human1 PURPOSE="人間の作業場所"
+make worktree BRANCH=human2 PURPOSE="人間の作業場所"
+make worktree BRANCH=human3 PURPOSE="人間の作業場所"
+make worktree BRANCH=human-codex PURPOSE="人間の作業場所（Codex）"</pre><button type="button">コピー</button></div>
         </div>
       </li>
       <li class="step">
@@ -338,15 +341,15 @@ make worktree BRANCH=human PURPOSE="人間の作業場所"</pre><button type="bu
           <div class="card-head"><h3>3つの端末で、それぞれ1行打つ</h3><span class="badge human">人間</span></div>
           <p>役割の名前の付いたClaude Codeが、それぞれの作業場所で起動する。最初のcommand（<code>/main</code>・<code>/portal</code>・<code>/improve</code>）は自動で入るので、打たなくてよい。</p>
           <div class="terminals">
-            <div class="terminal"><div class="bar"><i></i><i></i><i></i>&nbsp;端末1 main</div>
-              <div class="body"><div>$ make session ROLE=main</div><div class="auto">→ /main（自動）
+            <div class="terminal"><div class="bar"><i></i><i></i><i></i>&nbsp;端末1 main-bench</div>
+              <div class="body"><div>$ make session ROLE=main-bench</div><div class="auto">→ /main（自動）
 → ボードも起動</div></div></div>
             <div class="terminal"><div class="bar"><i></i><i></i><i></i>&nbsp;端末2 portal</div>
               <div class="body"><div>$ make session ROLE=portal</div><div class="auto">→ /portal（自動）</div></div></div>
             <div class="terminal"><div class="bar"><i></i><i></i><i></i>&nbsp;端末3 improve</div>
               <div class="body"><div>$ make session ROLE=improve</div><div class="auto">→ /improve（自動）</div></div></div>
           </div>
-          <div class="check"><strong>確かめる:</strong> ボードが<code>http://127.0.0.1:8765</code>で開くこと。portが使われていたら、mainを<code>BOARD_PORT=&lt;別のport&gt; make session ROLE=main</code>で起動する。</div>
+          <div class="check"><strong>確かめる:</strong> ボードが<code>http://127.0.0.1:8765</code>で開くこと。portが使われていたら、mainを<code>BOARD_PORT=&lt;別のport&gt; make session ROLE=main-bench</code>で起動する。</div>
         </div>
       </li>
       <li class="step">
@@ -418,7 +421,7 @@ make worktree BRANCH=human PURPOSE="人間の作業場所"</pre><button type="bu
         <div class="card-head"><h3>伝える</h3><span class="badge human">人間</span></div>
         <ul>
           <li>mainの端末へ直接打つ。</li>
-          <li>または<code>make session ROLE=human</code>のセッションで「<code>@main</code>に…と伝えて」。</li>
+          <li>または<code>make session ROLE=human1</code>（human2・human3も同じ）のセッションで「<code>@main-bench</code>に…と伝えて」。</li>
         </ul>
       </div>
     </div>
@@ -429,7 +432,7 @@ make worktree BRANCH=human PURPOSE="人間の作業場所"</pre><button type="bu
           <tr><td>ポータルのログインが切れた</td><td>chrome-debugでポータルに入り直す。</td></tr>
           <tr><td>AWSの認証が切れた</td><td>手元で入り直す（<code>aws sts get-caller-identity</code>で通ることを確かめる）。</td></tr>
           <tr><td>手元のdiskが足りない</td><td>不要なものを消して空ける。laneとbuildが同時に落ちる前に。</td></tr>
-          <tr><td>自分でも調べたい・直したい</td><td><code>make session ROLE=human</code>で人間の作業場所を開く。作り始めたら<code>python3 scripts/proposal.py working "&lt;狙う制約と変更&gt;"</code>、できたら<code>python3 scripts/proposal.py submit</code>でmainへ渡す。</td></tr>
+          <tr><td>自分でも調べたい・直したい</td><td><code>make session ROLE=human1</code>（human2・human3）で人間の作業場所を開く。Codexならworktree <code>human-codex</code>で<code>codex</code>を起動する。作り始めたら<code>python3 scripts/proposal.py working "&lt;狙う制約と変更&gt;"</code>、できたら<code>python3 scripts/proposal.py submit</code>でmainへ渡す。</td></tr>
         </tbody>
       </table>
       <p style="color:var(--muted); font-size:13.5px; margin-top:10px;">mainの作業ツリーには触らない。deploy・ベンチ・remoteの変更はmainだけが行う（ほかから打つとhookが止める）。</p>

@@ -2,11 +2,13 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
-GUARD = ROOT / 'scripts/tool-guard.py'
+sys.path.insert(0, str(ROOT / 'tests'))
+import isu_hook  # noqa: E402
 
 
 def write(path, text):
@@ -49,7 +51,7 @@ class ToolGuardTest(unittest.TestCase):
         env['TOOL_GUARD_ROOT'] = str(root or self.root)
         if lane:
             env['ISUCON_LANE'] = lane
-        result = subprocess.run(['python3', str(GUARD)], input=json.dumps(payload), text=True,
+        result = subprocess.run(isu_hook.command('guard'), input=json.dumps(payload), text=True,
                                 capture_output=True, env=env)
         self.assertEqual(result.returncode, 0, result.stderr)
         if not result.stdout.strip():
@@ -166,7 +168,7 @@ class ToolGuardTest(unittest.TestCase):
         self.assert_denied('Bash', {'command': './scripts/ssh-node.sh isucon14-bench uptime'})
 
     def test_unreadable_input_is_let_through(self):
-        result = subprocess.run(['python3', str(GUARD)], input='not json', text=True, capture_output=True,
+        result = subprocess.run(isu_hook.command('guard'), input='not json', text=True, capture_output=True,
                                 env={**os.environ, 'TOOL_GUARD_ROOT': str(self.root)})
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout, '')
@@ -246,7 +248,7 @@ class ToolGuardTest(unittest.TestCase):
         codex = json.loads((ROOT / '.codex/hooks.json').read_text())
         for settings in (claude, codex):
             commands = [hook['command'] for group in settings['hooks']['PreToolUse'] for hook in group['hooks']]
-            self.assertTrue(any('scripts/tool-guard.py' in command for command in commands))
+            self.assertTrue(any('scripts/hook.sh' in command for command in commands))
 
 
 if __name__ == '__main__':

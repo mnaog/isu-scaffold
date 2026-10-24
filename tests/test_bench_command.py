@@ -10,6 +10,8 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'tests'))
+import isu_hook  # noqa: E402
 GIT_ENV = {'GIT_AUTHOR_NAME': 't', 'GIT_AUTHOR_EMAIL': 't@example.com',
            'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@example.com'}
 FAKE_MAKE = '''#!/bin/sh
@@ -82,7 +84,7 @@ class BenchCommandTest(unittest.TestCase):
 
     def measure_a_proposal(self):
         """A proposal main merged and the hook marked measuring when the background call started."""
-        worktree = Path(self.tmp.name) / 'repo-human'
+        worktree = Path(self.tmp.name) / 'human-repo'
         self.git('worktree', 'add', '-q', '-b', 'human', str(worktree))
         (worktree / 'b.txt').write_text('b\n')
         self.git('add', 'b.txt', cwd=worktree)
@@ -134,28 +136,29 @@ class BenchCommandTest(unittest.TestCase):
 
 
 class BenchCommandRecognitionTest(unittest.TestCase):
-    def setUp(self):
-        import importlib.util
-        spec = importlib.util.spec_from_file_location('bench_hook', ROOT / 'scripts/bench-hook.py')
-        self.hook = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(self.hook)
-
     def payload(self, command, background=True):
         return {'tool_name': 'Bash', 'session_id': 'S', 'cwd': str(ROOT),
                 'tool_input': {'command': command, 'run_in_background': background}}
 
+    def starts_benchmark(self, command):
+        """Whether the hook sees a benchmark in this Bash call, and a comparison base named for it."""
+        result = subprocess.run(isu_hook.command('find'), input=json.dumps(self.payload(command)), text=True,
+                                capture_output=True, env=dict(os.environ, TOOL_GUARD_ROOT=str(ROOT)), check=True)
+        found = json.loads(result.stdout)
+        return found['benchmarks'] > 0, found['based']
+
     def test_the_hook_sees_make_bench_and_bench_sh_as_benchmarks(self):
         for command in ('make bench', 'scripts/bench.sh --hypothesis x', './scripts/bench.sh', 'bash scripts/bench.sh'):
-            self.assertEqual(self.hook.starts_benchmark(ROOT, self.payload(command)), (True, True, False), command)
+            self.assertEqual(self.starts_benchmark(command), (True, False), command)
         # A comparison base given to make bench or bench.sh reaches the hook.
         for command in ('make bench BASE=856309ef', 'scripts/bench.sh --base 856309ef'):
-            self.assertEqual(self.hook.starts_benchmark(ROOT, self.payload(command)), (True, True, True), command)
+            self.assertEqual(self.starts_benchmark(command), (True, True), command)
         for command in ('make bench-check', 'bash -n scripts/bench.sh', 'make build'):
-            self.assertEqual(self.hook.starts_benchmark(ROOT, self.payload(command))[0], False, command)
+            self.assertEqual(self.starts_benchmark(command)[0], False, command)
 
     def test_lanes_may_not_run_it(self):
         payload = dict(self.payload('make bench'), hook_event_name='PreToolUse')
-        result = subprocess.run([sys.executable, str(ROOT / 'scripts/tool-guard.py')], input=json.dumps(payload),
+        result = subprocess.run(isu_hook.command('guard'), input=json.dumps(payload),
                                 capture_output=True, text=True, env=dict(os.environ, ISUCON_LANE='indexes'))
         decision = json.loads(result.stdout)['hookSpecificOutput']['permissionDecision']
         self.assertEqual(decision, 'deny', result.stdout)

@@ -25,7 +25,7 @@ locally, the run it was based on, the proposals it is built on, and the files it
 
 The queue is every proposal that still waits for a benchmark: submitted, delivered (main has read
 it), needs-sync (it conflicts with main's branch) and merged (main merged it for the next
-benchmark). When main starts a benchmark, scripts/bench-hook.py --post marks the merged ones
+benchmark). When main starts a benchmark, the hook (scripts/bench-hook.py started) marks the merged ones
 measuring; they leave the queue and wait for main's decision. Held proposals are out of the queue
 too, with the constraint they wait for. The improve session (/improve, declared with `improve`)
 may add a proposal only while at most one waits in the whole queue, so what it builds on stays
@@ -48,7 +48,7 @@ line to .local/progress.log (`proposal <state>`), which main and improve follow 
 A decision belongs to the commit main merged and measured, including earlier submissions in history.
 Acceptance requires a run; merged and measuring proposals remain owed a decision.
 
-Before there is anything to submit, a worktree (improve, a person in worktree `human`) says what it
+Before there is anything to submit, a worktree (improve, a person in worktree `human1`) says what it
 is building with `working`; the board shows who works on what until it submits (which clears it) or
 says `working --done`. `hypothesis` writes the hypothesis main gives `isuscope run` from the merged
 proposals' own hypothesis and expected observation, so the run reads as the queue entry did.
@@ -150,7 +150,8 @@ def read_json(path):
 def write_json(path, data):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix('.tmp')
+    # The benchmark's hypothesis and the background sync can write the same proposal at once.
+    temp = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
     temp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
     temp.replace(path)
 
@@ -241,10 +242,7 @@ def working_dir(root):
 
 
 def worktree_name(root, here):
-    """`human` for <repo>-human: the worktrees sit next to the root repository, named after it."""
-    name = Path(here).name
-    prefix = Path(root).resolve().name + '-'
-    return name[len(prefix):] if name.startswith(prefix) and len(name) > len(prefix) else name
+    return main_session.worktree_name(root, here)
 
 
 def working(root, what=None, done=False, cwd=None):

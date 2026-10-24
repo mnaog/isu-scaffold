@@ -53,31 +53,50 @@ if [[ -n "${previous_commit_candidate}" ]] &&
   previous_commit=$(git rev-parse "${previous_commit_candidate}^{commit}")
 fi
 
+sync_paths=()
 while IFS= read -r local_path; do
   test -e "${sync_repo_dir}/${local_path}" || { echo "missing local sync path: ${local_path}" >&2; exit 1; }
-  git cat-file -e "HEAD:${local_path}" 2>/dev/null || {
-    echo "sync path is not committed at HEAD: ${local_path}" >&2
-    exit 1
-  }
-  changes=$(git status --porcelain --untracked-files=all -- "${local_path}")
-  test -z "${changes}" || {
-    echo "commit ${local_path} before deploy" >&2
-    printf '%s\n' "${changes}" >&2
-    exit 1
-  }
+  sync_paths+=("${local_path}")
 done < <(jq -r '.items[].local' "${sync_manifest}")
+
+# Every sync path is committed at HEAD and clean, checked with one git call each; the per-path
+# calls run only to name the path at fault.
+sync_paths_clean() {
+  local objects
+  [[ "${#sync_paths[@]}" -gt 0 ]] || return 0
+  objects=$(printf 'HEAD:%s\n' "${sync_paths[@]}" | git cat-file --batch-check='%(objectname)')
+  [[ $'\n'"${objects}"$'\n' != *$' missing\n'* ]] &&
+    [[ -z "$(git status --porcelain --untracked-files=all -- "${sync_paths[@]}")" ]]
+}
+
+if ! sync_paths_clean; then
+  for local_path in "${sync_paths[@]}"; do
+    git cat-file -e "HEAD:${local_path}" 2>/dev/null || {
+      echo "sync path is not committed at HEAD: ${local_path}" >&2
+      exit 1
+    }
+    changes=$(git status --porcelain --untracked-files=all -- "${local_path}")
+    test -z "${changes}" || {
+      echo "commit ${local_path} before deploy" >&2
+      printf '%s\n' "${changes}" >&2
+      exit 1
+    }
+  done
+fi
 
 pre_deploy=$(jq -r '.pre_deploy_command' "${sync_manifest}")
 if [[ -n "${pre_deploy}" ]]; then
   bash -c "${pre_deploy}"
-  while IFS= read -r local_path; do
-    changes=$(git status --porcelain --untracked-files=all -- "${local_path}")
-    test -z "${changes}" || {
-      echo "pre_deploy_command changed a committed sync path: ${local_path}" >&2
-      printf '%s\n' "${changes}" >&2
-      exit 1
-    }
-  done < <(jq -r '.items[].local' "${sync_manifest}")
+  if ! sync_paths_clean; then
+    for local_path in "${sync_paths[@]}"; do
+      changes=$(git status --porcelain --untracked-files=all -- "${local_path}")
+      test -z "${changes}" || {
+        echo "pre_deploy_command changed a committed sync path: ${local_path}" >&2
+        printf '%s\n' "${changes}" >&2
+        exit 1
+      }
+    done
+  fi
 fi
 
 transaction_dir=${sync_repo_dir}/.local/deploy-transactions

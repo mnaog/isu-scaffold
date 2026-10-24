@@ -37,7 +37,7 @@ make first-bench   # bench-check → 配布状態のまま初回ベンチ → de
 
 ### AI lane
 
-並行させるAIは、すべてClaude Codeのheadless実行（`claude -p`）にします。`scripts/lane.py`がlaneごとに`make worktree`と同じ方法でworktreeとbranch（`lane/<名前>`、場所はルートrepoの隣の`<repo>-<名前>`）を作り、`config/lanes/<名前>.md`のpromptをstdinで渡して1回だけ実行します。laneはそのbranchへcommitして終わり、mainのセッションが結果を読んでmergeします。
+並行させるAIは、すべてClaude Codeのheadless実行（`claude -p`）にします。`scripts/lane.py`がlaneごとに`make worktree`と同じ方法でworktreeとbranch（`lane/<名前>`、場所はルートrepoの隣の`<名前>-<repo>`）を作り、`config/lanes/<名前>.md`のpromptをstdinで渡して1回だけ実行します。laneはそのbranchへcommitして終わり、mainのセッションが結果を読んでmergeします。
 
 ```bash
 make lanes                                   # 全laneの状態
@@ -48,13 +48,13 @@ git merge lane/scenario                      # 取り込みはmainのセッシ�
 ```
 
 - **設定**: `config/lanes.json`の`claude`にcommand、model（既定`claude-opus-5-5`）、effort（既定`high`）、permission mode、`allowed_tools`、時間上限を置きます。permission modeは`dontAsk`で、`allowed_tools`にないtool（Web、remote command、任意のshell）は確認なしで拒否されます。人間が途中で承認しないので、laneが自分の権限を広げられないようにするためです。laneごとの定義には、共通の`allowed_tools`へ足す`extra_allowed_tools`と、起動元のcommitに必要なfileの`requires`を書けます。
-- **remote操作の禁止**: laneは環境変数`ISUCON_LANE`付きで動きます。`scripts/tool-guard.py`はこれを見て、SSH・コピー、Ansible、deploy・import・kickoffなどremoteへ触れるscriptとmake target、ベンチ、isuscopeの記録系command、`.local/operation.lock`、`git push`、laneやAI CLIの起動を拒否します。
+- **remote操作の禁止**: laneは環境変数`ISUCON_LANE`付きで動きます。hook（`scripts/hook.sh`、`tools/isu-hook`）はこれを見て、SSH・コピー、Ansible、deploy・import・kickoffなどremoteへ触れるscriptとmake target、ベンチ、isuscopeの記録系command、`.local/operation.lock`、`git push`、laneやAI CLIの起動を拒否します。
 - **起動**: `make kickoff`は先行回収のcommit直後に、`config/lanes.json`の`kickoff`のlaneを起動します。各laneが変えてよい範囲と終え方は、そのprompt（`config/lanes/<名前>.md`）にあります。`scenario`（`docs/benchmark-scenario.md`）は公式資料が要るので、mainが`docs/official/`をcommitした直後に`python3 scripts/lane.py start scenario`で起動します。`static-edge`（静的ファイルの配り方）はnginxの設定が要るので`requires`に`config/nginx/nginx.conf`があり、mainが完全importをcommitした直後に`python3 scripts/lane.py start static-edge`で起動します。`joins`にあるlane（`full-memory`の`state-log`・`local-env`）は、lane自身が終わったかを`python3 scripts/lane.py status <名前>`で見て`git merge`します（`joins`があるlaneには`lane.py status`と`git merge`が許可されます）。それらのcommitは、そのlaneのcommitとして数えません。`requires`（開始commitに要るfile）は指定したlaneにだけ効き、`extra_allowed_tools`でlaneごとにtoolを足せます（`full-memory`は`git merge`・`git switch`）。laneのcommit一覧と`lane:<名前> commit`の通知には、取り込んだmainのcommitを含めません。laneは起動時のbranchから分かれるので、commitの前に起動すると公式資料が見えません。実行中は15秒ごと（`LANE_POLL_SECONDS`）にbranchを見て、新しいcommitを`lane:<名前> commit`として知らせます。完了・実行中のlaneは再実行しません。`KICKOFF_LANES=`で止め、`KICKOFF_LANES=indexes`で選べます。laneの起動に失敗してもkickoffは続きます。mainがlaneをどの順でどう取り込むかは`docs/guides/kickoff.md`にあります。
 - **記録**: `.local/lanes/<名前>/`に`status.json`（状態、branch、worktree、commit一覧、秒数、費用）、`stream.jsonl`（stream-json出力）、`result.md`（最後の回答）が残ります。Claudeが最後のcommitの後に書いた会話履歴（`docs/agent-history/`）は、lane.pyがbranchへcommitします。所要時間は`.local/stage-timing.tsv`へ`lane`として入ります。
 - **時間上限**: laneごとの`timeout_minutes`を過ぎるとprocess groupを止めて`timeout`にします。それまでのcommitはbranchに残ります。
 - **後始末**: mergeが済んだlaneは、worktreeで`make local-down`してから`git worktree remove`します。
 
-手で並行作業を行う場合は`make worktree BRANCH=<name> PURPOSE="目的"`を使います。目的はbranchのdescriptionへ保存し、作業情報を`<worktree>/.local/lane.md`へ生成します。
+手で並行作業を行う場合は`make worktree BRANCH=<name> PURPOSE="目的"`を使います。worktreeはルートrepoの隣の`<name>-<repo>`にできます。目的はbranchのdescriptionへ保存し、作業情報を`<worktree>/.local/lane.md`へ生成します。
 
 ### kickoff build
 
@@ -92,15 +92,15 @@ scripts/runs.sh brief latest                    # worktreeから、rootのrunを
 python3 scripts/proposal.py withdraw [<branch>]
 ```
 
-- **止めるもの**: 宣言がある間、`scripts/tool-guard.py`は、hookのpayloadのセッションIDとagentのセッションIDの環境変数のどれもmainと一致しない呼び出しから、mainだけの操作を止めます。対象はtool-guardの`MAIN_SCRIPTS`・`MAIN_MAKE_TARGETS`、`isuscope`の記録系command、`proposal.py`と`lane.py`のmainだけのsubcommand、`.local/operation.lock`です。宣言が無いとき、セッションIDが分からないときは止めません。
+- **止めるもの**: 宣言がある間、hook（`scripts/hook.sh`）は、hookのpayloadのセッションIDとagentのセッションIDの環境変数のどれもmainと一致しない呼び出しから、mainだけの操作を止めます。対象は`tools/isu-hook/src/guard.rs`の`MAIN_SCRIPTS`・`MAIN_MAKE_TARGETS`、`isuscope`の記録系command、`proposal.py`と`lane.py`のmainだけのsubcommand、`.local/operation.lock`です。宣言が無いとき、セッションIDが分からないときは止めません。
 - **投稿**: worktreeで変更をcommitしてから`submit`します。root worktreeとmainのbranchからは投稿できず、commitしていない変更（`docs/agent-history/`を除く）があると止まります。投稿は`.local/proposals/<branch>.json`に、branch、commit、仮説、期待する観測、確かめたこと、根拠のrun（`--based-on`）、変えたfile、投稿者を残します。commitを足して投稿し直すと置き換わります。
-- **mainへ渡す**: mainがベンチを`run_in_background`で起動すると、`bench-hook.py --post`が、そのセッションにまだ渡していないcommitの投稿を、`git merge-tree`でmainのbranchへ衝突なく入ると確かめたものだけ渡します。衝突するものは`needs-sync`にして衝突したfileを残し、渡しません（mainには、投稿者の追従待ちであることを1度だけ伝えます）。mainのbranchがcommitを含んだ投稿は`merged`になります。宣言がある間は、main以外のセッションには渡しません。ベンチが空いている間は、mainが`pending`で同じものを受け取ります（同じcommitは1度だけ）。
-- **キュー**: ベンチを待つ投稿（`submitted`・`delivered`・`needs-sync`・`merged`）がキューです。mainがベンチを`run_in_background`で起動すると、`bench-hook.py --post`がmerge済み（`merged`）の投稿を`measuring`にしてキューから外します。`hold`した投稿（`held`）もキューに数えません。`hold`できるのは未mergeの投稿だけです。mainへ取り込み済み・測定中の投稿は、採否を決めて必要ならコードをrevertします。ベンチが起動できなかった・中断した・ベンチの外の原因で落ちたときは、`requeue`で測定中を待ち（mainのbranchにあれば`merged`）へ戻します。mainは投稿を好きな順で選び、好きに組み合わせて測ります（キューの並びは表示の順）。`/improve`で宣言したセッション（`.local/proposal-state/improve.json`）は、キュー全体の待ちが1件以下のときだけ新しい投稿を足せ（待っている自分の投稿の差し替えは足したことにならない）、それ以外は終了コード3で断られます。`wait`はキューに空きが出るまで2秒おきに投稿のfileを読み、空けば0、`--timeout`で2、`freeze`なら4で終わります。人間などimprove以外の投稿は制限しません。
+- **mainへ渡す**: mainがベンチを`run_in_background`で起動すると、hook（`scripts/hook.sh post`が呼ぶ`scripts/bench-hook.py`）が、そのセッションにまだ渡していないcommitの投稿を、`git merge-tree`でmainのbranchへ衝突なく入ると確かめたものだけ渡します。衝突するものは`needs-sync`にして衝突したfileを残し、渡しません（mainには、投稿者の追従待ちであることを1度だけ伝えます）。mainのbranchがcommitを含んだ投稿は`merged`になります。宣言がある間は、main以外のセッションには渡しません。ベンチが空いている間は、mainが`pending`で同じものを受け取ります（同じcommitは1度だけ）。
+- **キュー**: ベンチを待つ投稿（`submitted`・`delivered`・`needs-sync`・`merged`）がキューです。mainがベンチを`run_in_background`で起動すると、hookがmerge済み（`merged`）の投稿を`measuring`にしてキューから外します。`hold`した投稿（`held`）もキューに数えません。`hold`できるのは未mergeの投稿だけです。mainへ取り込み済み・測定中の投稿は、採否を決めて必要ならコードをrevertします。ベンチが起動できなかった・中断した・ベンチの外の原因で落ちたときは、`requeue`で測定中を待ち（mainのbranchにあれば`merged`）へ戻します。mainは投稿を好きな順で選び、好きに組み合わせて測ります（キューの並びは表示の順）。`/improve`で宣言したセッション（`.local/proposal-state/improve.json`）は、キュー全体の待ちが1件以下のときだけ新しい投稿を足せ（待っている自分の投稿の差し替えは足したことにならない）、それ以外は終了コード3で断られます。`wait`はキューに空きが出るまで2秒おきに投稿のfileを読み、空けば0、`--timeout`で2、`freeze`なら4で終わります。人間などimprove以外の投稿は制限しません。
 - **追従**: 投稿したbranchは採否が出るまでmainのものです。`sync`は`.local/proposal-sync`のworktree（detached）で、待っている投稿と保留の各branchへmainのbranchを`--no-ff`でmergeし、投稿の`commit`をそのmergeへ進めます（mainが読んだ印も移すので、追従しただけでは渡し直しません）。衝突しないものから順に行い、衝突したら衝突をworktreeに残して止まります。解消して`git add`し、もう一度`sync`するとcommitして続けます。投稿の後にbranchが動いたもの、どこかのworktreeでcheckoutされているものは飛ばして理由を出します（`submit`は投稿者のworktreeをbranchから外すので、通常は起きません）。
 - **積み重ね**: 取り込み前の投稿の上に積んだ投稿は、`submit`が`depends_on`に記録します。土台が`rejected`・`deferred`・取り下げになると、積んだ投稿も`deferred`でキューから外れます。
 - **投稿者へ戻さない**: mainは、取り込めない投稿（衝突、取り込んで通らなくなったbuild・deploy）を直せるなら直し、直せないなら棄却します。`decide rejected`は`--run`なしでも使えるので、測るまでもなく棄却できる投稿はベンチにかけずに棄却します。
 - **知らせ**: `proposal.py`とhookは、投稿の状態が変わるたびに`proposal <状態>`の行を`.local/progress.log`へ書きます（`improve`は`improve started`、`working`は`improve working`か`worktree working`、`freeze`は`main freeze`）。`main analyzed`は、mainの`isuscope analyze`の後にhook（`bench-hook.py --post`）が書きます。hookはまず、測定中の投稿ごとに、isuscopeのchange（IDはbranch名の`/`などを`-`に置き換えたもの。ベンチの起動時に投稿ごとに示す）に測定の開始より後に記録された採否を`decide`で写します（`provisional`はコードを残すので`accepted`）。分析したrunの終わりより前から測定中の投稿が残っていなければ、最後に記録された分析のrun・得点・冒頭を1回だけ書きます。次のベンチの間に前のrunの詳しい分析を追記したときは、そのベンチで測っている投稿（前のrunの後に測定中になったもの）を待たずに書くので、1つのrunについて短い分析と詳しい分析の2回届きます。ベンチの起動時に、前のrunで採否の付かなかった測定中の投稿（FAIL・中断のrunのもの）は待ちへ戻し、そのベンチで測り直します。測らずに棄却する、終了前に`deferred`にするなど、runの無い判断だけ`decide`を直接使います。どの行を誰が読むかは`config/progress.json`にあり、mainとimproveは`python3 scripts/progress.py follow <main|improve>`で自分宛ての行だけを読みます。
-- **作業中**: worktree（improve・human・`make worktree`）は、作り始めたら`working "<狙う制約と変更>"`で`.local/proposal-state/working/<worktree名>.json`（名前は、repo名-の後ろ。`human`など）へ書き、ボードの「作業中」に出します。`submit`で消え、`working --done`でも消せます。worktreeが無くなったものは出しません。rootからは書けません（mainは実装しない）。
+- **作業中**: worktree（improve・human1〜3・human-codex・`make worktree`）は、作り始めたら`working "<狙う制約と変更>"`で`.local/proposal-state/working/<worktree名>.json`（名前は、-repo名の前。`human1`など。前の並びの`<repo>-<名前>`でも読む）へ書き、ボードの「作業中」に出します。`submit`で消え、`working --done`でも消せます。worktreeが無くなったものは出しません。rootからは書けません（mainは実装しない）。
 - **仮説**: `hypothesis`は、次のベンチへ取り込んだ（`merged`の）投稿の仮説と期待する観測値を`<branch>: <仮説> 期待: <観測値>`で並べます。mainは`isuscope run --hypothesis "$(python3 scripts/proposal.py hypothesis)"`で使い、runの仮説をベンチ待ちに出ていた文と同じにします。
 - **runの読み取り**: isuscopeの設定（`.isuscope/config.toml`、discoverが書き、Gitに入れない）とrunはrootにしかありません。`scripts/runs.sh`は`ISUSCOPE_PROJECT`でrootを指してisuscopeを実行し、worktreeから同じrunを読めるようにします。別のprojectを指したisuscopeは読み取りのcommandだけを受け付けます。
 

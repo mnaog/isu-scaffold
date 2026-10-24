@@ -1,15 +1,17 @@
 import fcntl
+import importlib.util
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
-GUARD = ROOT / 'scripts/tool-guard.py'
-HOOK = ROOT / 'scripts/bench-hook.py'
+sys.path.insert(0, str(ROOT / 'tests'))
+import isu_hook  # noqa: E402
 GIT_ENV = {'GIT_AUTHOR_NAME': 't', 'GIT_AUTHOR_EMAIL': 't@example.com',
            'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@example.com'}
 
@@ -33,7 +35,7 @@ class MainSessionTest(unittest.TestCase):
         self.git('init', '-q', '-b', 'main')
         self.git('add', '.')
         self.git('commit', '-qm', 'fixture')
-        self.worktree = Path(self.tmp.name) / 'repo-idea'
+        self.worktree = Path(self.tmp.name) / 'idea-repo'
         self.git('worktree', 'add', '-q', '-b', 'idea/cache', str(self.worktree))
         self.branch_of = {self.worktree: 'idea/cache'}
 
@@ -73,7 +75,7 @@ class MainSessionTest(unittest.TestCase):
         payload = {'tool_name': 'Bash', 'session_id': session, 'cwd': str(self.repo),
                    'tool_input': {'command': 'isuscope run --hypothesis x', 'run_in_background': True}}
         env = dict(self.env, TOOL_GUARD_ROOT=str(self.repo), PROPOSAL_AUTO_SYNC='0')
-        result = subprocess.run(['python3', str(HOOK), '--post'], input=json.dumps(payload), text=True,
+        result = subprocess.run(isu_hook.command('post'), input=json.dumps(payload), text=True,
                                 capture_output=True, env=env)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stderr, '')
@@ -82,7 +84,7 @@ class MainSessionTest(unittest.TestCase):
     def guard(self, command, session, env=None):
         payload = {'tool_name': 'Bash', 'tool_input': {'command': command}, 'session_id': session}
         env = dict(self.env, TOOL_GUARD_ROOT=str(self.worktree), **(env or {}))
-        result = subprocess.run(['python3', str(GUARD)], input=json.dumps(payload), text=True,
+        result = subprocess.run(isu_hook.command('guard'), input=json.dumps(payload), text=True,
                                 capture_output=True, env=env)
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)['hookSpecificOutput']['permissionDecisionReason'] if result.stdout.strip() else None
@@ -178,7 +180,7 @@ class MainSessionTest(unittest.TestCase):
         self.assertNotIn('idea/cache', self.deliver('S-main'))  # once per commit
         badge = json.loads(self.script('main-session.py', 'badge', '--session', 'S-worker', cwd=self.worktree).stdout)
         self.assertEqual((badge['role'], badge['proposal']['status']), ('other', 'delivered'))  # found after submit left the branch
-        self.assertEqual(badge['name'], 'idea')  # repo-idea beside repo
+        self.assertEqual(badge['name'], 'idea')  # idea-repo beside repo
         badge = json.loads(self.script('main-session.py', 'badge', '--session', 'S-main').stdout)
         self.assertEqual((badge['role'], badge['waiting']), ('main', 1))
         self.assertEqual(badge['name'], 'root')
@@ -196,6 +198,16 @@ class MainSessionTest(unittest.TestCase):
         self.assertEqual([line[:2] for line in lines], [['proposal', 'submitted']] * 2 + [['proposal', 'rejected']])
         self.assertTrue(lines[0][2].startswith('idea/cache '), lines)
         self.assertIn('ab12cd34', lines[-1][2])
+
+    def test_a_worktree_is_named_without_the_repo(self):
+        spec = importlib.util.spec_from_file_location('main_session', self.repo / 'scripts/main-session.py')
+        main_session = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(main_session)
+        base = Path(self.tmp.name)
+        self.assertEqual(main_session.worktree_name(self.repo, base / 'human1-repo'), 'human1')
+        self.assertEqual(main_session.worktree_name(self.repo, base / 'human-codex-repo'), 'human-codex')
+        self.assertEqual(main_session.worktree_name(self.repo, base / 'repo-human'), 'human')  # made before <name>-<repo>
+        self.assertEqual(main_session.worktree_name(self.repo, base / 'elsewhere'), 'elsewhere')
 
     def test_a_worktree_says_what_it_builds_until_it_submits(self):
         refused = self.script('proposal.py', 'working', '索引', session='S-main', check=False)
@@ -275,7 +287,7 @@ class MainSessionTest(unittest.TestCase):
         self.assertEqual(read.stdout.strip(), f'{self.repo.resolve()} brief latest')
 
     def add_worktree(self, name, branch=None):
-        path = Path(self.tmp.name) / f'repo-{name}'
+        path = Path(self.tmp.name) / f'{name}-repo'
         self.git('worktree', 'add', '-q', '-b', branch or name, str(path))
         self.branch_of[path] = branch or name
         return path
@@ -363,7 +375,7 @@ class MainSessionTest(unittest.TestCase):
         self.commit_in_worktree()
         self.assertEqual(self.submit().returncode, 0)
         # A proposal built on idea/cache before main takes it stands or falls with it.
-        stacked = Path(self.tmp.name) / 'repo-stacked'
+        stacked = Path(self.tmp.name) / 'stacked-repo'
         self.git('worktree', 'add', '-q', '-b', 'idea/stacked', str(stacked), 'idea/cache')
         self.branch_of[stacked] = 'idea/stacked'
         self.change(stacked, 'more.txt', 'more\n', 'Stack on cache')

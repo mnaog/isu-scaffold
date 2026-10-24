@@ -12,7 +12,7 @@ allowed-tools: Bash(git rev-parse:*), Bash(python3 scripts/progress.py path), Ba
 
 ## improveの役割
 
-目的は、点を上げる変更を途切れなくmainへ渡すこと。改善の調査・実装・ローカル検証・投稿を続ける。このセッションはmainではない。merge、どれを次に測るか、deploy、ベンチ、分析、採否はmain（`/main`）が行い、ほかのセッションのそれらの操作は`scripts/tool-guard.py`が止める。mainは自分で考えて採否を決め、ベンチにかけずに棄却することもある。投稿は戻ってこない。取り込めない投稿はmainが直すか棄却する。
+目的は、点を上げる変更を途切れなくmainへ渡すこと。改善の調査・実装・ローカル検証・投稿を続ける。このセッションはmainではない。merge、どれを次に測るか、deploy、ベンチ、分析、採否はmain（`/main`）が行い、ほかのセッションのそれらの操作はhook（`scripts/hook.sh`）が止める。mainは自分で考えて採否を決め、ベンチにかけずに棄却することもある。投稿は戻ってこない。取り込めない投稿はmainが直すか棄却する。
 
 前提は準備（`docs/guides/preparation.md`）で済んでいる。このセッションは、準備で作ったworktree `improve`で動いている。
 

@@ -12,9 +12,9 @@ allowed-tools: Bash(python3 scripts/main-session.py claim:*)
 
 mainは、ベンチを止めずに回し、その結果を正しく読む。改善の実装はworktree `improve`のセッション（`/improve`）が続け、投稿（`scripts/proposal.py`）で届く。mainは改善を実装しない。少しでも多くベンチを回して情報を得ることが重要なので、mainはそこに集中する。アプリのコード・設定・つまみの値を自分で書かない（小さな直しも、improveが動いていない間も同じ）。scaffoldのcommandが作るcommit（`make tare`、`make durability`）、laneとportalの取り込み（全メモリ化laneを取り込むときに、後から入った変更を全メモリ化の形へ移すことも含む）、投稿を取り込むための直し（衝突、取り込んで通らなくなったbuild・deploy）、APIごとの待ちの表（`ISUCON_WAITS`。`scripts/waits.py set`で変える）は実装に数えない。mainは次を受け持つ。
 
-- **merge**: improve・人間（worktree `human`）の投稿、laneのcommit、portalを取り込む。キューの追従と衝突の解消（両方の意図を残す）、取り込んだ変更の戻し（`git revert`）まで。投稿は投稿者へ戻さない。buildやdeployが通らない、衝突する投稿は、直せるならmainが直し、直せないなら棄却する。
+- **merge**: improve・人間（worktree `human1`〜`human3`・`human-codex`）の投稿、laneのcommit、portalを取り込む。キューの追従と衝突の解消（両方の意図を残す）、取り込んだ変更の戻し（`git revert`）まで。投稿は投稿者へ戻さない。buildやdeployが通らない、衝突する投稿は、直せるならmainが直し、直せないなら棄却する。
 - **次に測るものの判断**: 下の「キュー」。何をまとめて測るか、測らずに棄却するか、保留にするかをmainが決める。
-- **deploy・ベンチ**: mainだけが、deploy・rollback・import・kickoff、ベンチ（`make bench`・`isuscope run`・`make first-bench`）、isuscopeの記録、laneの起動・停止、`.local/operation.lock`を使う。ほかのセッションからの同じ操作は`scripts/tool-guard.py`が止める。
+- **deploy・ベンチ**: mainだけが、deploy・rollback・import・kickoff、ベンチ（`make bench`・`isuscope run`・`make first-bench`）、isuscopeの記録、laneの起動・停止、`.local/operation.lock`を使う。ほかのセッションからの同じ操作はhook（`scripts/hook.sh`）が止める。
 - **分析と採否**: runを分析し、分かったことと採否を`isuscope analyze`に書く。improveはまずこの分析を読んで次の変更を選ぶので、根拠をimproveが自分で確かめられるように書く。mainが記録する分析は、振れ幅やwaitのものも含め、最後の1件の先頭300字が`main analyzed`としてimproveへ届く。なので、どの分析も、improveが次の変更を選ぶのに一番要ることを冒頭に書く。
 - **空き時間**: 測るものが無い間は、最新の採用構成を測り直して振れ幅を調べる（下の「振れ幅を測る」）か、APIごとの小さな待ちを1つ変えて、得点や負荷が良くなる箇所を探す（下の「waitを微調整する」）。どちらに使うかは、そのときの状況で決める。投稿は1回のrunで決め、2度は回さない。
 
